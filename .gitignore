@@ -1,0 +1,299 @@
+######################## .gitignore CHEAT SHEET ################################
+
+# ** - Add before a pattern to match directories anywhere in the repository
+# *  - Wildcard character that matches zero or more characters
+# !  - Negates a file from gitignore (ensures the file is commited to git)
+# /  - Matches files only in the repository root
+# ?  - Matches exactly one character
+# [] - matches a single character
+#       - May be used with a range [0-9].log
+#       - Or a set [0123456789].log
+#       - ! can be used within the brackets to negate characters in the set
+
+######################## .gitignore Definitions ################################
+
+
+
+##### GENERAL ####
+
+# ignores logs
+*.log
+# ignores .env files
+*.env
+# ignores pycharm specific files
+*.idea
+*.iml
+
+# ignore jupyter notebook checkpoint files
+.ipynb_checkpoints/
+civilpy/.ipynb_checkpoints/
+
+
+
+##### Files ####
+
+# ignores temporary files used development purposes
+civilpy/Working.py
+/civilpy/UI/test.db
+civilpy/Test_NB.ipynb
+
+
+##### DIRECTORIES ####
+
+# Ignore folders used to hold user data for processing, but keeps the folders as
+# part of the project structure with the .gitkeep files
+civilpy/data/
+!civilpy/data/.gitkeep
+civilpy/photos/*
+!civilpy/photos/.gitkeep
+
+# Completely ignore these folders
+docs/build
+civilpy/__pycache__/
+kivy
+civilpy/Legacy/__pycache__/
+civilpy/Legacy/journals/
+civilpy/scrapers/__pycache__/
+/Notebooks/.ipynb_checkpoints/
+/Kivy/kivy/
+/civilpy/UI/qt material demo/.gitignore
+/civilpy/UI/qt material demo/.gitlab-ci.yml
+/civilpy/UI/qt material demo/.pylintrc
+/data/Templates/04_summaries/01_cover_page.txt
+/data/Templates/04_summaries/02_location_map.txt
+/data/Templates/04_summaries/03_toc.txt
+/civilpy_django/inspection/migrations/0003_file_file_name.py
+/data/Templates/04_summaries/04_general_info_1.txt
+/data/Templates/04_summaries/05_general_info_2.txt
+/data/Templates/04_summaries/06_general_notes.txt
+/data/Templates/04_summaries/07_executive_summary.txt
+/data/Templates/04_summaries/08_bridge_description.txt
+/data/Templates/04_summaries/09_inventory_1.txt
+/data/Templates/04_summaries/10_s_and_r.txt
+/data/Templates/11_drawings/11_drawing1.txt
+/data/Templates/11_drawings/12_drawing_2.txt
+/data/Templates/11_drawings/13_drawing_3.txt
+/data/Templates/15_locs.txt
+/data/Templates/16_findings_1.txt
+/data/Templates/17_findings_2.txt
+/data/Templates/20_inspection_documents_1.txt
+/data/Templates/21_inspection_documents_2.txt
+/data/Templates/22_vertical_clearance.txt
+/data/Templates/23_sia/23_inventory_2.txt
+/data/Templates/23_last_page.txt
+/civilpy/UI/qt material demo/pyqt5_qtquick2_example/__init__.py
+/Notebooks/Apache2.ipynb
+/civilpy/UI/qt material demo/pyqt5_qtquick2_example/images/baseline-category-24px.svg
+/civilpy/UI/qt material demo/pyqt5_qtquick2_example/images/baseline-menu-24px.svg
+/civilpy/UI/qt material demo/pyqt5_qtquick2_example/images/baseline-more_vert-24px.svg
+/civilpy/UI/qt material demo/pyqt5_qtquick2_example/qml/CellBox.qml
+/data/Templates/18_ratings_summaries/channel_culvert_rating_summary.txt
+/data/Templates/18_ratings_summaries/condition_ratings_summary.txt
+/data/Templates/18_ratings_summaries/culverts_ratings_summary2.txt
+/data/Templates/18_ratings_summaries/deck_ratings_summary1.txt
+/data/Templates/18_ratings_summaries/deck_ratings_summary2.txt
+/data/demo.pdf
+/data/demo.xlsx
+/Notebooks/django_demo_file.ipynb
+/data/Templates/18_ratings_summaries/element_data.txt
+/data/excel.xlsx
+/civilpy/gis/from_file.html
+/data/Templates/photos/14_general_photos/gen_photo_1.txt
+/data/Templates/photos/14_general_photos/gen_photo_2.txt
+/data/Templates/photos/14_general_photos/gen_photo_3.txt
+/data/Templates/photos/14_general_photos/gen_photo_4.txt
+/data/Templates/18_ratings_summaries/inaccessible_locations.txt
+/civilpy/UI/qt material demo/pyqt5_qtquick2_example/qml/LargeChartView.qml
+/civilpy/UI/qt material demo/LICENSE
+/civilpy/UI/qt material demo/main.py
+/civilpy/UI/qt material demo/pyqt5_qtquick2_example/qml/main.qml
+/data/Templates/18_ratings_summaries/maj_rehab_rec.txt
+/data/mouse_pos.csv
+/MTV-Diagram.png
+/data/Templates/19_condition_notes/page_34.pdf.txt
+/data/Templates/19_condition_notes/page_35.pdf.txt
+/data/Templates/19_condition_notes/page_36.pdf.txt
+/data/Templates/19_condition_notes/page_37.pdf.txt
+/data/Templates/19_condition_notes/page_38.pdf.txt
+/data/Templates/19_condition_notes/page_39.pdf.txt
+/data/Templates/19_condition_notes/page_40.pdf.txt
+/data/Templates/19_condition_notes/page_41.pdf.txt
+/data/Templates/19_condition_notes/page_42.pdf.txt
+/data/Templates/19_condition_notes/page_43.pdf.txt
+/data/Templates/19_condition_notes/page_44.pdf.txt
+/data/Templates/19_condition_notes/page_45.pdf.txt
+/data/Templates/19_condition_notes/page_46.pdf.txt
+/data/Templates/19_condition_notes/page_47.pdf.txt
+/data/Templates/19_condition_notes/page_48.pdf.txt
+/data/Templates/19_condition_notes/page_49.pdf.txt
+/data/Templates/19_condition_notes/page_50.pdf.txt
+/data/Templates/19_condition_notes/page_51.pdf.txt
+/data/Templates/19_condition_notes/page_52.pdf.txt
+/data/Templates/19_condition_notes/page_53.pdf.txt
+/data/Templates/19_condition_notes/page_54.pdf.txt
+/data/Templates/19_condition_notes/page_55.pdf.txt
+/data/Templates/19_condition_notes/page_56.pdf.txt
+/data/Templates/19_condition_notes/page_57.pdf.txt
+/data/Templates/19_condition_notes/page_58.pdf.txt
+/data/Templates/19_condition_notes/page_59.pdf.txt
+/data/Templates/19_condition_notes/page_60.pdf.txt
+/data/Templates/19_condition_notes/page_61.pdf.txt
+/data/Templates/19_condition_notes/page_62.pdf.txt
+/data/Templates/19_condition_notes/page_63.pdf.txt
+/data/Templates/19_condition_notes/page_64.pdf.txt
+/data/Templates/19_condition_notes/page_65.pdf.txt
+/data/Templates/19_condition_notes/page_66.pdf.txt
+/data/Templates/19_condition_notes/page_67.pdf.txt
+/data/Templates/19_condition_notes/page_68.pdf.txt
+/data/Templates/19_condition_notes/page_69.pdf.txt
+/data/Templates/19_condition_notes/page_70.pdf.txt
+/data/Templates/19_condition_notes/page_71.pdf.txt
+/data/Templates/19_condition_notes/page_72.pdf.txt
+/data/Templates/19_condition_notes/page_73.pdf.txt
+/data/Templates/19_condition_notes/page_74.pdf.txt
+/data/Templates/19_condition_notes/page_75.pdf.txt
+/data/Templates/19_condition_notes/page_76.pdf.txt
+/data/Templates/19_condition_notes/page_77.pdf.txt
+/data/Templates/19_condition_notes/page_78.pdf.txt
+/data/Templates/19_condition_notes/page_79.pdf.txt
+/data/Templates/19_condition_notes/page_80.pdf.txt
+/data/Templates/19_condition_notes/page_81.pdf.txt
+/data/Templates/19_condition_notes/page_82.pdf.txt
+/data/Templates/19_condition_notes/page_83.pdf.txt
+/data/Templates/19_condition_notes/page_84.pdf.txt
+/data/Templates/19_condition_notes/page_85.pdf.txt
+/data/Templates/19_condition_notes/page_86.pdf.txt
+/data/Templates/19_condition_notes/page_87.pdf.txt
+/data/Templates/19_condition_notes/page_88.pdf.txt
+/data/Templates/19_condition_notes/page_89.pdf.txt
+/data/Templates/19_condition_notes/page_90.pdf.txt
+/data/Templates/19_condition_notes/page_91.pdf.txt
+/data/Templates/19_condition_notes/page_92.pdf.txt
+/data/Templates/19_condition_notes/page_93.pdf.txt
+/data/Templates/photos/_defect_photos/page_94.pdf.txt
+/data/Templates/photos/_defect_photos/page_95.pdf.txt
+/data/Templates/photos/_defect_photos/page_96.pdf.txt
+/data/Templates/photos/_defect_photos/page_97.pdf.txt
+/data/Templates/photos/_defect_photos/page_98.pdf.txt
+/data/Templates/photos/_defect_photos/page_99.pdf.txt
+/data/Templates/photos/_defect_photos/page_100.pdf.txt
+/data/Templates/photos/_defect_photos/page_101.pdf.txt
+/data/Templates/photos/_defect_photos/page_102.pdf.txt
+/data/Templates/photos/_defect_photos/page_103.pdf.txt
+/data/Templates/photos/_defect_photos/page_104.pdf.txt
+/data/Templates/photos/_defect_photos/page_105.pdf.txt
+/data/Templates/photos/_defect_photos/page_106.pdf.txt
+/data/Templates/photos/_defect_photos/page_107.pdf.txt
+/data/Templates/photos/_defect_photos/page_108.pdf.txt
+/data/Templates/photos/_defect_photos/page_109.pdf.txt
+/data/Templates/photos/_defect_photos/page_110.pdf.txt
+/data/Templates/photos/_defect_photos/page_111.pdf.txt
+/data/Templates/photos/_defect_photos/page_112.pdf.txt
+/data/Templates/photos/_defect_photos/page_113.pdf.txt
+/data/Templates/photos/_defect_photos/page_114.pdf.txt
+/data/Templates/photos/_defect_photos/page_115.pdf.txt
+/data/Templates/photos/_defect_photos/page_116.pdf.txt
+/data/Templates/photos/_defect_photos/page_117.pdf.txt
+/data/Templates/photos/_defect_photos/page_118.pdf.txt
+/data/Templates/photos/_defect_photos/page_119.pdf.txt
+/data/Templates/photos/_defect_photos/page_120.pdf.txt
+/data/Templates/photos/_defect_photos/page_121.pdf.txt
+/data/tmp/ph.pdf
+/civilpy/UI/raspberrypi.qdp
+/civilpy/UI/qt material demo/README.md
+/data/Templates/18_ratings_summaries/repair_summary.txt
+/civilpy/UI/qt material demo/requirements.txt
+/civilpy/UI/qt material demo/pyqt5_qtquick2_example/resources.py
+/civilpy/UI/qt material demo/resources.qrc
+/data/Templates/23_sia/sia_1.txt
+/data/Templates/23_sia/sia_2.txt
+/data/Templates/23_sia/sia_3.txt
+/data/Templates/23_sia/sia_4.txt
+/civilpy/UI/qt material demo/pyqt5_qtquick2_example/qml/SideNavButton.qml
+/data/Templates/18_ratings_summaries/sub_ratings_summary1.txt
+/data/Templates/18_ratings_summaries/sub_ratings_summary2.txt
+/data/Templates/18_ratings_summaries/super_ratings_summary1.txt
+/data/Templates/18_ratings_summaries/super_ratings_summary2.txt
+/civilpy/UI/test.py
+/civilpy/UI/test.ui
+/data/Templates/18_ratings_summaries/weather.txt
+/Scripts/H&H Mentor Meetings.ipynb
+/Secrets/
+/secrets.json
+/Notebooks/odot_data/
+/Notebooks/Load Rating Reference/
+/civilpy/scrapers/
+/Data/
+/docs/
+/flask/
+/ODOT/
+/projects/03486 - Tydings Bridge/
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# OSX useful to ignore
+*.DS_Store
+.AppleDouble
+.LSOverride
+
+# Thumbnails
+._*
+
+# Files that might appear in the root of a volume
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+
+# Directories potentially created on remote AFP share
+.AppleDB
+.AppleDesktop
+Network Trash Folder
+Temporary Items
+.apdisk
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# IntelliJ Idea family of suites
+.idea
+*.iml
+## File-based project format:
+*.ipr
+*.iws
+## mpeltonen/sbt-idea plugin
+.idea_modules/
+
+# Briefcase build directories
+iOS/
+macOS/
+windows/
+android/
+linux/
+django/
+/Notebooks/ODOT/
+/civilpy/.buildozer/
