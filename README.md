@@ -67,24 +67,13 @@ from civilpy.state.ohio.dot import help_function
 ```mermaid
 graph TD
     A[Does the function more relate to a particular state<br> requirement/system, or a branch of Civil Engineering?] --> |State| B("Does it apply state wide <br> or a specific department?")
-    A --> |Branch| C("Which branch does it most closely fit? ")
-    C --> |construction| D(Save under <br> civilpy.construction)
-    C --> |structural| E(Save under <br> civilpy.structural)
-    C --> |geotechnical| F(Save under <br> civilpy.geotechnical)
-    C --> |environmental| G(Save under <br> civilpy.environmental)
-    C --> |transportation| H(Save under <br> civilpy.transportation)
-    C --> |water_resources| I(Save under <br> civilpy.water_resources)
+    A --> |Branch| C("Which branch does it most closely fit? <br> - construction<br> - structural<br> - geotechnical<br> - environmental<br> - transportation<br> - water_resources")
+    C --> |"Under civilpy.[branch]..." | K("Is it related to a well established<br>organization/standard?")
     A --> |Neither| P
-    D --> K("Is it related to a particular standard, (i.e. AASHTO)")
-    E --> K
-    F --> K
-    G --> K
-    H --> K
-    I --> K
     B --> |Statewide| L("civilpy.[state].__init__.py")
     B --> |Department| M("civilpy.[state].department")
-    K --> |Yes| N("Save under a file for the standard<br>i.e. civilpy.structural.aisc")
-    K --> |No| O("save to the relevant __init__.py")
+    K --> |Yes| N("Save under a file for the standard<br>i.e. civilpy.[branch].[standard]")
+    K --> |No| O("civilpy.[branch].__init__.py")
     P("Save under civilpy.general.[relevant_file]")
     N --> |Doesn't make sense to put it there| P
     O --> |Doesn't make sense to put it there|P
