@@ -50,6 +50,18 @@ you can run the following once setting up your virtual environment:
 $ pip install -e .[dev]
 ```
 
+# How to determine where to store functions within the package
+
+Here is the decision tree for function organization within the package, the goal
+is to keep importing and running functions as simple as possible for non-programmers,
+while maintaining a organizational structure capable of supporting may seperate tools.
+
+i.e., the end user should be able to access any of you're functions from a simple import:
+
+```python
+from civilpy.state.ohio.dot import help_function
+```
+
 <div class="center">
 
 ```mermaid
