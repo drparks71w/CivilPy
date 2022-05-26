@@ -49,3 +49,15 @@ you can run the following once setting up your virtual environment:
 ```bash
 $ pip install -e .[dev]
 ```
+
+<div class="center">
+
+```mermaid
+graph TD
+    A|Does the function relate to a state specific requirement, or a particular branch in engineering| B(Go shopping)
+    B --> C{Let me think}
+    C -->|One| D[Laptop]
+    C -->|Two| E[iPhone]
+    C -->|Three| F[fa:fa-car Car]
+```
+</div>
