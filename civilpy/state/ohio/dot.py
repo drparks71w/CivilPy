@@ -1,10 +1,6 @@
 import os
 import re
 
-odot_manual_urls = {
-    "L_and_d_vol_2": "https://www.transportation.ohio.gov/working/engineering/hydraulic/location-design-vol-2/01-location-design-vol-2",
-}
-
 
 def help_function():
     """
