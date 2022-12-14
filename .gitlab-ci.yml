@@ -1,12 +1,9 @@
-image: alpine
-
 pages:
+  stage: deploy
   script:
-  - apk --no-cache add py2-pip python-dev
-  - pip install sphinx
-  - apk --no-cache add make
-  - make html
-  - mv _build/html/ public/
+  - mkdir .public
+  - cp -r civilpy/webpages/* .public
+  - mv .public public
   artifacts:
     paths:
     - public
