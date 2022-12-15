@@ -1,11 +1,11 @@
 pages:
   stage: deploy
-  image: ruby:2.3
   script:
-    - gem install jekyll
-    - jekyll build -d public/
+  - mkdir .public
+  - cp -r civilpy/webpages/* .public
+  - mv .public public
   artifacts:
     paths:
-      - public
+    - public
   only:
-    - master
+  - master
