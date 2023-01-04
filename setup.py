@@ -10,7 +10,7 @@ setup(
     url="https://daneparks.com/Dane/civilpy",
     author_email="Dane@daneparks.com",
     author="Dane Parks",
-    py_modules=['civilpy'],
+    py_modules=['civilpy', 'civilpy.state.ohio'],
     package_dir={'civilpy': 'civilpy'},
     packages=[
         "civilpy.structural",
