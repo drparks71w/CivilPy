@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setup(
     name='civilpy',
-    version='0.0.1',
+    version='0.0.2',
     description='Civil Engineering Tools in Python',
     url="https://daneparks.com/Dane/civilpy",
     author_email="Dane@daneparks.com",
@@ -14,12 +14,11 @@ setup(
     package_dir={'civilpy': 'civilpy'},
     packages=[
         "civilpy.structural",
-        "civilpy.3rd_party",
         "civilpy.construction",
         "civilpy.environmental",
         "civilpy.general",
         "civilpy.geotechnical",
-        "civilpy.gis",
+        "civilpy.state",
         "civilpy.transportation",
         "civilpy.water_resources"
     ],
