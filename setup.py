@@ -37,7 +37,6 @@ setup(
         "pandas>=1.4.2",
         "Pillow>=9.1.0",
         "Pint>=0.19.2",
-        ""
     ],
     extras_require = {
         "dev": [
