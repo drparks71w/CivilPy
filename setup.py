@@ -19,6 +19,7 @@ setup(
         "civilpy.general",
         "civilpy.geotechnical",
         "civilpy.state",
+        "civilpy.state.ohio",
         "civilpy.transportation",
         "civilpy.water_resources"
     ],
@@ -32,7 +33,6 @@ setup(
     long_description=long_description,
     long_description_content_type="text/markdown",
     install_requires=[
-        "Django>=4.0.0",
         "numpy>=1.22.3",
         "pandas>=1.4.2",
         "Pillow>=9.1.0",
