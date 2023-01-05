@@ -34,6 +34,7 @@ setup(
     long_description_content_type="text/markdown",
     install_requires=[
         "numpy>=1.22.3",
+        "folium>=0.12.1",
         "pandas>=1.4.2",
         "Pillow>=9.1.0",
         "Pint>=0.19.2",

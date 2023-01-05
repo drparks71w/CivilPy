@@ -447,7 +447,7 @@ default_bridge_labels = [
 class BridgeObject:
     def __init__(self, SFN, query='SELECT * FROM table',
                  column_labels=default_bridge_labels,
-                 data_path="G:\\ref\\New folder\\Bridges.tsv"):
+                 data_path="G:\\ref\\New folder\\Bridge Inventory.csv"):
         self.query = query
         print("WARN - Using test data from a static source, some results may be inaccurate (11/15/2021)")
         df = pd.read_csv(f'{data_path}',
@@ -465,6 +465,10 @@ class BridgeObject:
         self.clean_long = -(float(dirty_long[:2]) + (
                     (float(dirty_long[2:4]) / 60) + (float(f'{dirty_long[4:6]}.{dirty_long[6:]}') / 3600)))
 
+        self.photo_url = ''
+
+        self.cty_rte_sec = self.get_summary()
+
     def get_summary(self):
         substring_1 = f"{self.raw_data['County Code']} - "
         substring_2 = f"{self.raw_data['Facility Carried By Structure']} over "
@@ -474,6 +478,16 @@ class BridgeObject:
         print(f'Report for SFN: {self.raw_data["Structure File Number"]} ({temp_string})')
 
         print(f'\nLatitude: {self.clean_lat:.5f}, Longitude: {self.clean_long:.5f}')
+
+        county_code = self.raw_data['County Code']
+        # The next two values use regex to adjust them after being pulled from the database
+        route_num = self.raw_data['Inventory Route']
+        route_num = re.sub('\D', '', route_num).lstrip('0')
+        # Inserts a decimal to convert text based milepost to usable value
+        section_num = self.raw_data['Straight Line Mileage'][:-3] + '.' + self.raw_data['Straight Line Mileage'][2:]
+        section_num = re.sub('/[^0-9.]/g', '', section_num).lstrip('0')
+
+        return f"{county_code}-{route_num}-{section_num}"
 
     def get_map(self):
         # Figure out how ODOT Codes Lat and Long to know which of these is correct (currently best guess based on 1 bridge)
@@ -500,4 +514,7 @@ class BridgeObject:
 
     def get_photos(self):
         url = 'https://brphotos.dot.state.oh.us/Bridges.aspx?county='
-        url = url + self.raw_data['County Code'] + '&route=' + self.raw_data['Route']
+        self.photo_url = url + self.raw_data['County Code'] + '&route=' + self.raw_data['Route']
+
+    def get_plan_sets(self, district=6):
+        pass
