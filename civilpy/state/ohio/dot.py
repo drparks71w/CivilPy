@@ -582,10 +582,17 @@ class BridgeObject:
                 try:
                     tifftools.write_tiff(tiff_objects_list[0], f"W:\\CivilPy_Output\\pulled_plans\\{self.SFN}\\{file_set_name}.tiff")
                 except(AttributeError):
-                    print(f"There is a problem with the tiff file at \n{tiff_objects_list[0]}\nYou might want to check there\n\n")
+                    print(f"There is a problem with the tiff file at \nW:\\CivilPy_Output\\"
+                          f"pulled_plans\\{self.SFN}\\{file_set_name}.tiff\nYou might want to check there"
+                          f"to resolve the issue\n\n")
 
             # Convert multipage tiff file to pdf
-            tiffs = self.tiff_to_pdf(f"W:\\CivilPy_Output\\pulled_plans\\{self.SFN}\\{file_set_name}.tiff")
+            try:
+                self.tiff_to_pdf(f"W:\\CivilPy_Output\\pulled_plans\\{self.SFN}\\{file_set_name}.tiff")
+            except:
+                print(f"There was an error during conversion of the file: W:\\CivilPy_Output\\pulled_plans\\{self.SFN}"
+                      f"\\{file_set_name}.tiff, it's possibly corrupted")
+
 
         return f"Files written to W:\\CivilPy_Output\\pulled_plans\\"
 
