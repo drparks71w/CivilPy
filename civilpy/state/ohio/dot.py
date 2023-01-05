@@ -559,7 +559,7 @@ class BridgeObject:
             tiff_objects_list = []
 
             # Create a folder to put the pdf plans into if it doesn't exist
-            if os.path.exists("W:\\CivilPy_Output\\pulled_plans\\{self.SFN}"):
+            if os.path.exists(f"W:\\CivilPy_Output\\pulled_plans\\{self.SFN}"):
                 pass
             else:
                 os.mkdir(f"W:\\CivilPy_Output\\pulled_plans\\{self.SFN}")
