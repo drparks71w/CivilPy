@@ -583,7 +583,7 @@ class BridgeObject:
                     tifftools.write_tiff(tiff_objects_list[0], f"W:\\CivilPy_Output\\pulled_plans\\{self.SFN}\\{file_set_name}.tiff")
                 except(AttributeError):
                     print(f"There is a problem with the tiff file at \nW:\\CivilPy_Output\\"
-                          f"pulled_plans\\{self.SFN}\\{file_set_name}.tiff\nYou might want to check there"
+                          f"pulled_plans\\{self.SFN}\\{file_set_name}.tiff\nYou might want to check there "
                           f"to resolve the issue\n\n")
 
             # Convert multipage tiff file to pdf
