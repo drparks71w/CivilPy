@@ -2,6 +2,9 @@ import psycopg2 as pg
 from sshtunnel import SSHTunnelForwarder
 
 
+import psycopg2 as pg
+from sshtunnel import SSHTunnelForwarder
+
 def ssh_into_postgres(creds):
     """
     Function to open an ssh tunnel directly to a postgres database to gather
@@ -13,7 +16,7 @@ def ssh_into_postgres(creds):
     try:
         ssh_tunnel = SSHTunnelForwarder(
             (creds["SSH_HOST"], creds["SSH_PORT"]),
-            ssh_username=creds["PG_UN"],
+            ssh_username=creds["SSH_USER"],
             ssh_private_key=creds['SSH_PKEY'],
             ssh_private_key_password=creds["SSH_PKEY"],
             remote_bind_address=(creds["DB_HOST"], creds['PORT'])
