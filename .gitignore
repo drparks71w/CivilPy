@@ -136,3 +136,4 @@ linux/
 django/
 /Notebooks/ODOT/
 /civilpy/.buildozer/
+/secrets/secrets.json
