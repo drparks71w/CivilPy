@@ -2,9 +2,6 @@ import psycopg2 as pg
 from sshtunnel import SSHTunnelForwarder
 
 
-import psycopg2 as pg
-from sshtunnel import SSHTunnelForwarder
-
 def ssh_into_postgres(creds):
     """
     Function to open an ssh tunnel directly to a postgres database to gather
