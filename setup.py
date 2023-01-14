@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setup(
     name='civilpy',
-    version='0.0.5',
+    version='0.0.8',
     description='Civil Engineering Tools in Python',
     url="https://daneparks.com/Dane/civilpy",
     author_email="Dane@daneparks.com",
@@ -36,10 +36,19 @@ setup(
         "numpy>=1.22.3",
         "folium>=0.12.1",
         "pandas>=1.4.2",
-        "Pillow>=9.1.0",
+        "Pillow>=9.4.0",
         "Pint>=0.19.2",
+        "jupyter>=1.0.0",
+        "Flask>=2.2.2",
+        "PyPDF2>=3.0.1",
+        "simplekml>=1.3.6",
+        "beautifulsoup4>=4.11.1",
+        "psycopg2>=2.9.5",
+        "sshtunnel>=0.4.0",
+        "icalendar>=4.0.7"
     ],
-    extras_require = {
+
+    extras_require={
         "dev": [
             "pytest>=3.7",
             "jupyter>=1.0.0",
