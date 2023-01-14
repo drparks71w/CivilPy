@@ -12,7 +12,7 @@ setup(
     author="Dane Parks",
     py_modules=[
         "civilpy",
-        "civilpy.state.ohio"
+        "civilpy.state.ohio",
         "civilpy.structural",
         "civilpy.construction",
         "civilpy.environmental",
