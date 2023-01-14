@@ -54,7 +54,7 @@ setup(
         "PyPDF2>=3.0.1",
         "simplekml>=1.3.6",
         "beautifulsoup4>=4.11.1",
-        "psycopg2>=2.9.5",
+        "psycopg2-binary>=2.9.5",
         "sshtunnel>=0.4.0",
         "icalendar>=4.0.7"
     ],
