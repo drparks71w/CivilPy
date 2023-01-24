@@ -1,12 +1,13 @@
 from djitellopy import Tello
 import cv2
+import time
 
 width = 320
 height = 240
 startCounter = 0
 
 me = Tello()
-me.conect()
+me.connect()
 
 me.for_back_velocity = 0
 me.lefrt_right_velocity = 0
@@ -23,8 +24,19 @@ while True:
     frame_read = me.get_frame_read()
     myFrame = frame_read.frame
     img = cv2.resize(myFrame, (width, height))
+    cv2.imshow("MyResult", img)
 
     if startCounter == 0:
         me.takeoff()
-        me.move_left(20)
-        me.rotate_clockwise(90)
+        time.sleep(8)
+        me.rotate_clockwise(180)
+        time.sleep(3)
+        me.flip_right()
+        time.sleep(3)
+        me.flip_forward()
+        me.land()
+        startCounter = 1
+
+    if cv2.waitKey(1) & 0xFF == ord('q'):
+        me.land()
+        break
