@@ -18,7 +18,7 @@ is more a way for me to track my progress while learning more about another indu
 and other code posted here but this repository is not meant as tutorial or in depth explanation for how coding works. 
 For those types of things I highly suggest you instead check <a href=https://www.youtube.com/>Youtube</a> for general 
 lessons or <a href=https://stackoverflow.com/>Stack Overflow</a> for specific issues.  I highly recommend the 
-<a href=https://www.youtube.com/user/cs50tv>Harvard CS50 Youtube Channel</a> for conceptual level programming lessons or
+<a href=https://www.youtube.com/user/cs50tv>Harvard CS50 YouTube Channel</a> for conceptual level programming lessons or
 <a href=https://www.youtube.com/user/schafer5>CoreyMS's Youtube Channel</a> for lessons in practical uses of 
 programming. 
 
@@ -43,7 +43,7 @@ hello_world()
 
 # Developing CivilPy
 
-To install the development environment, instead of just the barebones base package,
+To install the development environment, instead of just the bare-bones base package,
 you can run the following once setting up your virtual environment:
 
 ```bash
@@ -54,9 +54,9 @@ $ pip install -e .[dev]
 
 Here is the decision tree for function organization within the package, the goal
 is to keep importing and running functions as simple as possible for non-programmers,
-while maintaining a organizational structure capable of supporting may seperate tools.
+while maintaining an organizational structure capable of supporting may separate tools.
 
-i.e., the end user should be able to access any of you're functions from a simple import:
+i.e., the end user should be able to access any of your functions from a simple import:
 
 ```python
 from civilpy.state.ohio.dot import help_function
