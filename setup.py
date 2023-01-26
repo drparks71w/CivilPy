@@ -56,7 +56,10 @@ setup(
         "beautifulsoup4>=4.11.1",
         "psycopg2-binary>=2.9.5",
         "sshtunnel>=0.4.0",
-        "icalendar>=4.0.7"
+        "icalendar>=4.0.7",
+        "html5lib>=1.1",
+        "geopandas>=0.12.2",
+        "fiona>=1.8.22"
     ],
 
     extras_require={

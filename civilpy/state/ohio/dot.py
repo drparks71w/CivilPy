@@ -7,6 +7,10 @@ from PIL import Image, ImageSequence
 import math
 import tifftools
 from natsort import natsorted
+from bs4 import BeautifulSoup
+from urllib.request import urlopen
+import json
+import requests
 
 
 def help_function():
@@ -305,153 +309,176 @@ def filter_files_by_category(file_list, label_set):
     return category_files
 
 
-def check_file_names(file_list, regex_pattern):
-    pass
+def get_bridge_data_from_tims(sfn):
+    url = f"https://gis.dot.state.oh.us/arcgis/rest/services/TIMS/Assets/MapServer/5/query?where=SFN%3D{sfn}&text=&objectIds=&time=&geometry=&geometryType=esriGeometryEnvelope&inSR=&spatialRel=esriSpatialRelIntersects&relationParam=&outFields=*&returnGeometry=true&returnTrueCurves=false&maxAllowableOffset=&geometryPrecision=&outSR=&having=&returnIdsOnly=false&returnCountOnly=false&orderByFields=&groupByFieldsForStatistics=&outStatistics=&returnZ=false&returnM=false&gdbVersion=&historicMoment=&returnDistinctValues=false&resultOffset=&resultRecordCount=&queryByDistance=&returnExtentOnly=false&datumTransformation=&parameterValues=&rangeValues=&quantizationParameters=&featureEncoding=esriDefault&f=html"
+    page = requests.get(url)
+    soup = BeautifulSoup(page.content, 'html5lib')
+
+    bridge_link = soup.find_all('a')
+
+    full_data_url = "https://gis.dot.state.oh.us/" + bridge_link[-1].get('href')
+    full_data_url_json = full_data_url + '?f=pjson'
+
+    print(f"\nRetrieving data from url at {full_data_url_json}\n")
+
+    response = urlopen(full_data_url_json)
+    data_json = json.loads(response.read())
+
+    extracted_data = data_json['feature']['attributes']
+
+    return extracted_data
 
 
-default_bridge_labels = [
-    'Bridge Status Code', 'Bridge Status Description calc',
-    'Structure File Number', 'District Number', 'Deck Area',
-    'Overall Structure Length', 'Over 20 Ft (Fedl Brdg) (Y/N/Null) calc',
-    'Sufficiency Rating', 'Sufficiency Rating Converted calc', 'SD/FO',
-    'SD/FO calc', 'Functional Class Code', 'Functional Class Old Name calc',
-    'Functional Class Old Group calc', 'Functional Class FHWA Code calc',
-    'Functional Class New Code calc', 'Funct Class New Name calc',
-    'Maintenance Responsibility Code',
-    'Maintenance Responsibility Description calc',
-    'Maintenance Responsibility plus Null calc', 'Type Service On Bridge Code',
-    'Type of Service On Bridge Description calc',
-    'Type Service Under Bridge Code', 'County Code', 'Highway System Code',
-    'Invent Hwy Sys Name calc', 'Invent Hwy Sys Description calc', 'Route',
-    'Inventory Route', 'Route On Bridge Code', 'Route On Bridge Description calc',
-    'Route Under Bridge Code', 'Route Under Bridge Description calc',
-    'Facility Carried By Structure', 'Feature Intersected', 'Latitude',
-    'Longitude', 'NHS Code', 'NHS (Y/N) calc', 'NHS Description calc',
-    'Year Rebuilt Calc', 'Load Rating Year', 'Main Span Type Code',
-    'Main Structure Type', 'Load Inventory Rating', 'Inventory County',
-    'FIPS Number', 'BTRS Link Number', 'BTRS Linked (Y/N) calc', 'Analyzed By',
-    'Approach Alignment Code', 'Approach Guardrail Code',
-    'Approach Pavement Grade Code', 'Approach Pavement Material Code',
-    'Approach Roadway Width', 'Approach Slab ', 'Approach Slab Length',
-    'Approach Span Description Code', 'Approach Span Material Code',
-    'Approach Span Type Code', 'Approach Spans', 'Approach Structure Type',
-    'BARS Code', 'Bearing Device1 Code', 'Bearing Device2 Code',
-    'Bridge Roadway Width Cb Cb', 'Bypass Length', 'Calculated Deck Geometry',
-    'Calculated Structural Evaluation', 'Calculated Underclearance',
-    'Channel Protection Type Code', 'Min Horizontal Clearance On Bridge Cardinal',
-    'Min Horizontal Clearance On Bridge Non-Cardinal',
-    'Min Horizontal Clearance Under Cardinal',
-    'Min Horizontal Clearance Under Non-Cardinal',
-    'Min Lateral Clearance Cardinal Left',
-    'Min Lateral Clearance Cardinal Right',
-    'Min Lateral Clearance Non-Cardinal Left',
-    'Min Lateral Clearance Non-Cardinal Right',
-    'Min Lateral Clearance Under Cardinal Left',
-    'Min Lateral Clearance Under Cardinal Right',
-    'Min Lateral Clearance Under Non-Cardinal Left',
-    'Min Lateral Clearance Under Non-Cardinal Right',
-    'Min Vertical Clearance Bridge Cardinal',
-    'Min Vertical Clearance Bridge Non-Cardinal',
-    'Min Vertical Clearance Under Bridge Cardinal',
-    'Min Vertical Clearance Under Bridge Non-Cardinal',
-    'Clearance Practical Max Vertical On Bridge',
-    'Clearance Practical Max Vertical Under Bridge', 'Combined',
-    'Composite Structure Code', 'Culvert Fill Depth',
-    'Culvert Headwalls/Endwalls Type Code', 'Culvert Length',
-    'Culvert Sufficiency Rating Default', 'Culvert Type Code',
-    'Curb/Sidewalk Material Type Left',
-    'Curb/Sidewalk Material Type Right', 'Curb/Sidewalk Type Left',
-    'Curb/Sidewalk Type Right', 'Deck Concrete Type Code',
-    'Deck Drainage Type Code', 'Deck Protection External Code',
-    'Deck Protection Internal Code', 'Deck Type Code',
-    'Deck Width Out/Out', 'Design Load Code', 'Directional Suffix Code',
-    'Expansion Joint Retrofit1 Code', 'Expansion Joint Retrofit2 Code',
-    'Expansion Joint Retrofit3 Code', 'Expansion Joint Type1 Code',
-    'Expansion Joint Type2 Code', 'Expansion Joint Type3 Code',
-    'Expansion Joint With Trough Retrofit1',
-    'Expansion Joint With Trough Retrofit2',
-    'Expansion Joint With Trough Retrofit3',
-    'Future ADT', 'Future ADT Year', 'Haunched Girder',
-    'Haunched Girder Depth', 'Highway Designation Code',
-    'Hinge Code', 'Horizontal Curve Radius', 'Lanes On Number',
-    'Lanes Under Number', 'Macro Corridor', 'Main Member Depth',
-    'Main Member Type Code', 'Main Span Description Code',
-    'Main Span Material Code', 'Main Spans Number', 'Major Rehab Date',
-    'Maximum Span Length', 'Median Code', 'Median Type1 Code',
-    'Median Type2 Code', 'Median Type3 Code', 'Method Of Analysis Code',
-    'Moment Plates Code', 'MPO Code', 'Min Vertical Clearance Lift Bridge',
-    'Navigable Stream', 'Navigable Stream Horizontal Clearance',
-    'Navigable Stream Vertical Clearance', 'Ohio Percent Of Legal Load',
-    'On/Under', 'Operating Rating HS', 'Parallel Structure Code',
-    'Paint Condition Rating Date', 'Paint Supplier', 'Paint Surface Area',
-    'Preferred Route', 'Railing Type Code',
-    'Ramp Lateral Under Clearance Cardinal Left',
-    'Ramp Lateral Under Clearance Cardinal Right',
-    'Ramp Lateral Under Clearance Non-Cardinal Left',
-    'Ramp Lateral Under Clearance Non-Cardinal Right',
-    'Ramp Roadway Width Cardinal', 'Ramp Roadway Width Non-Cardinal',
-    'Ramp Vertical Under Clearance Cardinal',
-    'Ramp Vertical Under Clearance Non-Cardinal', 'Record Add Date',
-    'Record Update Date', 'Remarks', 'Retire Reason Code',
-    'SFN Control Authority', 'Sidewalk Width Left',
-    'Sidewalk Width Right', 'Skew', 'Slope Protection Type Code',
-    'Software Of Rating Analysis', 'Inventory Special Designation',
-    'Straight Line Kilometers', 'Straight Line Mileage',
-    'Structure Location', 'Toll Road', 'Total Spans',
-    'Traffic Direction Code', 'Water Direction Code',
-    'Waterway Adequacy Code', 'Wearing Surface Date',
-    'Wearing Surface Thickness', 'Wearing Surface Type Code', 'Total',
-    'SubClass', 'Subclass1', 'SubClass2', 'Cty', '9', '8', '7', '6',
-    'A', '5', '4', '3', '2', '1', '0', 'N', 'Maintained',
-    'Inventoried', 'Date Built', 'Contractor Name', 'Drainage Area',
-    'Framing Type', 'Historical Bridge Type Code',
-    'Historical Builder Code', 'Historical Significance Code',
-    'Longitudinal Member Type', 'Microfilm Number',
-    'Original Project Number', 'Structural Steel Protection Code',
-    'Railing Structural Steel Type', 'Standard Drawing Number',
-    'Stream Velocity', 'Structural Steel Fabricator',
-    'Structural Steel Paint Type Code', 'Structural Steel Pay Weight',
-    'Predominant Structural Steel Type', 'Boat Inspection',
-    'Critical Structure', 'Dive Inspection', 'Dive Inspection Date',
-    'Dive Inspection Frequency', 'Fracture Critical Inspection',
-    'Fracture Critical Inspection Date',
-    'Fracture Critical Inspection Frequency', 'Inspection Frequency',
-    'Inspection Responsibility Code', 'Probe Inspection',
-    'Probe Inspection Frequency', 'Scour Critical Code',
-    'Snooper Inspection', 'Special Inspection', 'Special Inspection Date',
-    'Special Inspection Frequency', 'Major Bridge Indicator (Y/N)',
-    'NBIS Length (Y/N)', 'Aperture Card Original',
-    'Aperture Fabrication', 'Aperture Repairs', 'Bridge Dedicated Name',
-    'Cable Stayed', 'Catwalks', 'Designated National Network', 'Fencing',
-    'Fencing Height', 'Flared', 'GASB 34', 'Glare Screen', 'Lighting',
-    'Noise Barrier', 'Other Features', 'Post Tensioned', 'Railroad Code',
-    'Scenic Waterway', 'Seismic Susceptibility Code', 'Signs Attached On',
-    'Signs Attached Under', 'Splash Guard', 'Strahnet Highway Designation',
-    'Temporary Barrier', 'Temporary Debris Netting', 'Temporary Shored',
-    'Temporary Structure', 'Temporary Subdecking', 'Utility - Electric',
-    'Utility - Gas', 'Utility - Other', 'Utility - Sewer',
-    'Utility - Telephone', 'Utility - TV Cable', 'Utility - Water',
-    'Abutment Forward Material Code', 'Abutment Forward Type Code',
-    'Abutment Rear Material Code', 'Abutment Rear Type Code',
-    'Dynamic Load Test Abutment Forward', 'Dynamic Load Test Abutment Rear',
-    'Dynamic Load Test Pier Predominate', 'Dynamic Load Test Pier Type1',
-    'Dynamic Load Test Pier Type2', 'Foundation Abutment Forward Code',
-    'Foundation Abutment Rear Code', 'Foundation Length Abutment',
-    'Foundation Length Pier', 'Foundation Pier Predominate Code',
-    'Foundation Pier Type1 Code', 'Foundation Pier Type2 Code',
-    'Pier Predominant  ', 'Pier Predominate Material Code',
-    'Pier Predominate Type Code', 'Pier Type1 Number',
-    'Pier Type1 Material Code', 'Pier Type1 Type Code',
-    'Pier Type2 Number', 'Pier Type2 Material Code',
-    'Pier Type2 Type Code', 'Pile Log', 'Static Load Test Abutment Forward',
-    'Static Load Test Abutment Rear', 'Static Load Test Pier Predominate',
-    'Static Load Test Pier Type1', 'Static Load Test Pier Type2'
-]
+ohio_counties = {
+    "ADAMS": "ADA",
+    "ALLEN": "ALL",
+    "ASHLAND": "ASD",
+    "ASHTABULA": "ATB",
+    "ATHENS": "ATH",
+    "AUGLAIZE": "AUG",
+    "BELMONT": "BEL",
+    "BROWN": "BRO",
+    "BUTLER": "BUT",
+    "CARROLL": "CAR",
+    "CHAMPAIGN": "CHP",
+    "CLARK": "CLA",
+    "CLERMONT": "CLE",
+    "CLINTON": "CLI",
+    "COLUMBIANA": "COL",
+    "COSHOCTON": "COS",
+    "CRAWFORD": "CRA",
+    "CUYAHOGA": "CUY",
+    "DARKE": "DAR",
+    "DEFIANCE": "DEF",
+    "DELAWARE": "DEL",
+    "ERIE": "ERI",
+    "FAIRFIELD": "FAI",
+    "FAYETTE": "FAY",
+    "FRANKLIN": "FRA",
+    "FULTON": "FUL",
+    "GALLIA": "GAL",
+    "GEAUGA": "GEA",
+    "GREENE": "GRE",
+    "GUERNSEY": "GUE",
+    "HAMILTON": "HAM",
+    "HANCOCK": "HAN",
+    "HARDIN": "HAR",
+    "HARRISON": "HAS",
+    "HENRY": "HEN",
+    "HIGHLAND": "HIG",
+    "HOCKING": "HOC",
+    "HOLMES": "HOL",
+    "HURON": "HUR",
+    "JACKSON": "JAC",
+    "JEFFERSON": "JEF",
+    "KNOX": "KNO",
+    "LAKE": "LAK",
+    "LAWRENCE": "LAW",
+    "LICKING": "LIC",
+    "LOGAN": "LOG",
+    "LORAIN": "LOR",
+    "LUCAS": "LUC",
+    "MADISON": "MAD",
+    "MAHONING": "MAH",
+    "MARION": "MAR",
+    "MEDINA": "MED",
+    "MEIGS": "MEG",
+    "MERCER": "MER",
+    "MIAMI": "MIA",
+    "MONROE": "MOE",
+    "MONTGOMERY": "MOT",
+    "MORGAN": "MRG",
+    "MORROW": "MRW",
+    "MUSKINGUM": "MUS",
+    "NOBLE": "NOB",
+    "OTTAWA": "OTT",
+    "PAULDING": "PAU",
+    "PERRY": "PER",
+    "PICKAWAY": "PIC",
+    "PIKE": "PIK",
+    "PORTAGE": "POR",
+    "PREBLE": "PRE",
+    "PUTNAM": "PUT",
+    "RICHLAND": "RIC",
+    "ROSS": "ROS",
+    "SANDUSKY": "SAN",
+    "SCIOTO": "SCI",
+    "SENECA": "SEN",
+    "SHELBY": "SHE",
+    "STARK": "STA",
+    "SUMMIT": "SUM",
+    "TRUMBULL": "TRU",
+    "TUSCARAWAS": "TUS",
+    "UNION": "UNI",
+    "VAN WERT": "VAN",
+    "VINTON": "VIN",
+    "WARREN": "WAR",
+    "WASHINGTON": "WAS",
+    "WAYNE": "WAY",
+    "WILLIAMS": "WIL",
+    "WOOD": "WOO",
+    "WYANDOT": "WYA",
+}
+
+
+NBIS_state_codes = {
+    '014': 'Alabama',
+    '308': 'Montana',
+    '020': 'Alaska',
+    '317': 'Nebraska',
+    '049': 'Arizona',
+    '329': 'Nevada',
+    '056': 'Arkansas',
+    '331': 'New Hampshire',
+    '069': 'Californ',
+    '342': 'New Jersey',
+    '088': 'Colorado',
+    '356': 'New Mexico',
+    '091': 'Connecti',
+    '362': 'New York',
+    '103': 'Delaware',
+    '374': 'North Carolina',
+    '113': 'District of Columbia',
+    '388': 'North Dakota',
+    '124': 'Florida',
+    '395': 'Ohio',
+    '134': 'Georgia',
+    '406': 'Oklahoma',
+    '159': 'Hawaii',
+    '410': 'Oregon',
+    '160': 'Idaho',
+    '423': 'Pennsylvania',
+    '175': 'Illinois',
+    '441': 'Rhode Island',
+    '185': 'Indiana',
+    '454': 'South Carolina',
+    '197': 'Iowa',
+    '468': 'South Dakota',
+    '207': 'Kansas',
+    '474': 'Tennessee',
+    '214': 'Kentucky',
+    '486': 'Texas',
+    '226': 'Louisiana',
+    '498': 'Utah',
+    '231': 'Maine',
+    '501': 'Vermont',
+    '243': 'Maryland',
+    '513': 'Virginia',
+    '251': 'Massachusetts',
+    '530': 'Washington',
+    '265': 'Michigan',
+    '543': 'West Virginia',
+    '275': 'Minnesota',
+    '555': 'Wisconsin',
+    '284': 'Mississippi',
+    '568': 'Wyoming',
+    '297': 'Missouri',
+    '721': 'Puerto Rico',
+}
 
 
 class BridgeObject:
-    def __init__(self, sfn, column_labels=default_bridge_labels, data_path="G:\\ref\\New folder\\Bridges.tsv"):
-        print("WARN - Using test data from a static source, some results may be inaccurate (1/5/2023)")
+    def __init__(self, sfn):
         df = pd.read_csv(f'{data_path}', sep='\t', low_memory=False)
         self.SFN = sfn
 
@@ -472,25 +499,7 @@ class BridgeObject:
 
         self.cty_rte_sec = self.get_summary()
 
-    def get_summary(self):
-        substring_1 = f"{self.raw_data['County Code']} - "
-        substring_2 = f"{self.raw_data['Facility Carried By Structure']} over "
-        substring_3 = f"{self.raw_data['Feature Intersected']}"
 
-        temp_string = substring_1 + substring_2 + substring_3
-        print(f'Report for SFN: {self.raw_data["Structure File Number"]} ({temp_string})')
-
-        print(f'\nLatitude: {self.clean_lat:.5f}, Longitude: {self.clean_long:.5f}')
-
-        county_code = self.raw_data['County Code']
-        # The next two values use regex to adjust them after being pulled from the database
-        route_num = self.raw_data['Inventory Route']
-        route_num = re.sub('\D', '', route_num).lstrip('0')
-        # Inserts a decimal to convert text based milepost to usable value
-        section_num = self.raw_data['Straight Line Mileage'][:-3] + '.' + self.raw_data['Straight Line Mileage'][2:]
-        section_num = re.sub('/[^0-9.]/g', '', section_num).lstrip('0')
-
-        return f"{county_code}-{route_num}-{section_num}"
 
     def get_map(self):
         # Figure out how ODOT Codes Lat and Long to know which of these is correct (currently best guess based on 1 bridge)
