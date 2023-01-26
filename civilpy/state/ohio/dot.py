@@ -467,14 +467,10 @@ class BridgeObject:
         self.photo_url = ''
         self.plan_sets_list = []
 
-        # //TODO - Seperate the following lines into a function
-        dirty_long = str(self.raw_data['LONGITUDE_DD'])
-        dirty_lat = str(self.raw_data['Latitude'])
-
         self.latitude = self.raw_data['LATITUDE_DD']
         self.longitude = self.raw_data['LONGITUDE_DD']
 
-        self.cty_rte_sec = self.get_summary()
+        self.map = self.get_map()
 
     def get_bridge_data_from_tims(self):
         url = f"https://gis.dot.state.oh.us/arcgis/rest/services/TIMS/Assets/MapServer/5/query?where=SFN%3D{self.SFN}&text=&objectIds=&time=&geometry=&geometryType=esriGeometryEnvelope&inSR=&spatialRel=esriSpatialRelIntersects&relationParam=&outFields=*&returnGeometry=true&returnTrueCurves=false&maxAllowableOffset=&geometryPrecision=&outSR=&having=&returnIdsOnly=false&returnCountOnly=false&orderByFields=&groupByFieldsForStatistics=&outStatistics=&returnZ=false&returnM=false&gdbVersion=&historicMoment=&returnDistinctValues=false&resultOffset=&resultRecordCount=&queryByDistance=&returnExtentOnly=false&datumTransformation=&parameterValues=&rangeValues=&quantizationParameters=&featureEncoding=esriDefault&f=html"
@@ -507,145 +503,15 @@ class BridgeObject:
         m = folium.Map(
             width=1500,
             height=700,
-            location=[self.clean_lat, self.clean_long],
+            location=[self.latitude, self.longitude],
             zoom_start=14
         ).add_to(f)
 
         folium.Marker(
-            location=[self.clean_lat, self.clean_long],
-            popup=f"{self.raw_data[f'Structure File Number']}<br><br>Lat: {self.clean_lat}<br>Long: {self.clean_long}",
-            tooltip=self.raw_data[f'Structure File Number'],
+            location=[self.latitude, self.longitude],
+            popup=f"{self.raw_data['SFN']}<br><br>Lat: {self.latitude}<br>Long: {self.longitude}",
+            tooltip=self.raw_data['SFN'],
             icon=folium.Icon(icon="info-sign"),
         ).add_to(m)
 
         return m
-
-    def get_photos(self):
-        url = 'https://brphotos.dot.state.oh.us/Bridges.aspx?county='
-        self.photo_url = url + self.raw_data['County Code'] + '&route=' + self.raw_data['Route']
-
-    def get_d6_plan_sets(self, district_df_path="G:\\ref\\New folder\\PLANINDX.TXT"):
-        """
-        Using the "CTY-RT-SEC" from a SFN, this function finds the various
-        plan sets potentially associated with that structure, it rounds the 'section'
-        value up and down to be inclusive, effectively giving every plan segment
-        for that 1 mile segment.
-
-        :param district_df_path: set to default but overrideable to allow development on various devices without network
-        access
-        :return: Dumps .pdf files into a folder on the local machine at W:\CivilPy_Output\pulled_plans\
-        """
-        # //TODO - Replace this dataframe with a version that works with new plans, map other districts fs's
-        d6_plans_df = pd.read_csv(district_df_path, delimiter='^', quotechar='~')
-        county_code, route_num, section_num = self.cty_rte_sec.split('-')
-
-        # The next four lines of code filter the d6_plans_df by county route section to get associated plans
-        first_filtered_df = d6_plans_df[d6_plans_df['County_code'] == county_code]
-        second_filtered_df = first_filtered_df[first_filtered_df['Route'] == route_num]
-        third_filtered_df = second_filtered_df[second_filtered_df['Log_beg'] <= str(math.floor(float(section_num)))]
-        fourth_filtered_df = third_filtered_df[third_filtered_df['Log_end'] >= math.ceil(float(section_num))]
-
-        # Displays the results of the filter to the user via commandline, stores values in list for later
-        list_of_plan_folder_paths = []
-
-        for index, row in fourth_filtered_df.iterrows():
-            list_of_plan_folder_paths.append(row['Path'])
-            print(f"Plan set found:\n{row['Yr']}-{row['Type']}-{row['Archno']}\n{row['Commnt']}\n{row['Path']}\n\n")
-
-        dict_of_all_paths = {}
-
-        for folder in list_of_plan_folder_paths:
-            dict_of_all_paths[folder] = self.get_tiff_files(folder)
-
-        # Loop through each folder that was found, uses a natural sorting algo imported at top of file
-        for folder, list_of_files in dict_of_all_paths.items():
-            sorted_file_list = natsorted(list_of_files)
-
-            tiff_objects_list = []
-
-            # Create a folder to put the pdf plans into if it doesn't exist
-            if os.path.exists(f"W:\\CivilPy_Output\\pulled_plans\\{self.SFN}"):
-                pass
-            else:
-                os.mkdir(f"W:\\CivilPy_Output\\pulled_plans\\{self.SFN}")
-
-            file_set_name = Path(sorted_file_list[0]).parent.name
-
-            # Turns a list of file paths into a list of tiff objects loaded into memory
-            for file in sorted_file_list:
-                tiff_objects_list.append(tifftools.read_tiff(file))
-
-            # Converts single page tiffs into multi-page tiffs
-            for tiff_object in tiff_objects_list[1:]:
-                tiff_objects_list[0]['ifds'].extend(tiff_object['ifds'])
-
-            # Check if file exists, move on if so
-            if os.path.exists(f"W:\\CivilPy_Output\\pulled_plans\\{self.SFN}\\{file_set_name}.tiff"):
-                pass
-            else:
-                print(f"\nWriting tiff file to W:\\CivilPy_Output\\pulled_plans\\{self.SFN}\\{file_set_name}.tiff...\n")
-                try:
-                    tifftools.write_tiff(tiff_objects_list[0], f"W:\\CivilPy_Output\\pulled_plans\\{self.SFN}\\{file_set_name}.tiff")
-                except(AttributeError):
-                    print(f"There is a problem with the tiff file at \nW:\\CivilPy_Output\\"
-                          f"pulled_plans\\{self.SFN}\\{file_set_name}.tiff\nYou might want to check there "
-                          f"to resolve the issue\n\n")
-
-            # Convert multipage tiff file to pdf
-            try:
-                self.tiff_to_pdf(f"W:\\CivilPy_Output\\pulled_plans\\{self.SFN}\\{file_set_name}.tiff")
-            except:
-                print(f"There was an error during conversion of the file: W:\\CivilPy_Output\\pulled_plans\\{self.SFN}"
-                      f"\\{file_set_name}.tiff, it's possibly corrupted")
-
-
-        return f"Files written to W:\\CivilPy_Output\\pulled_plans\\"
-
-    def get_tiff_files(self, path):
-        """
-        This is a helper function to the self.get_d6_plansets() function, giving it a path to a folder returns a
-        list of all files in that folder
-
-        :return: list of tiff file paths
-        """
-        # Build a list of tiff files in the folder:
-        root_path = Path(path)
-
-        # List all the files in that directory location
-        all_tiff_files = os.listdir(root_path)
-
-        # Filter by tiff files
-        tif_files = [f for f in all_tiff_files if f.lower().endswith('.tif')]
-
-        # Display all the files for that plan set
-        all_tiff_files = []
-
-        print(f"folder: {path}")
-        for file in tif_files:
-            all_tiff_files.append(f"{root_path}\\{file}")
-            print(f"{root_path}\\{file}", sep="\n")
-
-        print('\n')
-
-        return all_tiff_files
-
-
-    def tiff_to_pdf(self, tiff_path: str) -> str:
-        """
-        Helper function to be used by the bridge object to convert tiff files to pdf
-        :param tiff_path:
-        :return:
-        """
-        pdf_path = tiff_path.replace('.tiff', '.pdf')
-        if not os.path.exists(tiff_path): raise Exception(f'{tiff_path} does not find.')
-        image = Image.open(tiff_path)
-
-        images = []
-        for i, page in enumerate(ImageSequence.Iterator(image)):
-            page = page.convert("RGB")
-            images.append(page)
-        if len(images) == 1:
-            images[0].save(pdf_path)
-        else:
-            images[0].save(pdf_path, save_all=True, append_images=images[1:])
-        return pdf_path
