@@ -54,7 +54,7 @@ $ pip install -e .[dev]
 
 Here is the decision tree for function organization within the package, the goal
 is to keep importing and running functions as simple as possible for non-programmers,
-while maintaining an organizational structure capable of supporting may separate tools.
+while maintaining an organizational structure capable of supporting many tools.
 
 i.e., the end user should be able to access any of your functions from a simple import:
 
