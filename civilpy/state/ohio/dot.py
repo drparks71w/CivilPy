@@ -309,26 +309,6 @@ def filter_files_by_category(file_list, label_set):
     return category_files
 
 
-def get_bridge_data_from_tims(sfn):
-    url = f"https://gis.dot.state.oh.us/arcgis/rest/services/TIMS/Assets/MapServer/5/query?where=SFN%3D{sfn}&text=&objectIds=&time=&geometry=&geometryType=esriGeometryEnvelope&inSR=&spatialRel=esriSpatialRelIntersects&relationParam=&outFields=*&returnGeometry=true&returnTrueCurves=false&maxAllowableOffset=&geometryPrecision=&outSR=&having=&returnIdsOnly=false&returnCountOnly=false&orderByFields=&groupByFieldsForStatistics=&outStatistics=&returnZ=false&returnM=false&gdbVersion=&historicMoment=&returnDistinctValues=false&resultOffset=&resultRecordCount=&queryByDistance=&returnExtentOnly=false&datumTransformation=&parameterValues=&rangeValues=&quantizationParameters=&featureEncoding=esriDefault&f=html"
-    page = requests.get(url)
-    soup = BeautifulSoup(page.content, 'html5lib')
-
-    bridge_link = soup.find_all('a')
-
-    full_data_url = "https://gis.dot.state.oh.us/" + bridge_link[-1].get('href')
-    full_data_url_json = full_data_url + '?f=pjson'
-
-    print(f"\nRetrieving data from url at {full_data_url_json}\n")
-
-    response = urlopen(full_data_url_json)
-    data_json = json.loads(response.read())
-
-    extracted_data = data_json['feature']['attributes']
-
-    return extracted_data
-
-
 ohio_counties = {
     "ADAMS": "ADA",
     "ALLEN": "ALL",
@@ -479,25 +459,41 @@ NBIS_state_codes = {
 
 class BridgeObject:
     def __init__(self, sfn):
-        df = pd.read_csv(f'{data_path}', sep='\t', low_memory=False)
         self.SFN = sfn
 
-        bridge_details = df.iloc[df.index[df['Structure File Number'] == sfn]].iloc[0].to_dict()
+        bridge_details = self.get_bridge_data_from_tims()
 
         self.raw_data = bridge_details
         self.photo_url = ''
         self.plan_sets_list = []
 
         # //TODO - Seperate the following lines into a function
-        dirty_long = str(self.raw_data['Longitude'])
+        dirty_long = str(self.raw_data['LONGITUDE_DD'])
         dirty_lat = str(self.raw_data['Latitude'])
 
-        self.clean_lat = float(dirty_lat[:2]) + (float(dirty_lat[2:4]) / 60) + (
-                    float(f'{dirty_lat[4:6]}.{dirty_lat[6:]}') / 3600)
-        self.clean_long = -(float(dirty_long[:2]) + (
-                    (float(dirty_long[2:4]) / 60) + (float(f'{dirty_long[4:6]}.{dirty_long[6:]}') / 3600)))
+        self.latitude = self.raw_data['LATITUDE_DD']
+        self.longitude = self.raw_data['LONGITUDE_DD']
 
         self.cty_rte_sec = self.get_summary()
+
+    def get_bridge_data_from_tims(self):
+        url = f"https://gis.dot.state.oh.us/arcgis/rest/services/TIMS/Assets/MapServer/5/query?where=SFN%3D{self.SFN}&text=&objectIds=&time=&geometry=&geometryType=esriGeometryEnvelope&inSR=&spatialRel=esriSpatialRelIntersects&relationParam=&outFields=*&returnGeometry=true&returnTrueCurves=false&maxAllowableOffset=&geometryPrecision=&outSR=&having=&returnIdsOnly=false&returnCountOnly=false&orderByFields=&groupByFieldsForStatistics=&outStatistics=&returnZ=false&returnM=false&gdbVersion=&historicMoment=&returnDistinctValues=false&resultOffset=&resultRecordCount=&queryByDistance=&returnExtentOnly=false&datumTransformation=&parameterValues=&rangeValues=&quantizationParameters=&featureEncoding=esriDefault&f=html"
+        page = requests.get(url)
+        soup = BeautifulSoup(page.content, 'html5lib')
+
+        bridge_link = soup.find_all('a')
+
+        full_data_url = "https://gis.dot.state.oh.us/" + bridge_link[-1].get('href')
+        full_data_url_json = full_data_url + '?f=pjson'
+
+        print(f"\nRetrieving data from url at {full_data_url_json}\n")
+
+        response = urlopen(full_data_url_json)
+        data_json = json.loads(response.read())
+
+        extracted_data = data_json['feature']['attributes']
+
+        return extracted_data
 
 
 

@@ -137,3 +137,5 @@ django/
 /Notebooks/ODOT/
 /civilpy/.buildozer/
 /secrets/secrets.json
+/Training/samplekml.kml
+/Training/scratch.py
