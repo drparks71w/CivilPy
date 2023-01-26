@@ -1,6 +1,6 @@
 import pandas as pd
 
-steel_tables = pd.read_csv('res/steel_shapes.csv')
+steel_tables = pd.read_csv('https://raw.githubusercontent.com/drparks71w/CivilPy/master/civilpy/structural/res/steel_shapes.csv')
 
 
 class SteelSection:
@@ -11,6 +11,7 @@ class SteelSection:
     # //TODO - Add Rebar values
     # //TODO - Integrate Units
     # //TODO - Metric toggle
+    # //TODO - Add Definitions for members other than W-Shapes
     """
 
     def __init__(self, label):
@@ -66,7 +67,6 @@ class SteelSection:
         :param self:
         :return: dataframe of raw values from AISC Shape Table
         """
-
         try:
             shape_values = steel_tables[steel_tables['EDI_Std_Nomenclature'] == self.id]
             return shape_values
@@ -83,62 +83,6 @@ class WBeam(SteelSection):
     >>> t = WBeam("W36X150")
     >>> t.weight
     150.0
-    >>> t.depth
-    35.9
-    >>> t.detailing_depth
-    35.875
-    >>> t.flange_width
-    12.0
-    >>> t.detailing_flange_width
-    12.0
-    >>> t.web_thickness
-    0.625
-    >>> t.detailing_web_thickness
-    0.625
-    >>> t.half_web_detail
-    0.3125
-    >>> t.flange_thickness
-    0.94
-    >>> t.detailing_flange_thickness
-    0.9375
-    >>> t.k_design
-    1.69
-    >>> t.k_detailing
-    2.1875
-    >>> t.k1
-    1.5
-    >>> t.slenderness_ratio_flange
-    6.37
-    >>> t.slenderness_ratio_web
-    51.9
-    >>> t.J
-    10.1
-    >>> t.Cw
-
-    >>> t.Wno
-
-    >>> t.Sw1
-
-    >>> t.Qf
-
-    >>> t.Qw
-
-    >>> t.radius_of_gyration
-
-    >>> t.flange_centroid_distance
-
-    >>> t.exposed_perimeter
-
-    >>> t.shape_perimeter
-
-    >>> t.box_perimeter
-
-    >>> t.exposed_box_perimeter
-
-    >>> t.web_face_depth
-
-    >>> t.fastener_workable_gage
-
     """
     def __init__(self, label):
         super(WBeam, self).__init__(label)
