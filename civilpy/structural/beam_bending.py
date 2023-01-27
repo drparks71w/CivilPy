@@ -21,7 +21,7 @@ from sympy import integrate, lambdify, Piecewise, sympify
 from sympy.abc import x
 
 
-# plt.rc('text', usetex=True)  # This makes the plot text prettier... but SLOWER
+plt.rc('text', usetex=True)  # This makes the plot text prettier... but SLOWER
 
 
 class PointLoadV(namedtuple("PointLoadV", "force, coord")):
