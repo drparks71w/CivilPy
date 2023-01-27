@@ -49,6 +49,7 @@ setup(
         "pandas>=1.4.2",
         "Pillow>=9.4.0",
         "Pint>=0.19.2",
+        "matplotlib>=3.6.3",
         "jupyter>=1.0.0",
         "Flask>=2.2.2",
         "PyPDF2>=3.0.1",

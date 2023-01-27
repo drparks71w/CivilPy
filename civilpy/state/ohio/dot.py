@@ -499,13 +499,11 @@ class BridgeObject:
 
         return extracted_data
 
-
-
     def get_map(self):
-        # Figure out how ODOT Codes Lat and Long to know which of these is correct (currently best guess based on 1 bridge)
-        # clean_long = -float(dirty_long[:2]) - (float(dirty_long[2:4]) + (float(dirty_long[4:8]) / 1000))
-        # clean_lat = float(dirty_lat[:2]) + (float(dirty_lat[2:4]) + (float(dirty_lat[4:8]) / 1000))
-
+        """
+        Mapping function using folium JS package, //TODO - Determine a way to test this function
+        :return:
+        """
         f = folium.Figure(width=1500, height=700)
 
         m = folium.Map(
