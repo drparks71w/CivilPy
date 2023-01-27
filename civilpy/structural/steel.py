@@ -1,4 +1,7 @@
 import pandas as pd
+import pint
+
+units = pint.UnitRegistry()
 
 steel_tables = pd.read_csv('https://raw.githubusercontent.com/drparks71w/CivilPy/master/civilpy/structural/res/steel_shapes.csv')
 
@@ -86,10 +89,10 @@ class WBeam(SteelSection):
     """
     def __init__(self, label):
         super(WBeam, self).__init__(label)
-        self.depth = float(self.aisc_value['d'].values[0])                    # in (mm)
-        self.detailing_depth = float(self.aisc_value['ddet'].values[0])             # in (mm)
-        self.flange_width = float(self.aisc_value['bf'].values[0])                   # in (mm)
-        self.detailing_flange_width = float(self.aisc_value['bfdet'].values[0])      # in (mm)
+        self.depth = float(self.aisc_value['d'].values[0]) * units.inch                    # in (mm)
+        self.detailing_depth = float(self.aisc_value['ddet'].values[0]) * units.inch             # in (mm)
+        self.flange_width = float(self.aisc_value['bf'].values[0]) * units.inch                   # in (mm)
+        self.detailing_flange_width = float(self.aisc_value['bfdet'].values[0]) * units.inch      # in (mm)
         self.web_thickness = float(self.aisc_value['tw'].values[0])                  # in (mm)
         self.detailing_web_thickness = float(self.aisc_value['twdet'].values[0])     # in (mm)
         self.half_web_detail = float(self.aisc_value['twdet/2'].values[0])           # in (mm)

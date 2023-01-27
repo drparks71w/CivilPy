@@ -473,7 +473,15 @@ class BridgeObject:
         self.map = self.get_map()
 
     def get_bridge_data_from_tims(self):
-        url = f"https://gis.dot.state.oh.us/arcgis/rest/services/TIMS/Assets/MapServer/5/query?where=SFN%3D{self.SFN}&text=&objectIds=&time=&geometry=&geometryType=esriGeometryEnvelope&inSR=&spatialRel=esriSpatialRelIntersects&relationParam=&outFields=*&returnGeometry=true&returnTrueCurves=false&maxAllowableOffset=&geometryPrecision=&outSR=&having=&returnIdsOnly=false&returnCountOnly=false&orderByFields=&groupByFieldsForStatistics=&outStatistics=&returnZ=false&returnM=false&gdbVersion=&historicMoment=&returnDistinctValues=false&resultOffset=&resultRecordCount=&queryByDistance=&returnExtentOnly=false&datumTransformation=&parameterValues=&rangeValues=&quantizationParameters=&featureEncoding=esriDefault&f=html"
+        # //TODO - Integrate with ESRIs python package or rewrite function in a way that gives users more search tools
+        url = f"https://gis.dot.state.oh.us/arcgis/rest/services/TIMS/Assets/MapServer/5/query?where=SFN%3D{self.SFN}" \
+              f"&text=&objectIds=&time=&geometry=&geometryType=esriGeometryEnvelope&inSR=&spatialRel=" \
+              f"esriSpatialRelIntersects&relationParam=&outFields=*&returnGeometry=true&returnTrueCurves=false&" \
+              f"maxAllowableOffset=&geometryPrecision=&outSR=&having=&returnIdsOnly=false&returnCountOnly=false&" \
+              f"orderByFields=&groupByFieldsForStatistics=&outStatistics=&returnZ=false&returnM=false&gdbVersion=" \
+              f"&historicMoment=&returnDistinctValues=false&resultOffset=&resultRecordCount=&queryByDistance=" \
+              f"&returnExtentOnly=false&datumTransformation=&parameterValues=&rangeValues=&quantizationParameters=" \
+              f"&featureEncoding=esriDefault&f=html"
         page = requests.get(url)
         soup = BeautifulSoup(page.content, 'html5lib')
 
@@ -515,3 +523,51 @@ class BridgeObject:
         ).add_to(m)
 
         return m
+
+
+class Project:
+    def __init__(self, pid):
+        self.PID = pid
+        self.raw_data = self.get_project_data_from_tims()
+
+    def get_project_data_from_tims(self):
+        url = f"https://gis.dot.state.oh.us/arcgis/rest/services/TIMS/Projects/MapServer/0/query?where=PID_NBR%3D" \
+              f"{self.PID}&text=&objectIds=&time=&geometry=&geometryType=esriGeometryEnvelope&inSR=&spatialRel=" \
+              f"esriSpatialRelIntersects&relationParam=&outFields=&returnGeometry=true&returnTrueCurves=false&" \
+              f"maxAllowableOffset=&geometryPrecision=&outSR=&having=&returnIdsOnly=true&returnCountOnly=false&" \
+              f"orderByFields=&groupByFieldsForStatistics=&outStatistics=&returnZ=false&returnM=false&gdbVersion=&" \
+              f"historicMoment=&returnDistinctValues=false&resultOffset=&resultRecordCount=&queryByDistance=&" \
+              f"returnExtentOnly=false&datumTransformation=&parameterValues=&rangeValues=&quantizationParameters=" \
+              f"&featureEncoding=esriDefault&f=html"
+
+        page = requests.get(url)
+        url_base = 'https://gis.dot.state.oh.us'
+        soup = BeautifulSoup(page.content, 'html5lib')
+
+        all_page_links = soup.find_all('a')
+        project_point_links = {}
+        counter = 0
+
+        for link in all_page_links:
+            if link.text.isnumeric():
+                counter += 1
+                full_data_url = url_base + link.get('href') + '?f=pjson'
+                print(f"\nRetrieving data from url at {full_data_url}")
+
+                response = urlopen(full_data_url)
+                data_json = json.loads(response.read())
+
+                extracted_data = data_json['feature']['attributes']
+
+                project_point_links[link.text] = extracted_data
+
+            else:
+                pass
+
+        project_point_links['no_of_pts'] = counter
+
+        return project_point_links
+
+
+
+
