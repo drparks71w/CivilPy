@@ -3,6 +3,7 @@ CivilPy main function, running `python civilpy` from the commandline executes th
 contained here
 
 """
+import civilpy.CLI
 
-if __name__ == "__main__":
-    print("CivilPy CLI interface.... coming soon")
+if __name__ == '__main__':
+    CLI.civilpy_cli()

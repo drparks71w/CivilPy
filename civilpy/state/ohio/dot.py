@@ -8,7 +8,6 @@ import math
 import tifftools
 from natsort import natsorted
 from bs4 import BeautifulSoup
-from urllib.request import urlopen
 import json
 import requests
 import time
@@ -479,8 +478,8 @@ def get_bridge_data_from_tims(sfn=6500609):
 
     print(f"\nRetrieving data from url at {full_data_url_json}\n")
 
-    response = urlopen(full_data_url_json)
-    data_json = json.loads(response.read())
+    page = requests.get(full_data_url_json)
+    data_json = json.loads(page.content)
 
     extracted_data = data_json['feature']['attributes']
 
@@ -792,8 +791,8 @@ def get_project_data_from_tims(pid='112664'):
             full_data_url = url_base + link.get('href') + '?f=pjson'
             print(f"\nRetrieving data from url at {full_data_url}")
 
-            response = urlopen(full_data_url)
-            data_json = json.loads(response.read())
+            page = requests.get(full_data_url)
+            data_json = json.loads(page.content)
 
             extracted_data = data_json['feature']['attributes']
 
