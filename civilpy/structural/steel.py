@@ -6,6 +6,10 @@ units = pint.UnitRegistry()
 steel_tables = pd.read_csv('https://raw.githubusercontent.com/drparks71w/CivilPy/master/civilpy/structural/res/steel_shapes.csv')
 
 
+def hello_world(user_input="World"):
+    return f"Hello {user_input}!"
+
+
 class SteelSection:
     """
     Main Steel Section Class, the goal is to make the attributes of various steel

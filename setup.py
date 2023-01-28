@@ -60,7 +60,11 @@ setup(
         "icalendar>=4.0.7",
         "html5lib>=1.1",
         "geopandas>=0.12.2",
-        "fiona>=1.8.22"
+        "fiona>=1.8.22",
+        "tifftools>=1.3.7",
+        "natsort>=8.2.0",
+        "html5lib>=1.1",
+        "requests>2.28.2"
     ],
 
     extras_require={
