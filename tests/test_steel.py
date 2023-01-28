@@ -1,36 +1,39 @@
 import unittest
 from civilpy.structural.steel import SteelSection, WBeam
+import pint
+
+units = pint.UnitRegistry()
 
 
 class TestSteelMemberFunctions(unittest.TestCase):
     def test_general_import(self):
-        test_bridge = SteelSection("W44X335") # Correct Name
-        test_bridge2 = SteelSection("W44x335") # Lowercase correction
-        test_bridge3 = SteelSection("W 44x335") # Space in label
+        test_beam = SteelSection("W44X335")  # Correct Name
+        test_beam2 = SteelSection("W44x335")  # Lowercase correction
+        test_beam3 = SteelSection("W 44x335")  # Space in label
 
-        self.assertEqual(test_bridge.weight, test_bridge2.weight)  # Verify all three names imported identically
-        self.assertEqual(test_bridge2.weight, test_bridge3.weight)
+        self.assertEqual(test_beam.weight, test_beam2.weight)  # Verify all three names imported identically
+        self.assertEqual(test_beam2.weight, test_beam3.weight)
 
     def test_general_attributes(self):
-        test_bridge = SteelSection("W44X335")
-        self.assertEqual(test_bridge.weight, 335.0)
-        self.assertEqual(test_bridge.area, 98.5)
-        self.assertEqual(test_bridge.special_note, 'F')
-        self.assertEqual(test_bridge.I_x, 31100.0)
-        self.assertEqual(test_bridge.Z_x, 1620.0)
-        self.assertEqual(test_bridge.S_x, 1410.0)
-        self.assertEqual(test_bridge.r_x, 17.8)
-        self.assertEqual(test_bridge.I_y, 1200.0)
-        self.assertEqual(test_bridge.Z_y, 236.0)
-        self.assertEqual(test_bridge.S_y, 150.0)
-        self.assertEqual(test_bridge.r_y, 3.49)
+        test_beam = SteelSection("W44X335")
+        self.assertEqual(test_beam.weight, 335.0)
+        self.assertEqual(test_beam.area, 98.5)
+        self.assertEqual(test_beam.special_note, 'F')
+        self.assertEqual(test_beam.I_x, 31100.0)
+        self.assertEqual(test_beam.Z_x, 1620.0)
+        self.assertEqual(test_beam.S_x, 1410.0)
+        self.assertEqual(test_beam.r_x, 17.8)
+        self.assertEqual(test_beam.I_y, 1200.0)
+        self.assertEqual(test_beam.Z_y, 236.0)
+        self.assertEqual(test_beam.S_y, 150.0)
+        self.assertEqual(test_beam.r_y, 3.49)
 
     def test_WBeam_import(self):
         t = WBeam("W36X150")
-        self.assertEqual(t.depth, 35.9)
-        self.assertEqual(t.detailing_depth, 35.875)
-        self.assertEqual(t.flange_width, 12.0)
-        self.assertEqual(t.detailing_flange_width, 12.0)
+        self.assertEqual(t.depth, 35.9 * units.inch)
+        self.assertEqual(t.detailing_depth, 35.875 * units.inch)
+        self.assertEqual(t.flange_width, 12.0 * units.inch)
+        self.assertEqual(t.detailing_flange_width, 12.0 * units.inch)
         self.assertEqual(t.web_thickness, 0.625)
         self.assertEqual(t.detailing_web_thickness, 0.625)
         self.assertEqual(t.half_web_detail, 0.3125)
