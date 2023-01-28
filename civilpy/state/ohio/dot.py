@@ -459,7 +459,7 @@ NBIS_state_codes = {
 }
 
 
-def get_bridge_data_from_tims(sfn):
+def get_bridge_data_from_tims(sfn=6500609):
     """
     Function to return Bridge data from ODOT TIMS REST server
 
@@ -468,15 +468,8 @@ def get_bridge_data_from_tims(sfn):
     :param sfn: Bridge structure file number
     :return: A dictionary containing all the values relevant to the desired bridge
     """
-    url = f"https://gis.dot.state.oh.us/arcgis/rest/services/TIMS/Assets/MapServer/5/query?where=SFN%3D{sfn}" \
-          f"&text=&objectIds=&time=&geometry=&geometryType=esriGeometryEnvelope&inSR=&spatialRel=" \
-          f"esriSpatialRelIntersects&relationParam=&outFields=*&returnGeometry=true&returnTrueCurves=false&" \
-          f"maxAllowableOffset=&geometryPrecision=&outSR=&having=&returnIdsOnly=false&returnCountOnly=false&" \
-          f"orderByFields=&groupByFieldsForStatistics=&outStatistics=&returnZ=false&returnM=false&gdbVersion=" \
-          f"&historicMoment=&returnDistinctValues=false&resultOffset=&resultRecordCount=&queryByDistance=" \
-          f"&returnExtentOnly=false&datumTransformation=&parameterValues=&rangeValues=&quantizationParameters=" \
-          f"&featureEncoding=esriDefault&f=html"
-    page = requests.get(url)
+    url = f"https://gis.dot.state.oh.us/arcgis/rest/services/TIMS/Assets/MapServer/5/query?where=sfn%3D{sfn}&text=&objectIds=&time=&geometry=&geometryType=esriGeometryEnvelope&inSR=&spatialRel=esriSpatialRelIntersects&relationParam=&outFields=&returnGeometry=true&returnTrueCurves=false&maxAllowableOffset=&geometryPrecision=&outSR=&having=&returnIdsOnly=true&returnCountOnly=false&orderByFields=&groupByFieldsForStatistics=&outStatistics=&returnZ=false&returnM=false&gdbVersion=&historicMoment=&returnDistinctValues=false&resultOffset=&resultRecordCount=&queryByDistance=&returnExtentOnly=false&datumTransformation=&parameterValues=&rangeValues=&quantizationParameters=&featureEncoding=esriDefault&f=html"
+    page = requests.get(url, timeout=5)
     soup = BeautifulSoup(page.content, 'html5lib')
 
     bridge_link = soup.find_all('a')
@@ -498,7 +491,7 @@ class BridgeObject:
     """
     General Bridge object to hold data from ODOT TIMS REST SERVER
     """
-    def __init__(self, sfn):
+    def __init__(self, sfn=6500509):
         self.SFN = sfn
 
         raw_data = get_bridge_data_from_tims(sfn)
@@ -774,7 +767,8 @@ class BridgeObject:
 
         return m
 
-def get_project_data_from_tims(pid=112664):
+
+def get_project_data_from_tims(pid='112664'):
     url = f"https://gis.dot.state.oh.us/arcgis/rest/services/TIMS/Projects/MapServer/0/query?where=PID_NBR%3D" \
           f"{pid}&text=&objectIds=&time=&geometry=&geometryType=esriGeometryEnvelope&inSR=&spatialRel=" \
           f"esriSpatialRelIntersects&relationParam=&outFields=&returnGeometry=true&returnTrueCurves=false&" \
