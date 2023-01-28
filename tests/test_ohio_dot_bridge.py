@@ -263,6 +263,9 @@ class TestBridgeObject(unittest.TestCase):
         self.assertEqual(self.tb.last_edited_user, 'TIMS@P31_AG')
         self.assertEqual(self.tb.last_edited_date, 1674812526000)
 
+    def test_bridge_functions(self):
+        self.tb
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -889,10 +889,3 @@ class Project:
         self.last_edited_user = single_dict['last_edited_user']
         self.last_edited_date = single_dict['last_edited_date']
 
-
-
-
-
-
-
-
