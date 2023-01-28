@@ -491,7 +491,7 @@ class BridgeObject:
     """
     General Bridge object to hold data from ODOT TIMS REST SERVER
     """
-    def __init__(self, sfn=6500509):
+    def __init__(self, sfn):
         self.SFN = sfn
 
         raw_data = get_bridge_data_from_tims(sfn)
