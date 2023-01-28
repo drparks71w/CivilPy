@@ -139,3 +139,4 @@ django/
 /secrets/secrets.json
 /Training/samplekml.kml
 /Training/scratch.py
+/Training/scratch.ipynb
