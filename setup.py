@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setup(
     name='civilpy',
-    version='0.0.14',
+    version='0.0.16',
     description='Civil Engineering Tools in Python',
     url="https://daneparks.com/Dane/civilpy",
     author_email="Dane@daneparks.com",
@@ -64,7 +64,7 @@ setup(
         "tifftools>=1.3.7",
         "natsort>=8.2.0",
         "html5lib>=1.1",
-        "requests>2.28.2"
+        "requests>=2.28.2"
     ],
 
     extras_require={
