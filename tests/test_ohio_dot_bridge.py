@@ -3,6 +3,14 @@ from civilpy.state.ohio.dot import BridgeObject
 
 
 class TestBridgeObject(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        print('setupClass')
+
+    @classmethod
+    def tearDownClass(cls):
+        print('tearDownClass')
+
     def setUp(self, sfn=6500609):
         # Creates a 'test bridge' and makes sure none of the attributes have changed
         self.tb = BridgeObject(sfn)

@@ -3,7 +3,6 @@ from civilpy.state.ohio.dot import Project
 
 
 class TestProject(unittest.TestCase):
-
     def setUp(self, pid=112664):
         # Creates a 'test bridge' and makes sure none of the attributes have changed
         self.tp = Project(pid)
