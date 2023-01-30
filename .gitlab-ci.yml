@@ -23,7 +23,7 @@ build and publish pip pkg:
     expire_in: 2 days
 
 pages:
-  stage: deploy
+  stage: build and deploy
   image: ruby:2.3
   script:
   - mkdir .public
