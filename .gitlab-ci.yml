@@ -20,3 +20,23 @@ pages:
     - public
   only:
   - master
+
+verify-3.6:
+    extends: "deploy"
+    stage: "verify"
+    image: "python:3.6"
+
+verify-3.7:
+    extends: "deploy"
+    stage: "verify"
+    image: "python:3.7"
+
+verify-3.8:
+    extends: "deploy"
+    stage: "verify"
+    image: "python:3.8"
+
+verify-3.9:
+    extends: "deploy"
+    stage: "verify"
+    image: "python:3.9"
