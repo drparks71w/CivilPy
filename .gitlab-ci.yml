@@ -51,6 +51,6 @@ verify-3.8:
     image: "python:3.8"
 
 verify-3.9:
-    extends: "deploy"
+    extends: "test_code_coverage"
     stage: "test"
     image: "python:3.9"
