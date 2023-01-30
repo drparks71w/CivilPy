@@ -1,6 +1,6 @@
 build-package:
   stage: deploy
-  image: python:3.7
+  image: python:3.10
   before_script:
     - python3 -m pip install --upgrade twine
     - python3 -m pip install --upgrade build
@@ -8,8 +8,6 @@ build-package:
   script:
     - python3 -m build
     - python3 -m twine upload dist/* --config-file /tmp/.pypirc
-  only:
-    - tags
 
 pages:
   stage: deploy
