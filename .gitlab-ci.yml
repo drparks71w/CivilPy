@@ -1,3 +1,28 @@
+default:
+  image: python:3.9
+
+stages:
+  - build and deploy
+  - pages
+
+before_script:
+  - python -V
+  - pip install virtualenv pipenv
+  - virtualenv venv
+  - source venv/bin/activate
+
+build and publish pip pkg:
+  stage: build and deploy
+  script:
+    - python civilpy/setup.py sdist bdist_wheel
+    - pip install twine
+    - TWINE_PASSWORD={CI_JOB_TOKEN} TWINE_USERNAME=gitlab-ci-token python -m twine upload --repository-url ${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/pypi dist/*
+  artifacts:
+    paths:
+      -dist/*.whl
+    expire_in: 2 days
+
+
 pages:
   stage: deploy
   script:
