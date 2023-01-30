@@ -1,5 +1,8 @@
 build-package:
   stage: deploy
+  only:
+    changes:
+      - setup.py
   image: python:latest
   script:
     - pip install build twine
