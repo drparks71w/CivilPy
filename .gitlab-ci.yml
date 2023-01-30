@@ -1,5 +1,5 @@
 test_code_coverage:
-  stage: deploy
+  stage: test
   rules:
     - if: $CI_COMMIT_TITLE =~ /-no_tests$/
       when: never
@@ -9,8 +9,6 @@ test_code_coverage:
   script:
     - pip install civilpy
     - python -m unittest discover tests
-    - TWINE_PASSWORD=${CI_JOB_TOKEN} TWINE_USERNAME=gitlab-ci-token python -m twine upload --repository-url ${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/pypi dist/*
-
 
 build-package:
   stage: deploy
@@ -36,21 +34,21 @@ pages:
   - master
 
 verify-3.6:
-    extends: "test_code_coverage"
-    stage: "test"
-    image: "python:3.6"
+    extends: test_code_coverage
+    stage: test
+    image: python:3.6
 
 verify-3.7:
-    extends: "test_code_coverage"
-    stage: "test"
-    image: "python:3.7"
+    extends: test_code_coverage
+    stage: test
+    image: python:3.7
 
 verify-3.8:
-    extends: "test_code_coverage"
-    stage: "test"
-    image: "python:3.8"
+    extends: test_code_coverage
+    stage: test
+    image: python:3.8
 
 verify-3.9:
-    extends: "test_code_coverage"
-    stage: "test"
-    image: "python:3.9"
+    extends: test_code_coverage
+    stage: test
+    image: python:3.9
