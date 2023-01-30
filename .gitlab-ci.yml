@@ -22,9 +22,7 @@ build and publish pip pkg:
       - dist/*.whl
     expire_in: 2 days
 
-
 pages:
-  stage: deploy
   script:
   - mkdir .public
   - cp -r civilpy/webpages/* .public
