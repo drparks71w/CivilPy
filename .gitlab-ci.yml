@@ -4,8 +4,9 @@ build-package:
   before_script:
     - python3 -m pip install --upgrade twine
     - python3 -m pip install --upgrade build
-    - cat $PYPIRC > /tmp/.pypirc
+    - mkdir tmp
   script:
+    - cat $PYPIRC > /tmp/.pypirc
     - python3 -m build
     - python3 -m twine upload dist/* --config-file /tmp/.pypirc
 
