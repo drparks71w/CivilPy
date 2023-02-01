@@ -140,3 +140,4 @@ django/
 /Training/samplekml.kml
 /Training/scratch.py
 /Training/scratch.ipynb
+/.coverage
