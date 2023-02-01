@@ -50,7 +50,7 @@ pages:
     paths:
     - public
   only:
-  - master
+    - main
 
 verify-3.8:
     extends: test_code_coverage
