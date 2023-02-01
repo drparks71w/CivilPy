@@ -27,6 +27,7 @@ pypi_publish:
   script:
     - pip install build twine
     - python -m build
+    - mv .pypirc ../.pypirc
     - twine upload --repository civilpy --verbose --non-interactive dist/*
 
 gitlab_publish:
