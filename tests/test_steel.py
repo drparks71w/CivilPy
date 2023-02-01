@@ -1,8 +1,16 @@
 import unittest
-from civilpy.structural.steel import SteelSection, WBeam
+from civilpy.structural.steel import SteelSection, WBeam, hello_world
 import pint
 
 units = pint.UnitRegistry()
+
+
+def test_helloworld_no_params():
+    assert hello_world() == "Hello World!"
+
+
+def test_hello_world_with_param():
+    assert hello_world("Everyone") == "Hello Everyone!"
 
 
 class TestSteelMemberFunctions(unittest.TestCase):
