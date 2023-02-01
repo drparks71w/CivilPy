@@ -25,10 +25,9 @@ pypi_publish:
     - master
   image: python:latest
   script:
-    - pip install build twine
-    - python -m build
-    - mv .pypirc ../.pypirc
-    - twine upload --repository civilpy --verbose --non-interactive dist/*
+    - pip install -U build twine
+    - python setup.py sdist
+    - twine upload dist/*
 
 gitlab_publish:
   stage: deploy
