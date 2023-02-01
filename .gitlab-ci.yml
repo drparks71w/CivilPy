@@ -10,11 +10,8 @@ test_code_coverage:
     - pip install civilpy
     - python -m unittest discover tests
 
-build-package:
+pypi_publish:
   stage: deploy
-  only:
-    changes:
-      - setup.py
   image: python:latest
   script:
     - pip install build twine
