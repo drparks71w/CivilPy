@@ -19,7 +19,7 @@ pypi_publish:
   script:
     - pip install build twine
     - python -m build
-    - TWINE_PASSWORD=${CI_JOB_TOKEN} TWINE_USERNAME=gitlab-ci-token python -m twine upload --repository civilpy dist/*
+    - TWINE_PASSWORD=${CI_JOB_TOKEN} TWINE_USERNAME=gitlab-ci-token python -m twine upload --verbose --repository-url https://testpypi.org/legacy dist/*
 
 pages:
   stage: deploy
