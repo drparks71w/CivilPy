@@ -140,3 +140,5 @@ django/
 /Training/scratch.py
 /Training/scratch.ipynb
 /.coverage
+/res/photos/*
+/Training/map.html
