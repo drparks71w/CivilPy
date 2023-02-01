@@ -8,7 +8,7 @@ test_code_coverage:
   image: python:latest
   script:
     - pip install civilpy
-    - coverage run -m pytest
+    - python -m unittest discover tests
 
 build-package:
   stage: deploy
