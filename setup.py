@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setup(
     name='civilpy',
-    version='0.0.22',
+    version='0.0.20',
     description='Civil Engineering Tools in Python',
     url="https://daneparks.com/Dane/civilpy",
     author_email="Dane@daneparks.com",
@@ -73,6 +73,7 @@ setup(
     extras_require={
         "dev": [
             "pytest>=3.7",
+            "pytest-cov>=4.0.0",
             "jupyter>=1.0.0",
         ]
     }

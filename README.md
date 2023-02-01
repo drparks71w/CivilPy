@@ -1,5 +1,9 @@
 # CivilPy
 
+<img alt="Project badge" aria-hidden="" class="project-badge" src="https://daneparks.com/Dane/civilpy/badges/master/pipeline.svg">
+
+<img alt="Project badge" aria-hidden="" class="project-badge" src="https://daneparks.com/Dane/civilpy/badges/master/coverage.svg">
+
 Code snippets for Civil Engineering related tasks
 
 ## About (Skip to the "Installation" section to start running code)

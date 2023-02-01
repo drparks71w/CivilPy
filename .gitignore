@@ -50,7 +50,6 @@ civilpy/photos/*
 # Completely ignore these folders
 docs/build
 civilpy/__pycache__/
-kivy
 civilpy/Legacy/__pycache__/
 civilpy/Legacy/journals/
 civilpy/scrapers/__pycache__/
