@@ -47,13 +47,6 @@ $ pip install civilpy
 to check the package installed correctly, run:
 
 ```python
-from civilpy.structural.steel import hello_world
-
-# Test the function imported successfully
-hello_world()
-```
-
-```python
 from civilpy.structural.steel import W
 
 # Load a W steel section as a python object

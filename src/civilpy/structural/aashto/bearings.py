@@ -174,7 +174,7 @@ class MethodABearing:
             print('Steel laminate service limit state check failed')
 
         # Excel Check 17
-        if self.steel_t >= 2 * self.internal_t * self.sigma_l / 24:  # //TODO - Verify value doesn't change
+        if self.steel_t >= 2 * self.internal_t * self.sigma_l / 24:
             self.checks['#17 - Steel Reinforcement - Service Limit State'] = 1
         else:
             self.checks['#17 - Steel Reinforcement - Service Limit State'] = 0

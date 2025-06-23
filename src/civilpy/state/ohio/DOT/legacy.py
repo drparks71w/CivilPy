@@ -1006,11 +1006,8 @@ def get_df_from_url(url):
     return df
 
 
-fips_url = "https://raw.githubusercontent.com/kjhealy/fips-codes/master/state_and_county_fips_master.csv"
-fips_codes = get_df_from_url(fips_url)
-
-ohio_fips = get_df_from_url(
-    "https://daneparks.com/Dane/civilpy/-/raw/Data/res/2022AllRecordsDelimitedAllStates.txt"
+fips_location = r"C:\Users\dparks1\Downloads\county_fips_master.csv"
+fips_codes = pd.read_csv(fips_location, encoding="ISO-8859-1"
 )
 
 
@@ -1166,8 +1163,8 @@ def get_historic_bridge_data(sfn=2701464, state="Ohio"):
             "https://daneparks.com/Dane/civilpy/-/raw/snibi_tests_development/res/Ohio_NBI.txt"
         )
     else:
-        nbi_df = get_df_from_url(
-            "https://daneparks.com/Dane/civilpy/-/raw/Data/res/2022AllRecordsDelimitedAllStates.txt"
+        nbi_df = pd.read_csv(
+            r"C:\Users\dparks1\PycharmProjects\civilpy-legacy\res\2022AllRecordsDelimitedAllStates.txt"
         )
 
     first_bridge_data = nbi_df[nbi_df["STRUCTURE_NUMBER_008"].str.strip() == sfn]
