@@ -1089,7 +1089,7 @@ def get_cty_from_code(cty_code, st_code):
     county_cd = f"{int(cty_code)}".rjust(3, "0")
     lookup_cd = str(st_code) + county_cd
 
-    county_name = fips_codes[fips_codes["fips"] == int(lookup_cd)]["name"].values[0]
+    county_name = fips_codes[fips_codes["fips"] == int(lookup_cd)]["county_name"].values[0]
 
     return county_name
 
@@ -1159,12 +1159,14 @@ def get_historic_bridge_data(sfn=2701464, state="Ohio"):
     // TODO - Create database of values to speed this up
     """
     if state == "Ohio":
-        nbi_df = get_df_from_url(
-            "https://daneparks.com/Dane/civilpy/-/raw/snibi_tests_development/res/Ohio_NBI.txt"
+        nbi_df = pd.read_csv(
+            r"C:\Users\dparks1\PycharmProjects\civilpy-legacy\res\Ohio_NBI.txt",
+            low_memory=False
         )
     else:
         nbi_df = pd.read_csv(
-            r"C:\Users\dparks1\PycharmProjects\civilpy-legacy\res\2022AllRecordsDelimitedAllStates.txt"
+            r"C:\Users\dparks1\PycharmProjects\civilpy-legacy\res\2022AllRecordsDelimitedAllStates.txt",
+            low_memory=False
         )
 
     first_bridge_data = nbi_df[nbi_df["STRUCTURE_NUMBER_008"].str.strip() == sfn]
