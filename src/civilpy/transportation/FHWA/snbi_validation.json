@@ -907,28 +907,26 @@
 			},
 			"Works": {
 				"type": "array",
-				"items": [
-					{
-						"type": "object",
-						"properties": {
-							"BW02": {
-								"description": "Year Work Performed",
-								"type": "integer",
-								"minimum": 0,
-								"maximum": 9999
-							},
-							"BW03": {
-								"description": "Work Performed",
-								"type": "string",
-								"maxLength": 120
-							}
+				"items": {
+					"type": "object",
+					"properties": {
+						"BW02": {
+							"description": "Year Work Performed",
+							"type": "integer",
+							"minimum": 0,
+							"maximum": 9999
 						},
-						"required": [
-							"BW02"
-						],
-						"additionalProperties": false
-					}
-				]
+						"BW03": {
+							"description": "Work Performed",
+							"type": "string",
+							"maxLength": 120
+						}
+					},
+					"required": [
+						"BW02"
+					],
+					"additionalProperties": false
+				}
 			}
 		},
 		"required": [
