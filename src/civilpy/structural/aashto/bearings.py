@@ -1,4 +1,161 @@
+import pandas as pd
 from .durometer import get_strain_from_stress
+
+class BearingSuitability:
+    """
+    A class to assist determining suitability of various types of bearings for various types of loading
+    Situations.  The class is intended to be used as follows.
+
+    As Reference:
+        bearing_table = BearingSuitability().table
+        print(bearing_table)
+
+    As Code:
+        if BearingSuitability(type, movement, axis):
+            perform_action()
+        else:
+            continue
+    """
+    def __init__(self, type='rectangular', movement='fixed', axis='x'):
+        self.type = type
+        self.movement = movement
+        self.axis = axis
+        self.table = self.get_table()
+
+    def get_table(self):
+        table = {
+            'Movement:Longitudinal': {
+                'Plain Elastomeric Pad': 'S',
+                'Fiberglass-Reinforced Pad': 'S',
+                'Cotton-duck-reinforced Pad': 'U',
+                'Steel-Reinforced Elastomeric Bearing': 'S',
+                'Plane Sliding Bearing': 'S',
+                'Curved Sliding Spherical Bearing': 'R',
+                'Curved Sliding Cylindrical Bearing': 'R',
+                'Disc Bearing': 'R',
+                'Double Cylindrical Bearing': 'R',
+                'Pot Bearing': 'R',
+                'Rocker Bearing': 'S',
+                'Knuckle Pinned Bearing': 'U',
+                'Single Roller Bearing': 'S',
+                'Multiple Roller Bearing': 'S',
+            },
+            'Movement:Transverse': {
+                'Plain Elastomeric Pad': 'S',
+                'Fiberglass-Reinforced Pad': 'S',
+                'Cotton-duck-reinforced Pad': 'U',
+                'Steel-Reinforced Elastomeric Bearing': 'S',
+                'Plane Sliding Bearing': 'S',
+                'Curved Sliding Spherical Bearing': 'R',
+                'Curved Sliding Cylindrical Bearing': 'R',
+                'Disc Bearing': 'R',
+                'Double Cylindrical Bearing': 'R',
+                'Pot Bearing': 'R',
+                'Rocker Bearing': 'U',
+                'Knuckle Pinned Bearing': 'U',
+                'Single Roller Bearing': 'U',
+                'Multiple Roller Bearing': 'U',
+            },
+            'Rotation:Longitudinal': {
+                'Plain Elastomeric Pad': 'S',
+                'Fiberglass-Reinforced Pad': 'S',
+                'Cotton-duck-reinforced Pad': 'U',
+                'Steel-Reinforced Elastomeric Bearing': 'S',
+                'Plane Sliding Bearing': 'U',
+                'Curved Sliding Spherical Bearing': 'S',
+                'Curved Sliding Cylindrical Bearing': 'U',
+                'Disc Bearing': 'S',
+                'Double Cylindrical Bearing': 'S',
+                'Pot Bearing': 'S',
+                'Rocker Bearing': 'U',
+                'Knuckle Pinned Bearing': 'U',
+                'Single Roller Bearing': 'U',
+                'Multiple Roller Bearing': 'U',
+            },
+            'Rotation:Transverse': {
+                'Plain Elastomeric Pad': 'S',
+                'Fiberglass-Reinforced Pad': 'S',
+                'Cotton-duck-reinforced Pad': 'U',
+                'Steel-Reinforced Elastomeric Bearing': 'S',
+                'Plane Sliding Bearing': 'U',
+                'Curved Sliding Spherical Bearing': 'S',
+                'Curved Sliding Cylindrical Bearing': 'S',
+                'Disc Bearing': 'S',
+                'Double Cylindrical Bearing': 'S',
+                'Pot Bearing': 'S',
+                'Rocker Bearing': 'S',
+                'Knuckle Pinned Bearing': 'S',
+                'Single Roller Bearing': 'S',
+                'Multiple Roller Bearing': 'U',
+            },
+            'Rotation:Vertical': {
+                'Plain Elastomeric Pad': 'L',
+                'Fiberglass-Reinforced Pad': 'L',
+                'Cotton-duck-reinforced Pad': 'U',
+                'Steel-Reinforced Elastomeric Bearing': 'L',
+                'Plane Sliding Bearing': 'S',
+                'Curved Sliding Spherical Bearing': 'S',
+                'Curved Sliding Cylindrical Bearing': 'U',
+                'Disc Bearing': 'L',
+                'Double Cylindrical Bearing': 'U',
+                'Pot Bearing': 'L',
+                'Rocker Bearing': 'U',
+                'Knuckle Pinned Bearing': 'U',
+                'Single Roller Bearing': 'U',
+                'Multiple Roller Bearing': 'U',
+            },
+            'Load Resistance:Longitudinal': {
+                'Plain Elastomeric Pad': 'L',
+                'Fiberglass-Reinforced Pad': 'L',
+                'Cotton-duck-reinforced Pad': 'L',
+                'Steel-Reinforced Elastomeric Bearing': 'L',
+                'Plane Sliding Bearing': 'R',
+                'Curved Sliding Spherical Bearing': 'R',
+                'Curved Sliding Cylindrical Bearing': 'R',
+                'Disc Bearing': 'S',
+                'Double Cylindrical Bearing': 'R',
+                'Pot Bearing': 'S',
+                'Rocker Bearing': 'R',
+                'Knuckle Pinned Bearing': 'S',
+                'Single Roller Bearing': 'U',
+                'Multiple Roller Bearing': 'U',
+            },
+            'Load Resistance:Transverse': {
+                'Plain Elastomeric Pad': 'L',
+                'Fiberglass-Reinforced Pad': 'L',
+                'Cotton-duck-reinforced Pad': 'L',
+                'Steel-Reinforced Elastomeric Bearing': 'L',
+                'Plane Sliding Bearing': 'R',
+                'Curved Sliding Spherical Bearing': 'R',
+                'Curved Sliding Cylindrical Bearing': 'R',
+                'Disc Bearing': 'S',
+                'Double Cylindrical Bearing': 'R',
+                'Pot Bearing': 'S',
+                'Rocker Bearing': 'R',
+                'Knuckle Pinned Bearing': 'R',
+                'Single Roller Bearing': 'R',
+                'Multiple Roller Bearing': 'U',
+            },
+            'Load Resistance:Vertical': {
+                'Plain Elastomeric Pad': 'L',
+                'Fiberglass-Reinforced Pad': 'L',
+                'Cotton-duck-reinforced Pad': 'S',
+                'Steel-Reinforced Elastomeric Bearing': 'S',
+                'Plane Sliding Bearing': 'S',
+                'Curved Sliding Spherical Bearing': 'S',
+                'Curved Sliding Cylindrical Bearing': 'S',
+                'Disc Bearing': 'S',
+                'Double Cylindrical Bearing': 'S',
+                'Pot Bearing': 'S',
+                'Rocker Bearing': 'S',
+                'Knuckle Pinned Bearing': 'S',
+                'Single Roller Bearing': 'S',
+                'Multiple Roller Bearing': 'S',
+            },
+        }
+
+        df = pd.DataFrame(table)
+        return df
 
 class MethodABearing:
     """
