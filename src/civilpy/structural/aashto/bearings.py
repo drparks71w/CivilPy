@@ -197,7 +197,7 @@ class MethodABearing:
     def __init__(self, width, length, durometer, internal_t, external_t, steel_t,
                  plys, span, expansion_length, loads, max_dl_delta, max_ll_delta, max_ll_loc, deck_slope, plate_bev,
                  edge_cover=.25, type='rectangular', holes=False, steel_yield_strength = 60, shear_modulus=0.095,
-                 exp_coeff=.000006, temp_min=15, temp_max=95):
+                 exp_coeff=.000006, temp_min=-30, temp_max=120):
         self.width = width
         self.length = length
         self.durometer = durometer

@@ -1093,204 +1093,208 @@ AASHTOWARE_TABLES = {
         "Length": 3965
     },
     "ABW_SYS_BRM_SYNC_SETTING": {
-        "Used": False,
-        "Columns": [],
-        "Length": 0
+        "Used": True,
+        "Columns": ['brm_sync_setting_id', 'brdr_bridge_column', 'brdr_bridge_column_name', 'sync_enabled_ind', 'override_enabled_enabled_ind', 'override_enabled_ind', 'brm_data_table', 'brm_data_column', 'brm_default_data_table', 'brm_default_data_column'],
+        "Length": 15
     },
     "ABW_WSS_WL_SUPER_MBR_WIND": {
         "Used": False,
-        "Columns": [],
+        "Columns": ['bridge_id', 'sub_struct_def_id', 'wind_effect_id', 'wind_effect_detail_id', 'spng_mbr_bearing_loc_id', 'wss_long_force', 'wss_trans_force', 'wss_vert_reaction', 'wl_long_force', 'wl_trans_force', 'wl_vert_reaction', 'wss_long_force_ul', 'wss_trans_force_ul', 'wss_vert_reaction_ul', 'wl_long_force_ul', 'wl_trans_force_ul', 'wl_vert_reaction_ul'],
         "Length": 0
     },
     "ABW_DETAILED_TRUSS_DEF": {
-        "Used": False,
-        "Columns": [],
-        "Length": 0
+        "Used": True,
+        "Columns": ['bridge_id', 'struct_def_id', 'spng_mbr_def_id', 'detailed_truss_def_type', 'even_num_panels_ind', 'symmetrical_ind', 'asr_inv_axialtens_gross_factor', 'asr_opr_axialtens_gross_factor', 'asr_inv_axialtens_net_factor', 'asr_opr_axialtens_net_factor', 'asr_inv_compression_factor', 'asr_opr_compression_factor', 'lrfr_condition_factor_type', 'lrfr_system_factor_type', 'override_lrfd_factor_id', 'override_lfr_factor_id', 'override_lrfr_factor_id', 'asr_analysis_module_guid', 'lfr_analysis_module_guid', 'beam_def_units_type', 'default_analysis_method_type', 'default_conn_hole_diameter', 'default_xsection_conn_type', 'default_end_conn_type', 'default_stl_matl_id', 'impact_factor_type', 'impact_factor_adjustment', 'impact_factor_override', 'lrfd_fatigue_impact_factor', 'lrfd_constant_impact_factor', 'model_truss_mbr_as_beam_ind', 'lrfd_analysis_module_guid', 'lrfr_analysis_module_guid', 'override_asr_factor_id', 'asr_spec_edition_choice_type', 'lfr_spec_edition_choice_type', 'lrfd_spec_edition_choice_type', 'lrfr_spec_edition_choice_type', 'asr_spec_edition_guid', 'lfr_spec_edition_guid', 'lrfd_spec_edition_guid', 'lrfr_spec_edition_guid', 'lrfr_field_meas_sect_prop_ind', 'lrfr_system_fact_override_ind', 'lrfr_system_fact_override'],
+        "Length": 27
     },
     "ABW_WSS_WL_SUPER_WIND_EFFECT": {
         "Used": False,
-        "Columns": [],
+        "Columns": ['bridge_id', 'sub_struct_def_id', 'wind_effect_id', 'skew_angle', 'sys_lrfd_ls_id'],
         "Length": 0
     },
     "ABW_SYS_METAL_BOX_COLUMN_LABEL": {
-        "Used": False,
-        "Columns": [],
-        "Length": 0
+        "Used": True,
+        "Columns": ['label_id', 'label_value'],
+        "Length": 15
     },
     "ABW_EVENT_VEHICLE": {
-        "Used": False,
-        "Columns": [],
-        "Length": 0
+        "Used": True,
+        "Columns": ['event_id', 'event_vehicle_id', 'vehicle_id', 'inventory_ind', 'operating_ind', 'design_ind', 'permit_ind', 'fatigue_ind', 'scale_factor', 'single_lane_ind', 'tandem_train_ind', 'impact_override_factor', 'impact_override_ind', 'frequency_type', 'loading_condition_type', 'permit_live_load_override_ind', 'permit_ll_override_factor', 'adjacent_vehicle_id', 'lrfr_legal_ind', 'lrfr_permit_ind', 'lrfr_inventory_ind', 'lrfr_operating_ind', 'legal_pair_ind', 'lrfr_fatigue_ind', 'legal_live_load_override_ind', 'legal_ll_override_factor', 'lrfr_legal_haul_ind', 'asr_lfr_permit_inventory_ind', 'asr_lfr_permit_operating_ind', 'asr_lfr_legal_inventory_ind', 'asr_lfr_legal_operating_ind'],
+        "Length": 1529
     },
     "ABW_TIMBER_RECT_SAWN_BEAM_DEF": {
-        "Used": False,
-        "Columns": [],
-        "Length": 0
+        "Used": True,
+        "Columns": ['bridge_id', 'struct_def_id', 'spng_mbr_def_id', 'adj_beam_flat_use_factor', 'adj_beam_rep_use_factor', 'lrfd_adj_incise_flex_shear', 'lrfd_adj_incise_bearing', 'lrfd_adj_incise_modulus'],
+        "Length": 65
     },
     "ABW_PARAMETER": {
-        "Used": False,
-        "Columns": [],
-        "Length": 0
+        "Used": True,
+        "Columns": ['parameter_id', 'table_name', 'field_name', 'parmvalue', 'shortdesc', 'longdesc'],
+        "Length": 162
     },
     "ABW_ADV_CONC_XSECTION": {
-        "Used": False,
-        "Columns": [],
-        "Length": 0
+        "Used": True,
+        "Columns": ['bridge_id', 'struct_def_id', 'spng_mbr_def_id', 'xsection_id', 'xsection_type', 'name', 'top_flng_conc_id', 'top_flng_cj', 'top_flng_stress_limit_id', 'other_parts_stress_limit_id', 'other_parts_conc_id', 'computed_wt1', 'computed_wt2', 'area', 'ixx', 'iyy', 'j'],
+        "Length": 12
     },
     "ABW_BMDEF_DECK_REINF_RANGE": {
-        "Used": False,
-        "Columns": [],
-        "Length": 0
+        "Used": True,
+        "Columns": ['bridge_id', 'struct_def_id', 'spng_mbr_def_id', 'deck_reinf_range_id', 'dist', 'length', 'stl_reinf_id', 'num_bars', 'rebar_id', 'vert_dist', 'vert_dist_reference_type'],
+        "Length": 212
     },
     "ABW_BMDEF_SHEAR_CONN_RANGE": {
-        "Used": False,
-        "Columns": [],
-        "Length": 0
+        "Used": True,
+        "Columns": ['bridge_id', 'struct_def_id', 'spng_mbr_def_id', 'shear_conn_range_id', 'dist', 'length', 'num_spaces', 'num_across', 'shear_connector_id', 'spacing_across', 'cluster_pitch', 'number_rows_in_cluster', 'number_of_clusters', 'stud_pitch'],
+        "Length": 92
     },
     "ABW_BMDEF_SIDEWALK_LL": {
         "Used": False,
-        "Columns": [],
+        "Columns": ['bridge_id', 'struct_def_id', 'spng_mbr_def_id', 'bmdef_sidewalk_ll_id', 'sidewalk_load', 'load_case_id'],
         "Length": 0
     },
     "ABW_BMDEF_STL_FATIGUE_LOC": {
         "Used": False,
-        "Columns": [],
+        "Columns": [
+            'bridge_id', 'struct_def_id', 'spng_mbr_def_id', 'anal_pt_id', 'stl_fatigue_loc_id', 'vert_dist',
+            'lfd_fatigue_category_type', 'lfd_allow_fatigue_stress', 'lrfd_fatigue_category_type',
+            'lrfd_nom_fatigue_resistance', 'vert_dist_ref_type'
+        ],
         "Length": 0
     },
     "ABW_BOLT_DEF": {
-        "Used": False,
-        "Columns": [],
-        "Length": 0
+        "Used": True,
+        "Columns": ['bridge_id', 'bolt_def_id', 'bolt_designation', 'name', 'descr', 'bolt_diameter', 'hole_diameter', 'connection_type', 'hole_size_type', 'load_direction_type', 'surface_class_type', 'asd_allow_shear_stress', 'asd_allow_bearing_stress', 'asd_slip_resistance', 'lfd_allow_shear_stress', 'lfd_allow_bearing_stress', 'lfd_slip_resistance', 'lrfd_min_tensile_strength', 'lrfd_required_tension', 'lrfd_kh_factor', 'lrfd_ks_factor', 'exclude_threads_ind', 'last_change_timestamp', 'grip_length', 'hole_type', 'lrfd_kc_factor'],
+        "Length": 251
     },
     "ABW_BRIDGE_DESIGN_PARAM": {
-        "Used": False,
-        "Columns": [],
-        "Length": 0
+        "Used": True,
+        "Columns": ['bridge_id', 'long_force_load_dist_type', 'trans_force_load_dist_type', 'consider_induced_vert_reac_ind', 'horz_roadway_design_speed', 'horz_roadway_radius_curvature', 'curve_direction_type', 'cap_top_reinf_min_rebar_id', 'cap_top_reinf_max_rebar_id', 'cap_top_reinf_min_bar_spacing', 'cap_top_reinf_max_num_layers', 'cap_top_reinf_min_layer_dist', 'cap_bot_reinf_max_rebar_id', 'cap_bot_reinf_min_rebar_id', 'cap_bot_reinf_min_bar_spacing', 'cap_bot_reinf_max_num_layers', 'cap_bot_reinf_min_layer_dist', 'cap_shr_reinf_min_rebar_id', 'cap_shr_reinf_max_rebar_id', 'cap_shr_reinf_min_bar_spacing', 'cap_shr_reinf_max_ctc_spacing', 'cap_shr_reinf_min_clear_cover', 'cap_reinf_round_spacing_to', 'cw_flex_reinf_min_rebar_id', 'cw_flex_reinf_max_rebar_id', 'cw_flex_reinf_min_bar_spacing', 'cw_flex_reinf_max_ctc_spacing', 'cw_flex_reinf_max_num_layers', 'cw_flex_reinf_min_layer_dist', 'cw_flex_reinf_pct_area_max', 'cw_flex_reinf_pct_area_min', 'cw_shr_reinf_min_clear_cover', 'cw_shr_spiral_min_rebar_id', 'cw_shr_spiral_max_rebar_id', 'cw_shr_spiral_min_bar_spacing', 'cw_shr_spiral_ctc_pitch', 'cw_shr_ties_min_rebar_id', 'cw_shr_ties_max_rebar_id', 'cw_shr_ties_min_bar_spacing', 'cw_shr_ties_max_ctc_spacing', 'cw_shr_consider_seismicreq_ind', 'ftg_flex_reinf_min_rebar_id', 'ftg_flex_reinf_max_rebar_id', 'ftg_flex_reinf_min_bar_spacing', 'ftg_flex_reinf_max_ctc_spacing', 'ftg_flex_reinf_min_top_cover', 'ftg_flex_reinf_min_bot_cover', 'ftg_flex_reinf_side_cover', 'ftg_flex_topmost_bar_dir_type', 'ftg_flex_botmost_bar_dir_type', 'geo_ftg_min_width', 'geo_ftg_max_width', 'geo_ftg_width_increment', 'geo_ftg_min_length', 'geo_ftg_max_length', 'geo_ftg_length_increment', 'geo_ftg_min_aspect_ratio', 'geo_ftg_max_aspect_ratio', 'geo_ftg_thick_increment', 'geo_ftg_spread_min_thick', 'geo_ftg_spread_max_thick', 'geo_ftg_pile_min_thick', 'geo_ftg_pile_max_thick'],
+        "Length": 13188
     },
     "ABW_BRIDGE_DIAPHRAGM_DEF": {
-        "Used": False,
-        "Columns": [],
-        "Length": 0
+        "Used": True,
+        "Columns": ['bridge_id', 'diaphragm_def_id', 'name', 'diaphragm_type', 'material_type', 'conc_id', 'conc_thick', 'conc_height', 'num_elements_fixed_members', 'member_connection_bolt_def_id', 'tension_only_diag_sys_ind'],
+        "Length": 9404
     },
     "ABW_TRUSS_DEF_ELEMENT": {
-        "Used": False,
-        "Columns": [],
-        "Length": 0
+        "Used": True,
+        "Columns": ['bridge_id', 'struct_def_id', 'spng_mbr_def_id', 'truss_def_element_id', 'element_xsection_id', 'begin_panel_point_id', 'end_panel_point_id', 'name', 'x_axis_unbraced_length', 'y_axis_unbraced_length', 'k_value', 'end_connection_type'],
+        "Length": 542
     },
     "ABW_TRUSS_DEF_INTERM_SUPPORT": {
         "Used": False,
-        "Columns": [],
+        "Columns": ['bridge_id', 'struct_def_id', 'spng_mbr_def_id', 'intermediate_support_id', 'panel_point_id', 'x_translation_type', 'y_translation_type', 'z_rotation_type', 'x_translation_spring_constant', 'y_translation_spring_constant', 'z_rotation_spring_constant'],
         "Length": 0
     },
     "ABW_TRUSS_DEF_PANEL_POINT": {
-        "Used": False,
-        "Columns": [],
-        "Length": 0
+        "Used": True,
+        "Columns": ['bridge_id', 'struct_def_id', 'spng_mbr_def_id', 'panel_point_id', 'name', 'x_coord', 'y_coord', 'location_type'],
+        "Length": 372
     },
     "ABW_TRUSS_DEF_SPAN": {
-        "Used": False,
-        "Columns": [],
-        "Length": 0
+        "Used": True,
+        "Columns": ['bridge_id', 'struct_def_id', 'spng_mbr_def_id', 'span_id', 'length', 'dist', 'cantilever_ind'],
+        "Length": 99
     },
     "ABW_SUPER_LL_REACT_SUB_DETAIL": {
-        "Used": False,
-        "Columns": [],
-        "Length": 0
+        "Used": True,
+        "Columns": ['bridge_id', 'sub_struct_def_id', 'll_reaction_set_id', 'live_load_id', 'vehicle_id', 'vehicle_type', 'min_single_lane_reaction', 'min_impact_factor_override', 'max_single_lane_reaction', 'max_impact_factor_override'],
+        "Length": 20
     },
     "ABW_SUPER_LOAD_CASE": {
-        "Used": False,
-        "Columns": [],
-        "Length": 0
+        "Used": True,
+        "Columns": ['bridge_id', 'struct_def_id', 'load_case_id', 'name', 'stage_id', 'descr', 'load_type', 'load_application_time'],
+        "Length": 48393
     },
     "ABW_SUPER_MBR_ENVIRONMENT_LOAD": {
-        "Used": False,
-        "Columns": [],
-        "Length": 0
+        "Used": True,
+        "Columns": ['bridge_id', 'sub_struct_def_id', 'mbr_environmental_load_id', 'spng_mbr_bearing_loc_id', 'wso_vert_reaction', 'tu_long_force_temp_rise', 'tu_long_force_temp_fall', 'sh_long_force', 'cr_long_force', 'wso_vert_reaction_ul', 'tu_long_force_temp_rise_ul', 'tu_long_force_temp_fall_ul', 'sh_long_force_ul', 'cr_long_force_ul', 'wso_str_iii_vert_reaction', 'wso_serv_iv_vert_reaction', 'wso_str_iii_vert_reaction_ul', 'wso_serv_iv_vert_reaction_ul'],
+        "Length": 20
     },
     "ABW_SUPER_PED_LL_SUB_DETAIL": {
-        "Used": False,
-        "Columns": [],
-        "Length": 0
+        "Used": True,
+        "Columns": ['bridge_id', 'sub_struct_def_id', 'ped_ll_set_id', 'ped_ll_react_detail_id', 'super_struct_def_id', 'curb_id', 'min_calc_reaction', 'min_calc_uniform_load', 'min_ovr_uniform_load', 'max_calc_reaction', 'max_calc_uniform_load', 'max_ovr_uniform_load'],
+        "Length": 1
     },
     "ABW_BOT_FLANGE_LAT_BRACING_DEF": {
-        "Used": False,
-        "Columns": [],
-        "Length": 0
+        "Used": True,
+        "Columns": ['bridge_id', 'lateral_bracing_def_id', 'name', 'stl_shape_type', 'stl_shape_id', 'stl_structural_id', 'connection_type', 'angle_vert_leg_type', 'member_connection_type', 'member_connection_bolt_def_id', 'num_bolt_lines', 'num_bolts_per_line', 'bolt_line_trans_spacing', 'bolt_line_long_spacing', 'start_work_point_offset', 'end_work_point_offset', 'girder_attach_area_deduction'],
+        "Length": 124
     },
     "ABW_ANAL_PT_REINF_CONC": {
-        "Used": False,
-        "Columns": [],
-        "Length": 0
+        "Used": True,
+        "Columns": ['bridge_id', 'struct_def_id', 'super_struct_mbr_id', 'super_struct_spng_mbr_alt_id', 'anal_pt_id', 'lrfd_shear_comp_method_type', 'override_shear_reinf_ind', 'percent_shear', 'shear_dist', 'shear_beta', 'shear_theta', 'shear_sx', 'stirrup_matl_stl_reinf_id', 'stirrup_rebar_id', 'stirrup_num_legs', 'stirrup_area', 'stirrup_angle_alpha', 'stirrup_spacing', 'horz_shear_stl_reinf_id', 'horz_shear_rebar_id', 'horz_shear_num_legs', 'horz_shear_reinf_area', 'horz_shear_angle_alpha', 'horz_shear_reinf_spacing', 'lfr_ignore_shear_ind', 'override_reinf_develop_ind', 'lrfr_ignore_shear_dsnleg_ind', 'lrfr_ignore_shear_permit_ind', 'lrfr_cons_prm_tens_stlstrs_ind'],
+        "Length": 2913
     },
     "ABW_BEAM_DEF": {
-        "Used": False,
-        "Columns": [],
-        "Length": 0
+        "Used": True,
+        "Columns": ['bridge_id', 'struct_def_id', 'spng_mbr_def_id', 'beam_def_type', 'xsection_based_ind', 'beam_use_type', 'beam_def_units_type', 'flrbm_cantilever_ind', 'flrbm_left_cantilever_length', 'flrbm_right_cantilever_length', 'flrbm_length', 'beam_projection_start', 'beam_projection_end', 'impact_factor_type', 'impact_factor_adjustment', 'impact_factor_override', 'lrfd_constant_impact_factor', 'lrfd_fatigue_impact_factor', 'default_conc_matl_id', 'default_beam_conc_matl_id', 'default_stl_reinf_id', 'default_beam_stl_reinf_id', 'default_stirrup_stl_reinf_id', 'default_beam_timber_id', 'default_deck_timber_id', 'default_stl_plate_matl_id', 'default_ps_strand_matl_id', 'default_bolt_def_id', 'default_nail_id', 'default_weld_id', 'haunch_embedded_flng_ind', 'haunch_dim_type', 'asr_inv_rebar_factor', 'asr_inv_concrete_factor', 'asr_inv_structural_stl_factor', 'asr_inv_stirrup_factor', 'asr_inv_bearing_stiff_factor', 'asr_inv_ps_conc_comp_factor', 'asr_inv_ps_conc_tension_factor', 'asr_inv_ps_mom_capacity_factor', 'asr_opr_rebar_factor', 'asr_opr_concrete_factor', 'asr_opr_structural_stl_factor', 'asr_opr_stirrup_factor', 'asr_opr_bearing_stiff_factor', 'asr_opr_ps_conc_comp_factor', 'asr_opr_ps_conc_tension_factor', 'asr_opr_ps_mom_capacity_factor', 'asr_opr_timber_adj_allw_stress', 'override_lfr_factor_id', 'override_lrfd_factor_id', 'asr_analysis_module_guid', 'lfr_analysis_module_guid', 'lrfd_analysis_module_guid', 'default_analysis_method_type', 'lrfr_analysis_module_guid', 'nsg_analysis_module_guid', 'lrfr_condition_factor_type', 'lrfr_system_factor_type', 'override_lrfr_factor_id', 'lrfd_poi_gen_tenth_points_ind', 'lrfr_poi_gen_tenth_points_ind', 'lfr_poi_gen_tenth_points_ind', 'asr_poi_gen_tenth_points_ind', 'lrfd_poi_gen_xsec_chng_pts_ind', 'lrfr_poi_gen_xsec_chng_pts_ind', 'lfr_poi_gen_xsec_chng_pts_ind', 'asr_poi_gen_xsec_chng_pts_ind', 'lrfd_poi_gen_userdef_pts_ind', 'lrfr_poi_gen_userdef_pts_ind', 'lfr_poi_gen_userdef_pts_ind', 'asr_poi_gen_userdef_pts_ind', 'lrfd_distfact_app_method_type', 'lrfr_distfact_app_method_type', 'lfr_distfact_app_method_type', 'override_asr_factor_id', 'asr_spec_edition_choice_type', 'lfr_spec_edition_choice_type', 'lrfd_spec_edition_choice_type', 'lrfr_spec_edition_choice_type', 'asr_spec_edition_guid', 'lfr_spec_edition_guid', 'lrfd_spec_edition_guid', 'lrfr_spec_edition_guid', 'lrfr_field_meas_sect_prop_ind', 'lrfr_system_fact_override_ind', 'lrfr_system_fact_override', 'self_load_case_id', 'self_loadcase_engineassign_ind', 'default_top_flng_matl_conc_id', 'shear_conn_input_method_type'],
+        "Length": 49045
     },
     "ABW_TEMP_LOAD": {
-        "Used": False,
-        "Columns": [],
-        "Length": 0
+        "Used": True,
+        "Columns": ['bridge_id', 'multimedia_id', 'context', 'fileloc', 'fileref', 'filetype', 'agency_type_param_id', 'status', 'reportflag', 'userkey1', 'userkey2', 'userkey3', 'userkey4', 'userkey5', 'notes', 'creation_event_id', 'last_modified_event_id'],
+        "Length": 7
     },
     "ABW_TENDON_PROFILE_ANCH_REINF": {
         "Used": False,
-        "Columns": [],
+        "Columns": ['bridge_id', 'struct_def_id', 'spng_mbr_def_id', 'tendon_profile_id', 'anchorage_reinf_id', 'num_legs', 'rebar_id', 'start_distance', 'num_spaces', 'spacing'],
         "Length": 0
     },
     "ABW_TENDON_PROFILE_DEF": {
-        "Used": False,
-        "Columns": [],
-        "Length": 0
+        "Used": True,
+        "Columns": ['bridge_id', 'struct_def_id', 'spng_mbr_def_id', 'tendon_profile_id', 'name', 'start_dist_into_start', 'end_dist_from_end', 'inflection_point_method_type', 'profile_assigned_to_type', 'pt_ps_matl_ps_strand_id', 'pt_ps_matl_pt_bar_id', 'pt_input_method_type', 'pt_jacking_force', 'pt_jacking_stress_ratio', 'pt_jacking_end_type', 'duct_grouting_type', 'pt_duct_diameter', 'sl_lrfd_prior_to_seating', 'sl_lrfd_anchor_and_couplers', 'sl_lrfd_elsewhere_length', 'sl_lrfd_service_limit', 'anch_general_zone_design_type', 'anch_bearing_plate_width', 'anch_bearing_plate_length', 'anch_bearing_plate_thickness', 'anch_spalling_reinf_num_bars', 'anch_spalling_rebar_id', 'starting_span', 'ending_span', 'sl_std_prior_to_seating', 'sl_std_anchor_and_couplers', 'sl_std_elsewhere_length', 'sl_std_service_limit', 'distribute_jforce_equal_ind', 'stage_id'],
+        "Length": 48
     },
     "ABW_TENDON_PROFILE_DEF_DETAIL": {
-        "Used": False,
-        "Columns": [],
-        "Length": 0
+        "Used": True,
+        "Columns": ['bridge_id', 'struct_def_id', 'spng_mbr_def_id', 'tendon_profile_id', 'detail_id', 'profile_type', 'inflect_point_left_percent', 'inflect_point_low_percent', 'inflect_point_right_percent', 'inflect_point_left_dist', 'inflect_point_low_dist', 'inflect_point_right_dist', 'vert_offset_left_end_dist', 'vert_offset_le_meas_from_type', 'vert_offset_left_dist', 'vert_offset_l_meas_from_type', 'vert_offset_low_dist', 'vert_offset_lo_meas_from_type', 'vert_offset_right_dist', 'vert_offset_r_meas_from_type', 'vert_offset_right_end_dist', 'vert_offset_re_meas_from_type'],
+        "Length": 72
     },
     "ABW_TIMBER_BEAM_DEF": {
-        "Used": False,
-        "Columns": [],
-        "Length": 0
+        "Used": True,
+        "Columns": ['bridge_id', 'struct_def_id', 'spng_mbr_def_id', 'timber_beam_def_type', 'overhang_left', 'overhang_right', 'adj_beam_shear_factor', 'adj_beam_flex_wet_service', 'adj_beam_shear_wet_service', 'adj_beam_compr_wet_service', 'adj_beam_mod_wet_service', 'adj_beam_size_factor', 'adj_beam_load_dur_factor', 'stiffness_moisture_cond_type', 'bearing_moisture_cond_type', 'shear_flex_moisture_cond_type', 'adj_bearing', 'lrfd_adj_flex_wet_service', 'lrfd_adj_shear_wet_service', 'lrfd_adj_bearing_wet_service', 'lrfd_adj_mod_wet_service', 'lrfd_adj_format_conv', 'lrfd_adj_format_conv_bearing', 'lrfd_adj_size_flexure', 'lrfd_adj_size_modulus', 'lrfd_adj_flat_use', 'lrfd_adj_bearing', 'lrfd_adj_deck', 'lrfd_adj_time_effect_str_i', 'lrfd_adj_time_effect_str_ii', 'timber_beam_shape_id', 'timber_id', 'asd_adj_beam_stability', 'lrfd_adj_beam_stability'],
+        "Length": 65
     },
     "ABW_LIB_MATL_STL_STRUCTURAL": {
-        "Used": False,
-        "Columns": [],
-        "Length": 0
+        "Used": True,
+        "Columns": ['stl_structural_id', 'name', 'descr', 'library_type', 'si_or_us_type', 'yield_strength', 'tens_strength', 'toughness', 'thermal_exp_coeff', 'density', 'mod_of_elast', 'checksum'],
+        "Length": 63
     },
     "ABW_CULVERT_STRUCT_FK": {
-        "Used": False,
-        "Columns": [],
-        "Length": 0
+        "Used": True,
+        "Columns": ['stl_structural_id', 'name', 'descr', 'library_type', 'si_or_us_type', 'yield_strength', 'tens_strength', 'toughness', 'thermal_exp_coeff', 'density', 'mod_of_elast', 'checksum'],
+        "Length": 63
     },
     "ABW_GENERAL_PREFERENCE": {
-        "Used": False,
-        "Columns": [],
-        "Length": 0
+        "Used": True,
+        "Columns": ['general_preference_id', 'name', 'keyword', 'preference_cat_id', 'preference_xml'],
+        "Length": 531
     },
     "ABW_GENERAL_PREFERENCE_CAT": {
-        "Used": False,
-        "Columns": [],
-        "Length": 0
+        "Used": True,
+        "Columns": ['preference_cat_id', 'parent_preference_cat_id', 'name'],
+        "Length": 96
     },
     "ABW_RC_CULVERT_DEF": {
-        "Used": False,
-        "Columns": [],
-        "Length": 0
+        "Used": True,
+        "Columns": ['bridge_id', 'struct_def_id', 'culvert_def_id', 'rc_culvert_def_type'],
+        "Length": 1246
     },
     "ABW_TRUSS_DEF_SUPPORT": {
-        "Used": False,
-        "Columns": [],
-        "Length": 0
+        "Used": True,
+        "Columns": ['bridge_id', 'struct_def_id', 'spng_mbr_def_id', 'support_id', 'panel_point_id', 'x_translation_type', 'y_translation_type', 'z_rotation_type'],
+        "Length": 252
     },
     "ABW_ADV_CONC_BDEF_GRD_SPACING": {
         "Used": False,
-        "Columns": [],
+        "Columns": ['bridge_id', 'struct_def_id', 'spng_mbr_def_id', 'girder_spacing_id', 'start_distance', 'length', 'left_side_bay_width_start', 'left_side_bay_width_end', 'right_side_bay_width_start', 'right_side_bay_width_end'],
         "Length": 0
     },
     "ABW_SUPER_STRUCT_DEF_FK": {
-        "Used": False,
-        "Columns": [],
-        "Length": 0
+        "Used": True,
+        "Columns": ['bridge_id', 'struct_def_id', 'current_load_scenario_id', 'deck_load_case_id', 'deck_loadcase_engineassign_ind'],
+        "Length": 14836
     },
     "ABW_SUBSDEF_FOUND_DEF_DISTLOAD": {
         "Used": False,
@@ -1298,9 +1302,9 @@ AASHTOWARE_TABLES = {
         "Length": 0
     },
     "ABW_SUPER_STRUCT_FK": {
-        "Used": False,
-        "Columns": [],
-        "Length": 0
+        "Used": True,
+        "Columns": ['bridge_id', 'bridge_design_alt_id', 'super_struct_id', 'current_super_struct_alt_id', 'as_built_super_struct_alt_id'],
+        "Length": 13559
     },
     "ABW_SUPER_STRUCT_FRAME_DEF": {
         "Used": False,
@@ -1308,14 +1312,14 @@ AASHTOWARE_TABLES = {
         "Length": 0
     },
     "ABW_SUPER_STRUCT_LL_DIST_SUB": {
-        "Used": False,
-        "Columns": [],
-        "Length": 0
+        "Used": True,
+        "Columns": ['bridge_id', 'sub_struct_def_id', 'll_dist_set_id', 'span_location_type', 'distribution_method_type', 'load_display_type', 'use_override_values_ind'],
+        "Length": 5
     },
     "ABW_SUPER_STRUCT_SPNG_MBR_FK": {
-        "Used": False,
-        "Columns": [],
-        "Length": 0
+        "Used": True,
+        "Columns": ['bridge_id', 'sub_struct_def_id', 'll_dist_set_id', 'span_location_type', 'distribution_method_type', 'load_display_type', 'use_override_values_ind'],
+        "Length": 5
     },
     "ABW_SUBSDEF_FOUND_DEF_UNIFLOAD": {
         "Used": False,
@@ -1323,9 +1327,9 @@ AASHTOWARE_TABLES = {
         "Length": 0
     },
     "ABW_SUBSDEF_MODEL_SET_FIXITY": {
-        "Used": False,
-        "Columns": [],
-        "Length": 0
+        "Used": True,
+        "Columns": ['bridge_id', 'struct_def_id', 'model_setting_id', 'fixity_condition_id', 'sub_struct_def_component_id', 'location_type', 'long_support_type', 'trans_support_type', 'long_rot_spring_constant', 'trans_rot_spring_constant'],
+        "Length": 49
     },
     "ABW_SUBSDEF_MODEL_SET_MBR_REL": {
         "Used": False,
@@ -1338,39 +1342,39 @@ AASHTOWARE_TABLES = {
         "Length": 0
     },
     "ABW_SYS_DESIGN_WATER_LEVEL": {
-        "Used": False,
-        "Columns": [],
-        "Length": 0
+        "Used": True,
+        "Columns": ['bridge_id', 'struct_def_id', 'model_setting_id', 'fixity_condition_id', 'sub_struct_def_component_id', 'location_type', 'long_support_type', 'trans_support_type', 'long_rot_spring_constant', 'trans_rot_spring_constant'],
+        "Length": 49
     },
     "ABW_SYS_LRFD_LOADING": {
-        "Used": False,
-        "Columns": [],
-        "Length": 0
+        "Used": True,
+        "Columns": ['sys_lrfd_loading_id', 'name', 'descr', 'sort_order'],
+        "Length": 31
     },
     "ABW_FLOORSYS_STRUCT_DEF": {
-        "Used": False,
-        "Columns": [],
-        "Length": 0
+        "Used": True,
+        "Columns": ['bridge_id', 'struct_def_id', 'floorsys_struct_def_type', 'main_member_config_type', 'deck_type', 'member_spacing_display_type', 'main_members_support_deck_ind', 'stringer_frame_into_flrbm_ind', 'num_stringer_units', 'modular_ratio_sustained_factor', 'deck_crack_control_param_z', 'wearing_surface_matl_name', 'wearing_surface_desc', 'wearing_surface_density', 'wearing_surface_thick', 'truck_traffic_frac_single_lane', 'num_lanes_avail_truck', 'override_truck_traffic_ind', 'dl_distribution1_type', 'dl_distribution2_type', 'deck_exposure_factor', 'thick_field_mea_ind'],
+        "Length": 118
     },
     "ABW_LIB_SUB_LRFD_DS_VEH_LOAD": {
-        "Used": False,
-        "Columns": [],
-        "Length": 0
+        "Used": True,
+        "Columns": ['bridge_id', 'struct_def_id', 'floorsys_struct_def_type', 'main_member_config_type', 'deck_type', 'member_spacing_display_type', 'main_members_support_deck_ind', 'stringer_frame_into_flrbm_ind', 'num_stringer_units', 'modular_ratio_sustained_factor', 'deck_crack_control_param_z', 'wearing_surface_matl_name', 'wearing_surface_desc', 'wearing_surface_density', 'wearing_surface_thick', 'truck_traffic_frac_single_lane', 'num_lanes_avail_truck', 'override_truck_traffic_ind', 'dl_distribution1_type', 'dl_distribution2_type', 'deck_exposure_factor', 'thick_field_mea_ind'],
+        "Length": 118
     },
-    "ABW_LIB_SUB_LRFD_DSGN_SETTING": {
-        "Used": False,
-        "Columns": [],
-        "Length": 0
+    "ABW_LIB_SUB_LRFD_DSG1N_SETTING": {
+        "Used": True,
+        "Columns": ['lrfd_design_setting_id', 'name', 'descr', 'library_type', 'si_or_us_type', 'lrfd_factor_id', 'preliminary_design_setting_ind', 'final_design_setting_ind', 'dynamic_load_allow_method_type', 'dla_simple_fatigue_frac_impact', 'dla_simple_other_ls_impact', 'vehicle_summary_display_type', 'last_change_timestamp', 'limit_num_dsgn_load_combo_ind', 'cw_num_loadcombo_axial_bending', 'ftg_num_loadcombo_brg_capacity', 'lrfd_analysis_module_guid', 'lrfd_spec_edition_guid'],
+        "Length": 4
     },
     "ABW_LIB_TIMBER_RECT_BEAM_SHAPE": {
-        "Used": False,
-        "Columns": [],
-        "Length": 0
+        "Used": True,
+        "Columns": ['timber_beam_shape_id', 'width', 'height', 'glulam_ind', 'num_glulam_laminations', 'nominal_weight', 'nominal_height', 'nominal_width', 'area', 'ixx', 'cg_bot', 'sxx_top', 'sxx_bot'],
+        "Length": 1
     },
     "ABW_LIB_VEHICLE": {
-        "Used": False,
-        "Columns": [],
-        "Length": 0
+        "Used": True,
+        "Columns": ['vehicle_id', 'name', 'descr', 'library_type', 'si_or_us_type', 'uniform_lane_load', 'moment_conc_load', 'shear_conc_load', 'constant_gage_dist', 'constant_contact_width', 'second_equal_conc_load_ind', 'vehicle_weight', 'constant_gage_dist_ind', 'constant_contact_width_ind', 'sld_design_review_ind', 'sld_inv_rating_ind', 'sld_sl_rating_ind', 'sld_opr_rating_ind', 'sld_pst_rating_ind', 'lrfd_rating_ind', 'std_rating_ind', 'lrfd_design_ind', 'std_design_ind', 'tandem_load', 'tandem_spacing', 'tandem_trans_spacing', 'notional_ind', 'last_change_timestamp', 'vehicle_gage_type', 'lrfr_rating_ind', 'private_ind', 'owner_id'],
+        "Length": 415
     },
     "ABW_LIB_VEHICLE_AXLE": {
         "Used": False,
