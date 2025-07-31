@@ -16,7 +16,7 @@ from tkinter import messagebox
 
 # Define the path for the secrets.json file in the user's AppData\Local directory
 civilpy_dir = os.path.join(os.getenv("LOCALAPPDATA"), "Civilpy")  # E.g., C:\Users\<Username>\AppData\Local\Civilpy
-secrets_file = os.path.join(civilpy_dir, "secrets.json")
+secrets_file = Path.home() / "secrets.json"
 
 def download_assetwise_photos(asset_sfn, target_folder):
     driver, wait = assetwise_authentication(asset_sfn, target_folder)
@@ -113,16 +113,16 @@ def download_assetwise_inspections(asset_sfn, target_folder):
 
 # assetwise_authentication function
 def assetwise_authentication(asset_sfn, target_folder):
-    with open(f'{civilpy_dir}/secrets.json', 'r') as f:
-        data = json.load(f)
+    with open(Path.home() / 'secrets.json', 'r') as f:
+        secrets = json.load(f)
     driver = webdriver.Chrome()
     driver.get("https://ohiodot-it.bentley.com")
     wait = WebDriverWait(driver, 10)  # Wait up to 10 seconds
     login_button = wait.until(EC.element_to_be_clickable((By.ID, "showLocal")))
     login_button.click()
     WebDriverWait(driver, timeout=5).until(lambda d: d.find_element(By.ID, 'ContentPlaceHolder1_txtUserName'))
-    driver.find_element(By.ID, 'ContentPlaceHolder1_txtUserName').send_keys(data['AW_USERNAME'])
-    driver.find_element(By.ID, 'ContentPlaceHolder1_txtPassword').send_keys(data['AW_PASSWORD'])
+    driver.find_element(By.ID, 'ContentPlaceHolder1_txtUserName').send_keys(secrets['AW_USERNAME'])
+    driver.find_element(By.ID, 'ContentPlaceHolder1_txtPassword').send_keys(secrets['AW_PASSWORD'])
 
     messagebox.showinfo("Captcha", "Please finishing solving the captcha in the chrome window")
 

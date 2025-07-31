@@ -115,7 +115,7 @@ class LoadRatingMember:
         self.span_length = span_length
         self.section_ids = section_ids
 
-        get_api_key(Path(os.getcwd()).parent.parent / "secrets.json")
+        get_api_key(Path.home() / "secrets.json")
 
         self.element_ids = (
             [

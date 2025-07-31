@@ -65,7 +65,7 @@ def get_api_key(secrets_path=None):
 
     if secrets_path is None:
         try:
-            secrets_path = Path(os.getcwd()).parent.parent / "secrets.json"
+            secrets_path = Path.home() / "secrets.json"
             with open(secrets_path, "r") as f:
                 data = json.load(f)
                 MIDAS_API_KEY = data["MIDAS_API_KEY"]
