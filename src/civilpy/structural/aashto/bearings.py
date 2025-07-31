@@ -218,8 +218,10 @@ class MethodABearing:
         self.sigma_s = None
         self.delta_t = None
         self.delta_s = None
-        self.dl_deflection = max_dl_delta
-        self.ll_deflection = max_ll_delta
+        self.dl_deflection = None
+        self.ll_deflection = None
+        self.added_dl_deflection = max_dl_delta
+        self.added_ll_deflection = max_ll_delta
         self.ll_location = max_ll_loc
         self.deck_slope = deck_slope
         self.plate_bev = plate_bev
@@ -229,6 +231,7 @@ class MethodABearing:
         self.checks = {}
         self.internal_shape_factor = self.get_shape_factors(self.internal_t)
         self.service_ll = self.loads["total_load"] / (self.length * self.width)
+        self.service_dl = self.loads["total_dead_load"] / (self.length * self.width)
 
         self.run_checks()
 
@@ -254,15 +257,35 @@ class MethodABearing:
             self.checks['#3 - Service LL < 1.25 ksi'] = 0
             print("Service LL Check Failed - Service LL > 1.25 ksi")
 
-        # //TODO - The way bearing stress is converted to strain isn't settled, figure out how to handle it for these 3
+        # //TODO - Disagree with using this method, think the formulaic approach is superior
         # Excel Check '5' (AASHTO 14.7.6.3.3 & 14.7.5.3.6)
-        self.checks['#5 - Needs Fixed'] = 1
+        self.ll_deflection = get_strain_from_stress(self.service_ll, self.internal_shape_factor, self.durometer)
+
+        if self.ll_deflection <= 0.125:
+            self.checks['#5 - LL Deflection < 0.125'] = 1
+        else:
+            self.checks['#5 - LL Deflection < 0.125'] = 0
+            print("LL Deflection Limit Check Failed - LL Deflection > 0.125")
 
         # Excel Check '6' (AASHTO 14.7.6.3.3 & 14.7.5.3.6)
-        self.checks['#6 - Needs Fixed'] = 1
+        self.dl_deflection = get_strain_from_stress(self.service_dl, self.internal_shape_factor, self.durometer)
+        total_deflection = self.ll_deflection + self.dl_deflection
+
+        if total_deflection / self.plys <= .09 * self.internal_t:
+            self.checks["#6 - Single Layer's Δ < 0.09 * h_ri"] = 1
+        else:
+            self.checks["#6 - Single Layer's Δ < 0.09 * h_ri"] = 0
+            print("Total Deflection / Number of Plies > 0.09 * h_ri")
 
         # Excel Check '7' (AASHTO 14.7.6.3.3)
-        self.checks['#7 - Needs Fixed'] = 1
+        creep_deflection = self.dl_deflection * rubber_creep_values[self.durometer]
+
+        final_deflection = total_deflection + creep_deflection
+        if final_deflection / self.plys <= .09 * self.internal_t:
+            self.checks["#7 - Single Layer's Δ < 0.09 * h_ri - Due to Long term Creep"] = 1
+        else:
+            self.checks["#7 - Single Layer's Δ < 0.09 * h_ri"] = 0
+            print("Total Deflection / Number of Plies > 0.09 * h_ri - Due to Long term Creep")
 
         # Excel Check '8' (AASHTO 14.7.6.3.4)
         self.delta_t = self.exp_coeff * self.expansion_length * (self.temp_range[1] - self.temp_range[0]) * 12
@@ -396,3 +419,19 @@ class MethodABearing:
         self.sigma_l = self.loads['live'] / (self.width * self.length)
         self.sigma_s = self.loads['total_dead_load'] / (self.width * self.length)
 
+
+def get_bearing_strain(stress, shape_factor, hardness):
+    if hardness == 50:
+        return stress / (4.8 * .1125 * shape_factor ** 2)
+    elif hardness == 60:
+        return stress / (4.8 * .1125 * shape_factor ** 2)
+    elif hardness == 70:
+        return stress / (4.8 * .1125 * shape_factor ** 2)
+    else:
+        return "Error: Hardness not supported, please use 50, 60, or 70"
+
+rubber_creep_values = {
+    50: .25,
+    60: .35,
+    70: .45
+}
