@@ -4,7 +4,7 @@
 <img alt="Project badge" aria-hidden="" class="project-badge" src="https://daneparks.com/Dane/civilpy/badges/master/pipeline.svg">
 <img alt="PyPI - Python Version" src="https://img.shields.io/pypi/pyversions/civilpy">
 <img alt="Project badge" aria-hidden="" class="project-badge" src="https://daneparks.com/Dane/civilpy/badges/master/coverage.svg">
-![PyPI - Downloads](https://img.shields.io/pypi/dm/CivilPy)
+[![PyPI Downloads](https://static.pepy.tech/badge/civilpy/month)](https://pepy.tech/projects/civilpy)
 
 
 # [Source Code](https://daneparks.com/Dane/civilpy)
@@ -53,6 +53,13 @@ from civilpy.structural.steel import W
 W40X390 = W("W40X390")
 W40X390.A
 ```
+
+# Contributing
+
+Clone, ctl+f, "# //TODO -"
+
+For PRs reach out to me on github or at dane@daneparks.com. Github version of the libary
+is a mirror that often falls out of date whenever a large file sneaks into the repo. 
 
 # How to determine where to store functions within the package
 
