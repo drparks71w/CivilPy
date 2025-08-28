@@ -300,3 +300,62 @@ def format_assetwise_output(response):
 
     return organized_dict
 
+
+def get_all_bridges_paged(
+        starting_row: int = 0,
+        items_per_page: int = 100,
+        api_type: str = "api",
+        include_coordinates: bool = False,
+        include_parent: bool = False
+):
+    """
+    Retrieves a paged list of assets from the AssetWise API using a POST request.
+
+    Args:
+        starting_row (int): The starting row for the page (0-indexed). Defaults to 0.
+        items_per_page (int): The number of items to return per page. Defaults to 100.
+        api_type (str): The API type, either "api" or "mobile". Defaults to "api".
+        include_coordinates (bool): Whether to include asset coordinates in the response. Defaults to False.
+        include_parent (bool): Whether to include the parent as_id in the response. Defaults to False.
+
+    Returns:
+        dict: A dictionary containing the API response data for assets, including pagination info.
+
+    Raises:
+        requests.exceptions.HTTPError: If the API request returns a non-200 status.
+    """
+    username, password = get_assetwise_secrets()
+
+    api_url = f"https://ohiodot-it-api.bentley.com/{api_type}/Asset/GetAssets"
+
+    # Query parameters (IncludeCoordinates and IncludeParent are query params for both GET and POST)
+    query_params = {
+        "IncludeCoordinates": include_coordinates,
+        "IncludeParent": include_parent
+    }
+
+    headers = {
+        "Accept": "application/json",
+        "Content-Type": "application/json"  # Essential for sending JSON in the request body
+    }
+
+    # Request body for pagination, matching the RequestPaging schema
+    request_body = {
+        "starting": starting_row,
+        "count": items_per_page
+    }
+
+    print(f"Requesting URL: {api_url} with query params: {query_params}, body: {request_body}")
+
+    response = requests.post(
+        api_url,
+        params=query_params,
+        headers=headers,
+        auth=HTTPBasicAuth(username, password),
+        json=request_body  # Send pagination data as JSON in the body
+    )
+
+    response.raise_for_status()  # Raise an exception for HTTP errors
+
+    print("Successfully retrieved paged assets.")
+    return response.json()
