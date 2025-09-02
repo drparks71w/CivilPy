@@ -231,7 +231,71 @@ class HP(SteelSection):
 
     def __init__(self, label):
         super(HP, self).__init__(label)
+        self.depth = conv_frac_str(self.aisc_value["d"].values[0]) * units("in")
+        self.detailing_depth = conv_frac_str(self.aisc_value["ddet"].values[0]) * units(
+            "in"
+        )
+        self.flange_width = conv_frac_str(self.aisc_value["bf"].values[0]) * units("in")
+        self.detailing_flange_width = conv_frac_str(
+            self.aisc_value["bfdet"].values[0]
+        ) * units("in")
+        self.web_thickness = conv_frac_str(self.aisc_value["tw"].values[0]) * units(
+            "in"
+        )
+        self.detailing_web_thickness = conv_frac_str(
+            self.aisc_value["twdet"].values[0]
+        ) * units("in")
+        self.half_web_detail = conv_frac_str(
+            self.aisc_value["twdet/2"].values[0]
+        ) * units("in")
+        self.flange_thickness = conv_frac_str(self.aisc_value["tf"].values[0]) * units(
+            "in"
+        )
+        self.detailing_flange_thickness = conv_frac_str(
+            self.aisc_value["tfdet"].values[0]
+        ) * units("in")
+        self.k_design = conv_frac_str(self.aisc_value["kdes"].values[0]) * units("in")
+        self.k_detailing = conv_frac_str(self.aisc_value["kdet"].values[0]) * units(
+            "in"
+        )
+        self.slenderness_ratio_web = conv_frac_str(self.aisc_value["h/tw"].values[0])
+        self.J = conv_frac_str(self.aisc_value["J"].values[0]) * units("in^4")
+        self.Cw = conv_frac_str(self.aisc_value["Cw"].values[0]) * units("in^6")
+        self.Wno = conv_frac_str(self.aisc_value["Wno"].values[0]) * units("in^2")
+        self.Sw1 = conv_frac_str(self.aisc_value["Sw1"].values[0]) * units("in^4")
+        self.Qf = conv_frac_str(self.aisc_value["Qf"].values[0]) * units("in^3")
+        self.Qw = conv_frac_str(self.aisc_value["Qw"].values[0]) * units("in^3")
+        self.radius_of_gyration = self.rts = conv_frac_str(
+            self.aisc_value["rts"].values[0]
+        ) * units("in")
+        self.flange_centroid_distance = conv_frac_str(
+            self.aisc_value["ho"].values[0]
+        ) * units("in")
+        self.exposed_perimeter = conv_frac_str(self.aisc_value["PA"].values[0]) * units(
+            "in"
+        )
+        self.shape_perimeter = conv_frac_str(self.aisc_value["PB"].values[0]) * units(
+            "in"
+        )
+        self.box_perimeter = conv_frac_str(self.aisc_value["PC"].values[0]) * units(
+            "in"
+        )
+        self.exposed_box_perimeter = conv_frac_str(
+            self.aisc_value["PD"].values[0]
+        ) * units("in")
+        self.web_face_depth = self.T = conv_frac_str(
+            self.aisc_value["T"].values[0]
+        ) * units("in")
 
+        # These values are used in most shapes, but not all, hence the ifs
+        self.slenderness_ratio_flange = conv_frac_str(
+            self.aisc_value["bf/2tf"].values[0]
+        ) * units("in")
+        self.k1 = conv_frac_str(self.aisc_value["k1"].values[0]) * units("in")
+
+        self.fastener_workable_gage = conv_frac_str(
+            self.aisc_value["WGi"].values[0]
+        ) * units("in")
 
 class C(SteelSection):
     """

@@ -17,9 +17,16 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
 
 from pint import UnitRegistry
-
+import pandas as pd
+from sqlalchemy import text
 units = UnitRegistry()
 
+def get_table_as_df(conn, schema, table):
+    query = text(f"SELECT * FROM {schema}.{table}")
+    result = conn.execute(query)
+    df = pd.DataFrame(result.fetchall(), columns=result.keys())
+
+    return df
 
 class PrintColors:
     HEADER = "\033[95m"
