@@ -19,6 +19,8 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 import os
 import re
 import math
+import json
+import requests
 import tifftools
 import pandas as pd
 from pathlib import Path
@@ -545,3 +547,90 @@ class D6BridgeLookup(TimsBridge):
         else:
             images[0].save(pdf_path, save_all=True, append_images=images[1:])
         return pdf_path
+
+
+def get_ohio_data_from_open_street_maps():
+    # The Overpass API endpoint
+    overpass_url = "https://overpass-api.de/api/interpreter"
+
+    # The Overpass QL query to find various linear features within the state of Ohio.
+    # It looks for relations (like numbered routes) and ways (like individual rivers/tracks).
+    overpass_query = """
+    [out:json][timeout:180];
+    area["ISO3166-2"="US-OH"]->.ohio;
+    (
+      // Numbered Road Routes (as relations)
+      relation["type"="route"]["route"="road"](area.ohio);
+    
+      // Numbered Bicycle Routes (as relations)
+      relation["type"="route"]["route"="bicycle"](area.ohio);
+    
+      // Rivers (as ways)
+      way["waterway"~"river|stream|canal"](area.ohio);
+    
+      // Railways (as ways)
+      way["railway"~"rail|light_rail"](area.ohio);
+    
+      // Major paths and cycleways (as ways)
+      way["highway"~"cycleway|path|footway|track"](area.ohio);
+    );
+    out tags;
+    """
+
+    print("🛰️  Querying the OpenStreetMap Overpass API for Ohio linear features...")
+
+    try:
+        # Make the POST request to the API
+        response = requests.post(overpass_url, data=overpass_query)
+        response.raise_for_status()  # Raise an exception for bad status codes (4xx or 5xx)
+
+        # Parse the JSON response
+        data = response.json()
+
+        # We will store the full data for each feature in a list of dictionaries
+        features_data = data.get('elements', [])
+
+
+        # Define a sort key that attempts to sort numerically by the 'ref' tag.
+        # This ensures that '2' comes before '10'. Non-numeric refs are placed at the end.
+        def sort_key(element):
+            ref = element.get('tags', {}).get('ref', '').split(';')[0]
+            try:
+                return int(ref)
+            except (ValueError, TypeError):
+                return float('inf')  # Push non-integer refs to the bottom
+
+
+        features_data.sort(key=sort_key)
+
+        print(f"\n✅ Found {len(features_data)} features in Ohio. Displaying as a DataFrame:")
+
+        # Extract just the 'tags' dictionary from each element for the DataFrame
+        tags_list = [feature['tags'] for feature in features_data]
+        df = pd.DataFrame(tags_list)
+
+        # Define the columns we are most interested in displaying.
+        preferred_order = ['ref', 'name', 'network', 'route', 'highway', 'railway', 'waterway', 'bridge', 'type', 'service']
+
+        # Find which of our preferred columns actually exist in the DataFrame.
+        existing_cols = [col for col in preferred_order if col in df.columns]
+
+        # Filter the DataFrame to show only these existing, preferred columns.
+        df = df[existing_cols]
+
+        # Replace NaN values with empty strings for a cleaner display
+        df.fillna('', inplace=True)
+
+        # Set pandas display options to show all rows and columns without truncation
+        pd.set_option('display.max_rows', None)
+        pd.set_option('display.max_columns', None)
+        pd.set_option('display.width', 120)
+
+        # Print the final DataFrame
+        return df
+
+
+    except requests.exceptions.RequestException as e:
+        print(f"❌ An error occurred: {e}")
+    except json.JSONDecodeError:
+        print("❌ Failed to decode the response from the server. The server may be overloaded.")
