@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setup(
     name="civilpy",
-    version="0.1.23",
+    version="0.1.24",
     packages=find_packages(
         "src", exclude=["tests", "Notebooks", "secrets", "docs", "res"]
     ),

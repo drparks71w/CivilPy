@@ -8,6 +8,7 @@ import os
 # Suppress the insecure request warning that is generated when verify=False
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
+
 def find_nearest_crossing(longitude: float, latitude: float, search_radius_miles: int = 5):
     """
     Queries the FRA Grade Crossing Esri endpoint to find the nearest crossing
@@ -24,7 +25,7 @@ def find_nearest_crossing(longitude: float, latitude: float, search_radius_miles
     """
     query_url = "https://fragis.fra.dot.gov/arcgis/rest/services/FRA/FRAGradeXing/MapServer/0/query"
 
-    # Added more outFields to get richer data for popups and styling
+    # Added POSXING to outFields to determine the type of crossing (at-grade, over, under)
     params = {
         'geometry': f'{longitude},{latitude}',
         'geometryType': 'esriGeometryPoint',
@@ -32,7 +33,7 @@ def find_nearest_crossing(longitude: float, latitude: float, search_radius_miles
         'spatialRel': 'esriSpatialRelIntersects',
         'distance': search_radius_miles,
         'units': 'esriSRUnit_StatuteMile',
-        'outFields': 'CROSSING,STREET,RAILROAD,CITYNAME,STATENAME,DAYTHRU,NGHTTHRU,ACC_LINK,TYPEXING',
+        'outFields': 'CROSSING,STREET,RAILROAD,CITYNAME,STATENAME,DAYTHRU,NGHTTHRU,ACC_LINK,POSXING',
         'returnGeometry': 'true',
         'f': 'json'
     }
@@ -76,7 +77,7 @@ def find_nearest_crossing(longitude: float, latitude: float, search_radius_miles
 def create_crossing_map(search_lat, search_lon, all_crossings, nearest_crossing, target_railroad):
     """
     Creates a Folium map with all found crossings and saves it to an HTML file.
-    Markers are styled to highlight a target railroad.
+    Markers are styled to highlight a target railroad and crossing type.
 
     Args:
         search_lat: The latitude of the original search point.
@@ -109,16 +110,33 @@ def create_crossing_map(search_lat, search_lon, all_crossings, nearest_crossing,
         acc_link = attrs.get('ACC_LINK')
         link_html = f'<a href="{acc_link}" target="_blank">View Report</a>' if acc_link else "No report available"
 
+        posxing_type = attrs.get('POSXING')
+        crossing_type_desc = "At-Grade"
+        if posxing_type == '2':
+            crossing_type_desc = "Railroad Under Road"
+        elif posxing_type == '3':
+            crossing_type_desc = "Railroad Over Road"
+
         popup_html = f"""
         <b>Crossing ID:</b> {attrs.get('CROSSING')}<br>
         <b>Street:</b> {attrs.get('STREET', 'N/A')}<br>
         <b>Railroad:</b> {attrs.get('RAILROAD')}<br>
+        <b>Type:</b> {crossing_type_desc}<br>
         <b>Total Daily Trains:</b> {total_trains}<br>
         <b>Accident History:</b> {link_html}
         """
 
         is_nearest = (crossing == nearest_crossing)
         is_target = (current_railroad == target_railroad)
+
+        # --- Determine icon based on crossing type ---
+        icon_name = 'train'  # Default icon
+        if posxing_type == '1':  # At-Grade
+            icon_name = 'road'
+        elif posxing_type == '2':  # RR Under Grade
+            icon_name = 'arrow-down'
+        elif posxing_type == '3':  # RR Over Grade
+            icon_name = 'arrow-up'
 
         if is_target:
             # --- For the target railroad, use stars with color-coding for traffic ---
@@ -134,7 +152,7 @@ def create_crossing_map(search_lat, search_lon, all_crossings, nearest_crossing,
             folium.Marker(
                 [crossing_lat, crossing_lon],
                 popup=folium.Popup(popup_html, max_width=300),
-                icon=folium.Icon(color=pin_color, icon="star", prefix="fa")
+                icon=folium.Icon(color=pin_color, icon=icon_name, prefix="fa")
             ).add_to(m)
         else:
             # --- For all other railroads, use small circles ---
