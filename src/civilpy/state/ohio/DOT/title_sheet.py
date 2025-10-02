@@ -72,6 +72,7 @@ def find_section_in_pdf(model, pdf_path, target_label, page_number=1):
         return None
 
     doc = fitz.open(pdf_path)
+    # Convert page number to zero-based index for fitz
     page_index = page_number - 1
     if not (0 <= page_index < len(doc)):
         print(f"Error: Page {page_number} is invalid. PDF has {len(doc)} pages.")
@@ -241,37 +242,19 @@ def extract_table_or_text(pdf_path, bounding_box_info):
         return None
 
 
-# --- Step 3: Display and Debug Functions ---
-def display_croppped_section(bounding_box_info, target_label):
-    if not bounding_box_info or bounding_box_info.get("best_box") is None:
-        print("Cannot display results: Invalid bounding_box_info provided.")
-        return
-    original_image = bounding_box_info["original_image"]
-    best_box = bounding_box_info["best_box"]
-    fig, axs = plt.subplots(1, 2, figsize=(20, 10))
-    axs[0].imshow(original_image)
-    axs[0].set_title("Original Image");
-    axs[0].axis('off')
-    xmin, ymin, xmax, ymax = best_box
-    expansion_pixels = 30
-    img_width, img_height = original_image.size
-    xmin = max(0, xmin - expansion_pixels);
-    ymin = max(0, ymin - expansion_pixels)
-    xmax = min(img_width, xmax + expansion_pixels)
-    cropped_image = original_image.crop((xmin, ymin, xmax, ymax))
-    axs[1].imshow(cropped_image)
-    axs[1].set_title(f"Cropped: '{target_label}'");
-    axs[1].axis('off')
-    plt.tight_layout();
-    plt.show()
+# --- Step 3: Main Processing Logic ---
 
-
-# --- Step 4: Main Processing Logic ---
-
-def process_document(model, file_path, target_label, page_number=1):
+def process_document(model_obj_or_path, file_path, target_label, page_number=1):
     """
     Main orchestrator. Determines file type and routes to the correct functions.
+    Accepts either a loaded model object or a string path to a model file.
     """
+    # If a path string is passed, load the model. Otherwise, use the provided object.
+    if isinstance(model_obj_or_path, str):
+        model = load_trained_model(model_obj_or_path)
+    else:
+        model = model_obj_or_path
+
     if not os.path.exists(file_path):
         print(f"Error: File not found at {file_path}");
         return None
@@ -287,6 +270,9 @@ def process_document(model, file_path, target_label, page_number=1):
         return extract_table_or_text(file_path, section_info)
 
     elif is_image:
+        # Page number is ignored for single image files
+        if page_number != 1:
+            print(f"Info: 'page_number' is ignored for image files. Processing image: {file_path}")
         print(f"--- Processing Image: {file_path} ---")
         section_info = find_section_in_image(model, file_path, target_label)
         if not section_info: return None
@@ -318,7 +304,7 @@ def process_document(model, file_path, target_label, page_number=1):
         return None
 
 
-# --- Step 5: Data Cleaning and Export ---
+# --- Step 4: Data Cleaning, Export, and Conversion ---
 
 def open_file(filepath):
     """Cross-platform way to open a file."""
@@ -337,33 +323,17 @@ def pre_clean_ocr_data(raw_df: pd.DataFrame) -> pd.DataFrame:
     """
     if raw_df.empty:
         return pd.DataFrame()
-
     print("🧹 Pre-cleaning raw OCR data before exporting to Excel...")
-
-    # Define regex for codes (e.g., BP-3.1) and dates (e.g., 07-16-04)
     code_pattern = r'[A-Z]{1,3}[-]?[\d\.-]+M?'
-    date_pattern = r'\d{2}[-]\d{2}[-]\d{2}'
-
-    # Create a new DataFrame of the same size, filled with NaN to store results
+    date_pattern = r'\d{2}[-/]\d{2}[-/]\d{2}'
     cleaned_df = pd.DataFrame(index=raw_df.index, columns=raw_df.columns)
-
     for r_idx, row in raw_df.iterrows():
         for c_idx, item in row.items():
-            if pd.isna(item):
-                continue
-
+            if pd.isna(item): continue
             cell_content = str(item).replace('—', '-')
-
-            # Use findall to extract all parts that match the patterns
-            valid_codes = re.findall(code_pattern, cell_content)
-            valid_dates = re.findall(date_pattern, cell_content)
-
-            all_valid_parts = valid_codes + valid_dates
-
-            if all_valid_parts:
-                # Reconstruct the cell content with only the valid parts
-                cleaned_df.loc[r_idx, c_idx] = ' '.join(all_valid_parts)
-
+            valid_parts = re.findall(f"({code_pattern}|{date_pattern})", cell_content)
+            if valid_parts:
+                cleaned_df.loc[r_idx, c_idx] = ' '.join(valid_parts)
     return cleaned_df
 
 
@@ -373,65 +343,38 @@ def export_for_review(result: dict):
     cropped image to a file, then opens both for manual user review.
     """
     if not result or 'data' not in result or 'image' not in result:
-        print("Export function received invalid input.")
+        print("Export function received invalid input.");
         return
-
-    raw_df = result['data']
+    raw_df = result['data'];
     cropped_image = result['image']
-
-    # Pre-clean the data to give the user a better starting point
     cleaned_for_review_df = pre_clean_ocr_data(raw_df)
-
-    print("\n" + "---" * 10)
-    print("✨ Exporting pre-cleaned data for manual review...")
-
+    print("\n" + "---" * 10 + "\n✨ Exporting pre-cleaned data for manual review...")
     try:
-        # Create temp files that won't be deleted immediately
         image_file = tempfile.NamedTemporaryFile(delete=False, suffix='.png')
         excel_file = tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx')
-
-        # Save the data
         cropped_image.save(image_file.name)
-        # Save the PRE-CLEANED, multi-column DataFrame without a header
         cleaned_for_review_df.to_excel(excel_file.name, index=False, header=False)
-
-        # Close the files to ensure they are written to disk
-        image_file.close()
+        image_file.close();
         excel_file.close()
-
         print("\n--- OUTPUTS FOR REVIEW ---")
-        print(f"🖼️  Image:      {image_file.name}")
-        print(f"📊 Excel:      {excel_file.name}")
-        print("\nACTION REQUIRED: Please open the Excel file, clean the data, and save your changes.")
-        print("Once saved, run this script again with the path to the cleaned Excel file to generate the final JSON.")
-
-        # Open the two files for immediate review
-        print("\n🚀 Opening files for review...")
-        open_file(image_file.name)
+        print(f"🖼️  Image:      {image_file.name}\n📊 Excel:      {excel_file.name}")
+        print("\nACTION REQUIRED: Open Excel, clean the data, and save. Then run this script on the saved Excel file.")
+        print("\n🚀 Opening files for review...");
+        open_file(image_file.name);
         open_file(excel_file.name)
-
     except Exception as e:
-        print(f"\n--- ERROR ---")
-        print(f"Could not save or open the output files for review: {e}")
+        print(f"\n--- ERROR ---\nCould not save or open the output files for review: {e}")
 
 
 def _clean_and_pair_from_df(df: pd.DataFrame) -> dict:
-    """
-    Internal helper to take a DataFrame, clean it, and return a paired dictionary.
-    This is the core data structuring logic.
-    """
-    if df.empty:
-        return {}
-
+    """Internal helper to take a DataFrame, clean it, and return a paired dictionary."""
+    if df.empty: return {}
     code_pattern = re.compile(r'^[A-Z]{1,3}[-]?[\d\.-]+M?$')
-    date_pattern = re.compile(r'^\d{2}[-]\d{2}[-]\d{2}$')
-
+    date_pattern = re.compile(r'^\d{2}[-/]\d{2}[-/]\d{2}$')
     all_items = []
     for item in df.to_numpy().flatten():
         if pd.notna(item):
-            cleaned_item = str(item).replace('—', '-')
-            all_items.extend(cleaned_item.split())
-
+            all_items.extend(str(item).replace('—', '-').split())
     structured_list = []
     i = 0
     while i < len(all_items) - 1:
@@ -441,44 +384,35 @@ def _clean_and_pair_from_df(df: pd.DataFrame) -> dict:
             i += 2
         else:
             i += 1
-
     return {item['drawing_label']: item['effective_date'] for item in structured_list}
 
 
 def convert_excel_to_json(excel_path: str, save_and_open: bool = True):
-    """
-    Reads a user-cleaned Excel file and generates a clean JSON object.
-    Can optionally save and open the file or return the dictionary.
-    """
+    """Reads a user-cleaned Excel file and generates a clean JSON object."""
     try:
         df = pd.read_excel(excel_path, header=None)
         json_output_dict = _clean_and_pair_from_df(df)
-
         if not json_output_dict:
-            print("Could not extract any valid pairs from the Excel file.")
+            print("Could not extract any valid pairs from the Excel file.");
             return {}
-
         if save_and_open:
             print("\n--- CONVERSION MODE ---")
-            print(f"Reading corrected data from: {excel_path}")
             json_output_path = os.path.splitext(excel_path)[0] + "_final.json"
             with open(json_output_path, 'w', encoding='utf-8') as f:
                 json.dump(json_output_dict, f, indent=4)
             print(f"✅ Successfully converted Excel to JSON. Found {len(json_output_dict)} pairs.")
-            print(f"Final JSON saved to: {json_output_path}")
-            print("🚀 Opening final JSON file...")
+            print(f"Final JSON saved to: {json_output_path}\n🚀 Opening final JSON file...")
             open_file(json_output_path)
-
         return json_output_dict
-
     except FileNotFoundError:
-        print(f"Error: Excel file not found at {excel_path}")
-        return {}
+        print(f"Error: Excel file not found at {excel_path}"); return {}
     except Exception as e:
-        print(f"An error occurred during Excel to JSON conversion: {e}")
-        return {}
+        print(f"An error during Excel to JSON conversion: {e}"); return {}
 
-def extract_drawing_data(file_path: str, model_path: str, target_label: str = None) -> dict:
+
+# --- Step 5: Importable High-Level Function ---
+
+def extract_drawing_data(file_path: str, model_path: str, target_label: str = None, page_number: int = 1) -> dict:
     """
     Main importable function to run the extraction workflow on a single file.
 
@@ -490,6 +424,8 @@ def extract_drawing_data(file_path: str, model_path: str, target_label: str = No
         model_path (str): The full path to the trained model file.
         target_label (str, optional): A specific label to extract. If None,
                                       the function will search for all known labels.
+        page_number (int, optional): The 1-based page number to process in a PDF.
+                                     Defaults to 1. Ignored for image files.
 
     Returns:
         dict: A dictionary containing the extracted data. If multiple labels are
@@ -497,84 +433,80 @@ def extract_drawing_data(file_path: str, model_path: str, target_label: str = No
     """
     file_extension = os.path.splitext(file_path)[1].lower()
 
-    # --- Mode 1: Convert a pre-cleaned Excel file ---
     if file_extension in ['.xlsx', '.xls']:
         print(f"--- Running in Conversion Mode for: {file_path} ---")
-        # In this mode, the function returns the final, clean JSON structure
         return convert_excel_to_json(file_path, save_and_open=False)
 
-    # --- Mode 2: Extract from a PDF or Image file ---
     elif file_extension in ['.pdf', '.png', '.jpg', '.jpeg', '.tiff', '.tif']:
         print(f"--- Running in Extraction Mode for: {file_path} ---")
         if not os.path.exists(model_path):
-            print(f"Error: Model file not found at: {model_path}")
+            print(f"Error: Model file not found at: {model_path}");
             return {}
 
         model = load_trained_model(model_path)
-
-        labels_to_process = []
-        if target_label:
-            if target_label in DISCOVERED_LABELS:
-                labels_to_process.append(target_label)
-            else:
-                print(f"Warning: Label '{target_label}' is not in the list of known labels.")
-                return {target_label: "Label not found"}
-        else:
-            # If no label is specified, process all of them
-            labels_to_process = DISCOVERED_LABELS
+        labels_to_process = [target_label] if target_label else DISCOVERED_LABELS
 
         all_results = {}
         for label in labels_to_process:
-            print(f"\nProcessing Label: '{label}'")
-            # process_document finds the section and returns the raw OCR DataFrame
-            extracted_result = process_document(model, file_path, label)
+            if label not in DISCOVERED_LABELS:
+                print(f"Warning: Label '{label}' is not in the list of known labels.")
+                all_results[label] = "Label not found"
+                continue
+
+            print(f"\nProcessing Label: '{label}' on page {page_number}")
+            extracted_result = process_document(model, file_path, label, page_number=page_number)
 
             if extracted_result and 'data' in extracted_result and not extracted_result['data'].empty:
-                # This workflow cleans the raw data and returns the final paired dictionary
                 cleaned_data = _clean_and_pair_from_df(extracted_result['data'])
                 all_results[label] = cleaned_data
             else:
                 all_results[label] = "No data found"
 
-        return all_results
+        # If only one label was requested, return its data directly, not in a nested dict
+        if target_label and target_label in all_results:
+            return all_results[target_label]
 
-    # --- Handle unsupported files ---
+        return all_results
     else:
-        print(f"Error: Unsupported file format in file path: {file_extension}")
+        print(f"Error: Unsupported file format in file path: {file_extension}");
         return {}
 
 
+# --- Main Execution Block (for direct script running) ---
 if __name__ == '__main__':
     # --- CONFIGURATION ---
-    # This block now demonstrates how to use the importable function.
     MODEL_PATH = "path/to/your/trained_model.pth"
-    INPUT_FILE_PATH = "path/to/your/document.tiff"
+    INPUT_FILE_PATH = "path/to/your/document.pdf"
 
     # --- CHOOSE A LABEL ---
     # Set to a specific label like "Standard Construction Drawings" to run only one.
     # Set to None to run all labels in DISCOVERED_LABELS.
-    TARGET_LABEL = None
+    TARGET_LABEL = "Standard Construction Drawings"
+
+    # --- CHOOSE A PAGE (for PDF files) ---
+    PAGE_TO_PROCESS = 1  # Specify the page number of the PDF to analyze
 
     # --- EXECUTION ---
     if not os.path.exists(INPUT_FILE_PATH):
         print(f"Error: Input file not found at '{INPUT_FILE_PATH}'")
     else:
-        # Call the main logic function
-        final_data = extract_drawing_data(
-            file_path=INPUT_FILE_PATH,
-            model_path=MODEL_PATH,
-            target_label=TARGET_LABEL
-        )
+        # This block demonstrates the two main workflows based on file type.
+        file_ext = os.path.splitext(INPUT_FILE_PATH)[1].lower()
 
-        # --- DISPLAY RESULTS ---
-        if final_data:
-            print("\n" + "=" * 50)
-            print("✅ EXTRACTION COMPLETE. FINAL DATA:")
-            print(json.dumps(final_data, indent=4))
-            print("=" * 50)
+        if file_ext in ['.xlsx', '.xls']:
+            # WORKFLOW 1: User wants to convert a cleaned Excel file to final JSON
+            print("Detected Excel file. Running in final conversion mode.")
+            convert_excel_to_json(INPUT_FILE_PATH, save_and_open=True)
 
-            # Optional: Save the final data to a file
-            output_filename = os.path.splitext(os.path.basename(INPUT_FILE_PATH))[0] + "_output.json"
-            with open(output_filename, 'w', encoding='utf-8') as f:
-                json.dump(final_data, f, indent=4)
-            print(f"\nResults also saved to: {output_filename}")
+        elif file_ext in ['.pdf', '.png', '.jpg', '.jpeg', '.tiff', '.tif']:
+            # WORKFLOW 2: User wants to perform initial extraction for review
+            print("Detected PDF/Image file. Running in initial extraction mode.")
+            model = load_trained_model(MODEL_PATH)
+            result_for_review = process_document(
+                model,
+                file_path=INPUT_FILE_PATH,
+                target_label=TARGET_LABEL,
+                page_number=PAGE_TO_PROCESS
+            )
+            if result_for_review:
+                export_for_review(result_for_review)
