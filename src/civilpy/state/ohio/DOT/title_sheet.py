@@ -14,9 +14,6 @@ import subprocess
 import sys
 import json
 
-# You will need to install pytesseract and Google's Tesseract-OCR engine
-# pip install pytesseract
-# Installation instructions for Tesseract: https://github.com/tesseract-ocr/tesseract
 import pytesseract
 
 # --- Global Configuration & Model Loading ---
