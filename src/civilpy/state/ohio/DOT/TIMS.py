@@ -1,4 +1,5 @@
 # Use this section to extract data from TIMs and Assetwise to QA the data
+import json
 import requests
 import pandas as pd
 
@@ -68,3 +69,81 @@ def get_tims_data(data_source='Roadway'):
         print("Failed to retrieve any data.")
 
     return df
+
+
+def get_bridge_sfns_by_district(district=None,
+                                url = "https://tims.dot.state.oh.us/ags/rest/services/Assets/Bridge_Inventory/MapServer/0/query"
+                                ):
+    """
+    Queries the TIMS API for bridges in a specific district and returns a list of SFNs.
+
+    Args:
+        district (int, optional): The district number (1-12).
+                                 If None, all bridges are queried. Defaults to None.
+
+    Returns:
+        list: A list of SFNs (as strings or numbers, whatever the API returns),
+              or an empty list if no records are found or an error occurs.
+    """
+
+    # 1. Define query parameters based on district input
+    out_fields = 'SFN'  # Only query the SFN field for efficiency
+    return_geometry = False
+
+    if district is not None and 1 <= district <= 12:
+        # Format district as a two-digit string (e.g., 6 -> '06', 12 -> '12')
+        district_str = str(district).zfill(2)
+        where_clause = f"DISTRICT = '{district_str}'"
+        print(f"Querying API for District {district_str}...")
+    else:
+        where_clause = "1=1"
+        print("No district specified, gathering all bridges...")
+
+    # 2. Define the API Parameters
+    params = {
+        'where': where_clause,
+        'outFields': out_fields,
+        'returnGeometry': str(return_geometry).lower(),
+        'f': 'json'
+    }
+
+    # 3. Make the API Request
+    print(f"URL: {url}")
+    print(f"Filter: {where_clause}")
+
+    try:
+        response = requests.get(url, params=params, timeout=30)
+        response.raise_for_status()  # Raise an exception for bad status codes
+
+        data = response.json()
+
+        # 4. Process the Response
+        if 'features' in data and data['features']:
+            features = data['features']
+            print(f"\nSuccess! Found {len(features)} features.")
+
+            # Extract just the SFN from each feature's attributes
+            # This is a list comprehension, which is very efficient.
+            sfn_list = [
+                feature['attributes']['SFN']
+                for feature in features
+                if 'attributes' in feature and 'SFN' in feature['attributes']
+            ]
+            return sfn_list
+
+        elif 'error' in data:
+            print(f"API returned an error: {data['error']['message']}")
+        else:
+            print("Query was successful, but no features were found matching the criteria.")
+
+    except requests.exceptions.RequestException as e:
+        print(f"An error occurred during the API request: {e}")
+        print("Please check the URL and your network connection.")
+    except json.JSONDecodeError:
+        print("Error: Could not decode the response from the server. The service might be down.")
+    except KeyError:
+        # This would happen if a feature is missing 'attributes' or 'SFN'
+        print("Error: Data was returned but was missing the 'SFN' field in 'attributes'.")
+
+    # Return an empty list if any issues occurred
+    return []

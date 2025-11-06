@@ -18,7 +18,7 @@ except FileNotFoundError as e:
 def connect_to_brr():
     # Oracle connection string using service name instead of SID
     oracle_connection_string = (
-        f"oracle+cx_oracle://{secrets['BRR_USN']}:{secrets['BRR_PASS']}@{secrets['BRR_SERVER']}:{secrets['BRR_PORT']}/?service_name={secrets['BRR_SERVICE']}"
+        f"oracle+oracledb://{secrets['BRR_USN']}:{secrets['BRR_PASS']}@{secrets['BRR_SERVER']}:{secrets['BRR_PORT']}/?service_name={secrets['BRR_SERVICE']}"
     )
 
     # Create the engine
