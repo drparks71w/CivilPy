@@ -5,7 +5,6 @@ from datetime import datetime
 from requests.auth import HTTPBasicAuth
 from typing import List, Dict, Union
 
-
 base_url = "https://ohiodot-it-api.bentley.com"
 
 
@@ -15,10 +14,13 @@ def get_assetwise_secrets():
         secrets = json.load(file)
     return secrets['BENTLEY_ASSETWISE_KEY_NAME'], secrets['BENTLEY_ASSETWISE_API']
 
+
 username, password = get_assetwise_secrets()
 
+
 # For when you only want to look at a single field and know it's id
-def get_field_definition_by_id(base_api_url: str, username: str, password: str, fe_id: int, api_type: str = "api") -> dict:
+def get_field_definition_by_id(base_api_url: str, username: str, password: str, fe_id: int,
+                               api_type: str = "api") -> dict:
     """
     Retrieves a single field definition (Field object) from the AssetWise API by its fe_id
     using Basic Auth.
@@ -38,10 +40,10 @@ def get_field_definition_by_id(base_api_url: str, username: str, password: str, 
               Returns an error message string if the request fails or data cannot be parsed.
     """
     # Use the specific endpoint for getting a field by its ID
-    endpoint_path = f"/{api_type}/Field/{fe_id}" # [3]
+    endpoint_path = f"/{api_type}/Field/{fe_id}"  # [3]
     url = f"{base_api_url}{endpoint_path}"
 
-    auth = HTTPBasicAuth(username, password) #
+    auth = HTTPBasicAuth(username, password)  #
     headers = {
         "Accept": "application/json"
     }
@@ -67,6 +69,48 @@ def get_field_definition_by_id(base_api_url: str, username: str, password: str, 
         return "Failed to decode JSON response."
 
 
+def get_bridge_by_sfn(
+        sfn: str,
+        include_coordinates: bool = True,
+        include_parent: bool = False
+) -> dict:
+    """
+    Retrieves a specific bridge asset by its SFN (Structure File Number) using the AssetWise API.
+
+    Args:
+        sfn (str): The SFN/asset code of the bridge to retrieve (e.g., '0702870').
+        include_coordinates (bool): Whether to include asset coordinates in the response. Defaults to True.
+        include_parent (bool): Whether to include the parent as_id in the response. Defaults to False.
+
+    Returns:
+        dict: A dictionary representing the bridge asset data.
+
+    Raises:
+        requests.exceptions.HTTPError: If the API request encounters an HTTP error.
+    """
+    base_url = "https://ohiodot-it-api.bentley.com"
+    api_url = f"{base_url}/api/Asset/GetAssetByAsCode/{sfn}"
+
+    query_params = {
+        "IncludeCoordinates": include_coordinates,
+        "IncludeParent": include_parent
+    }
+
+    headers = {
+        "Accept": "application/json"
+    }
+
+    response = requests.get(
+        api_url,
+        params=query_params,
+        headers=headers,
+        auth=HTTPBasicAuth(username, password)
+    )
+
+    response.raise_for_status()
+    return response.json()['data']
+
+
 def get_elements_for_asset(base_api_url: str, username: str, password: str, as_id: int, api_type: str = "api") -> List[
     Dict]:
     """
@@ -82,7 +126,7 @@ def get_elements_for_asset(base_api_url: str, username: str, password: str, as_i
     # We use objectType, objectId (as_id), asId, segmentId, and elementId.
     # The segmentId parameter is noted as 'allowEmptyValue' in the documentation [52],
     # and 0 is a common convention for "all" or "not specified" for integer IDs in API paths.
-    # We apply the same convention for elementId, which is also a required integer path parameter.
+    # We apply the same convention for elementId, which is also a required integer path parameters
     endpoint_path = f"/{api_type}/StructureElement/GetElements/{object_type_asset}/{as_id}/{as_id}/0/0"
     url = f"{base_api_url}{endpoint_path}"
 
@@ -91,6 +135,7 @@ def get_elements_for_asset(base_api_url: str, username: str, password: str, as_i
         "Accept": "application/json"  # [13-15, 53]
     }
 
+    response = None  # Define response here so it's available in except block
     try:
         response = requests.get(url, headers=headers, auth=auth)  # Use GET method [4-6]
         response.raise_for_status()  # Raise an exception for HTTP errors [13-15, 20]
@@ -118,9 +163,9 @@ def get_elements_for_asset(base_api_url: str, username: str, password: str, as_i
 
 
 def get_inspection_reports_for_asset(
-    asset_id: int,
-    reports_to_return: int = 5, # Defaults to 5 of the most recent reports
-    api_type: str = "api"
+        asset_id: int,
+        reports_to_return: int = 99,  # Defaults to 5 of the most recent reports
+        api_type: str = "api"
 ) -> List[Dict[str, Union[int, str, bool, Dict]]]:
     """
     Retrieves recent inspection reports for a specific asset, regardless of report status.
@@ -141,24 +186,21 @@ def get_inspection_reports_for_asset(
     query_params = {"reportsToReturn": reports_to_return}
     headers = {"Accept": "application/json"}
 
-    print(f"Requesting {reports_to_return} recent inspection reports for asset ID: {asset_id} at URL: {api_url} with params: {query_params}")
-
     response = requests.get(
         api_url,
         params=query_params,
         headers=headers,
         auth=HTTPBasicAuth(username, password)
     )
-    response.raise_for_status() # Raise an exception for HTTP errors
+    response.raise_for_status()  # Raise an exception for HTTP errors
 
-    print(f"Successfully retrieved recent inspection reports for asset {asset_id}.")
     # The 'data' field contains the list of InspectionReportHelper objects
     return response.json().get('data', [])
 
 
 def get_full_inspection_report(
-    ast_id: int,
-    api_type: str = "api"
+        ast_id: int,
+        api_type: str = "api"
 ) -> Dict[str, Union[int, str, bool, List, Dict]]:
     """
     Retrieves the full details of a specific inspection report by its Asset Task ID (ast_id).
@@ -179,14 +221,14 @@ def get_full_inspection_report(
     Raises:
         requests.exceptions.HTTPError: If the API request encounters an HTTP error (e.g., 4xx or 5xx response).
     """
-    username, password = get_assetwise_secrets() # Authenticates the request
-    base_url = "https://ohiodot-it-api.bentley.com" # Base URL for the AssetWise API
+    username, password = get_assetwise_secrets()  # Authenticates the request
+    base_url = "https://ohiodot-it-api.bentley.com"  # Base URL for the AssetWise API
 
     # Constructs the API endpoint for retrieving a single InspectionReport by ast_id
     api_url = f"{base_url}/{api_type}/Value/GetValuesForReport/{ast_id}"
 
     headers = {
-        "Accept": "application/json" # Specifies that the client expects a JSON response
+        "Accept": "application/json"  # Specifies that the client expects a JSON response
     }
 
     print(f"Requesting full inspection report for AST ID: {ast_id} at URL: {api_url}")
@@ -266,6 +308,7 @@ def get_all_odot_snbi_data(asset_id: int):
 
     return response_data
 
+
 def format_assetwise_output(response):
     element_dict = {}
 
@@ -299,6 +342,60 @@ def format_assetwise_output(response):
                 })
 
     return organized_dict
+
+
+def get_all_approved_inspections(as_id: int, api_type: str = "api") -> List[Dict]:
+    """
+    Retrieves ALL approved inspection reports for a specific asset.
+    Uses the GET /{apiType}/InspectionReport/GetAllApproved/{as_id} endpoint.
+
+    Args:
+        as_id (int): The unique ID of the asset.
+        api_type (str): The API type, typically 'api'. Defaults to 'api'.
+
+    Returns:
+        List[Dict]: A list of dictionaries, each representing an InspectionReportHelper object.
+                    Returns an empty list if no data is found or an error occurs.
+    """
+    # 1. Get auth secrets, consistent with other functions
+    username, password = get_assetwise_secrets()
+
+    # 2. Construct URL from global base_url
+    api_url = f"{base_url}/{api_type}/InspectionReport/GetAllApproved/{as_id}"
+
+    # 3. Set headers and auth
+    headers = {"Accept": "application/json"}
+    auth = HTTPBasicAuth(username, password)
+
+    # 4. Add logging
+    print(f"Requesting all approved inspection reports for asset ID: {as_id} at URL: {api_url}")
+
+    # 5. Use a robust try/except block for the request
+    response = None  # Define response here so it's available in except block
+    try:
+        response = requests.get(api_url, headers=headers, auth=auth)
+        response.raise_for_status()  # Raise an exception for HTTP errors (4xx, 5xx)
+
+        data = response.json()
+
+        if data.get("success"):
+            print(f"Successfully retrieved all approved inspection reports for asset {as_id}.")
+            # The 'data' field contains the list of InspectionReportHelper objects
+            return data.get("data", [])
+        else:
+            # Handle API-level error (success=false)
+            print(f"API returned an error for asset {as_id}: {data.get('errorMessage', 'Unknown error')}")
+            return []
+
+    except requests.exceptions.RequestException as req_err:
+        status_code = response.status_code if response is not None else "N/A"
+        response_text = response.text if response is not None else "N/CSS"
+        print(
+            f"An HTTP request error occurred for asset {as_id}: {req_err} (Status Code: {status_code}, Response: {response_text})")
+        return []
+    except ValueError:  # Handle JSON decode error
+        print(f"Failed to decode JSON response for asset ID {as_id}.")
+        return []
 
 
 def get_all_bridges_paged(
