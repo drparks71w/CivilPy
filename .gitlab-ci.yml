@@ -1,23 +1,21 @@
-# 1. GLOBAL VARIABLES & CACHE
-# This tells pip to put files in a local folder, and GitLab to save that folder between runs.
+# DEFINE STAGES EXPLICITLY TO CONTROL ORDER
+stages:
+  - sanity  # The blocker stage
+  - test    # The matrix stage
+  - deploy  # The release stage
+
 variables:
   PIP_CACHE_DIR: "$CI_PROJECT_DIR/.pip_cache"
 
+# Global Cache
 cache:
   key: "$CI_COMMIT_REF_SLUG"
   paths:
     - .pip_cache/
     - venv/
 
-# 2. TEST TEMPLATE (Added a '.' to make it hidden)
-# This prevents it from running as a duplicate job in the '.pre' stage.
-.test_code_coverage:
-  stage: test
-  rules:
-    - if: $CI_COMMIT_TITLE =~ /-no_tests/
-      when: never
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+# --- TEMPLATE (Does not run, just holds the script) ---
+.test_logic:
   script:
     - python -m venv venv
     - source venv/bin/activate
@@ -32,32 +30,63 @@ cache:
         coverage_format: cobertura
         path: coverage.xml
 
-# 3. TEST JOBS
-verify-3.10:
-  extends: .test_code_coverage
-  image: python:3.10
-
-verify-3.11:
-  extends: .test_code_coverage
+# --- STAGE 1: SANITY CHECK (The Blocker) ---
+# If this fails, the pipeline STOPS here.
+smoke-test-3.11:
+  extends: .test_logic
+  stage: sanity
   image: python:3.11
+  rules:
+    - if: $CI_COMMIT_TITLE =~ /-no_tests/
+      when: never
+    # Run on MRs and Main
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+# --- STAGE 2: COMPATIBILITY MATRIX ---
+# These run only if smoke-test-3.11 passed.
+verify-3.10:
+  extends: .test_logic
+  stage: test
+  image: python:3.10
+  rules:
+    - if: $CI_COMMIT_TITLE =~ /-no_tests/
+      when: never
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
 
 verify-3.12:
-  extends: .test_code_coverage
+  extends: .test_logic
+  stage: test
   image: python:3.12
+  rules:
+    - if: $CI_COMMIT_TITLE =~ /-no_tests/
+      when: never
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
 
 verify-3.13:
-  extends: .test_code_coverage
+  extends: .test_logic
+  stage: test
   image: python:3.13
   allow_failure: true
+  rules:
+    - if: $CI_COMMIT_TITLE =~ /-no_tests/
+      when: never
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
 
-# Note: This will likely fail without installing 'gdal-bin' via apt-get first
 verify-3.14:
-  extends: .test_code_coverage
+  extends: .test_logic
+  stage: test
   image: python:3.14
   allow_failure: true
+  rules:
+    - if: $CI_COMMIT_TITLE =~ /-no_tests/
+      when: never
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
 
-# 4. DEPLOY JOBS
-# Switched image back to 3.11 to prevent 'fiona' build errors during deploy.
 pypi_publish:
   stage: deploy
   image: python:3.11
@@ -65,7 +94,6 @@ pypi_publish:
     - if: $CI_COMMIT_MESSAGE =~ /Release .*/
   script:
     - pip install -U build twine setuptools
-    # Standardized on 'build' (setup.py sdist is deprecated)
     - python -m build
     - twine upload --verbose dist/*
 
@@ -81,7 +109,7 @@ gitlab_publish:
 
 pages:
   stage: deploy
-  image: alpine:latest  # Changed to alpine for speed (files copy faster)
+  image: alpine:latest
   script:
     - mkdir .public
     - cp -r src/civilpy/webpages/* .public
