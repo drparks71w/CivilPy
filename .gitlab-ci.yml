@@ -65,6 +65,7 @@ verify-3.12:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
 
+# Can be removed
 verify-3.13:
   extends: .test_logic
   stage: test
