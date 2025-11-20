@@ -49,6 +49,8 @@ verify-3.10:
   extends: .test_logic
   stage: test
   image: python:3.10
+  # Scipy library support already dead for these
+  allow_failure: true
   rules:
     - if: $CI_COMMIT_TITLE =~ /-no_tests/
       when: never
@@ -65,7 +67,6 @@ verify-3.12:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
 
-# Can be removed
 verify-3.13:
   extends: .test_logic
   stage: test
