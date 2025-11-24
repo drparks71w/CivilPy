@@ -168,7 +168,7 @@ def download_asset_file_by_id(
     return response.content
 
 
-def get_asset_cover_image(asset_id: int, api_type: str = "api") -> bytes | None:
+def get_asset_cover_image(asset_id: int, api_type: str = "api") -> Union[bytes, None]:
     """
     Retrieves the designated cover image for a specific asset by its ID.
 
@@ -538,45 +538,98 @@ def get_all_inspection_data(inspection_reports, field_ids):
 
 def get_all_odot_snbi_data(asset_id: int):
     username, password = get_assetwise_secrets()
-    base_url = "https://ohiodot-it-api.bentley.com"  # Base URL for the AssetWise API
+    base_url = "https://ohiodot-it-api.bentley.com"
+
     response_data = []
+    base_template_id = 1000000
+    offset = 0
+    consecutive_failures = 0
+    MAX_RETRIES = 2  # Allow for 2 empty slots before assuming we are done
 
-    for i in range(0, 6, 1):
-        api_url = f"{base_url}/api/FormElement/GetRfgTemplateElements/{asset_id}/0/100000{i}"
-        print(api_url)
+    print(f"--- Starting Dynamic SNBI Data Discovery for Asset {asset_id} ---")
 
-        headers = {
-            "Accept": "application/json"  # Specifies that the client expects a JSON response
-        }
+    while consecutive_failures < MAX_RETRIES:
+        # Dynamically calculate the current Template ID
+        # Note: We use integer math, not string concatenation, to safely handle 1000009 -> 1000010
+        current_template_id = base_template_id + offset
 
-        print(
-            f"Requesting all current values for Asset ID: {asset_id} at URL: {api_url} "
-        )
+        api_url = f"{base_url}/api/FormElement/GetRfgTemplateElements/{asset_id}/0/{current_template_id}"
+        headers = {"Accept": "application/json"}
 
-        response = requests.get(
-            api_url,
-            headers=headers,
-            auth=HTTPBasicAuth(username, password)  # Authenticates the request
-        )
+        try:
+            response = requests.get(
+                api_url,
+                headers=headers,
+                auth=HTTPBasicAuth(username, password)
+            )
 
-        response.raise_for_status()  # Raise an exception for HTTP errors
+            # Check if the request was successful AND contained actual data
+            if response.status_code == 200:
+                json_data = response.json()
 
-        print(f"Successfully retrieved all current values for Asset ID: {asset_id}.")
+                # Some APIs return 200 OK but with "success": false or empty data
+                if json_data.get('success') and json_data.get('data'):
+                    response_data.append(json_data['data'])
+                    consecutive_failures = 0  # Reset failure counter on success
+                else:
+                    consecutive_failures += 1
+            elif response.status_code == 404:
+                print(f"[END]   Template {current_template_id} - Not Found (404).")
+                consecutive_failures += 1
+            else:
+                print(f"[SKIP]  Template {current_template_id} - Error {response.status_code}")
+                consecutive_failures += 1
 
-        response_data.append(response.json()['data'])
+        except Exception as e:
+            print(f"[ERR]   Failed to fetch {current_template_id}: {e}")
+            consecutive_failures += 1
 
+        offset += 1
+
+    print(f"--- Discovery Complete. Retrieved {len(response_data)} forms. ---")
     return response_data
 
 
+# Global cache to prevent re-fetching the same field definitions repeatedly
+field_definition_cache = {}
+
+# Global cache to prevent re-fetching the same field definitions repeatedly
+field_definition_cache = {}
+
+
 def format_assetwise_output(response):
+    """
+    Organizes SNBI data and dynamically resolves missing Field Names (healing Unnamed Fields).
+    """
     element_dict = {}
+    username, password = get_assetwise_secrets()
 
     # Step 1: Group elements by el_id
     for page in response:
         for instance in page:
             for element in instance['elements']:
                 el_id = element['el_id']
-                # Ensure field is not None before trying to access it
+
+                # --- THE FIX: Check for Missing Field Definition ---
+                # If 'field' is None, we use the hidden 'fe_id' to ask the API for the name
+                if element.get('field') is None:
+                    fe_id = element.get('fe_id')
+
+                    if fe_id:
+                        # Check our cache first so we don't spam the API
+                        if fe_id in field_definition_cache:
+                            element['field'] = field_definition_cache[fe_id]
+                        else:
+                            # We have an ID but no Name. Fetch it manually.
+                            try:
+                                field_def = get_field_definition_by_id(base_url, username, password, fe_id)
+                                if isinstance(field_def, dict) and 'fe_name' in field_def:
+                                    field_definition_cache[fe_id] = field_def
+                                    element['field'] = field_def
+                            except Exception:
+                                pass  # If lookup fails, it stays Unnamed
+
+                # --- 2. Proceed as normal ---
                 field = element.get('field')
                 value = (element.get('value'), field)
                 element_dict.setdefault(el_id, []).append(value)
@@ -642,8 +695,6 @@ def get_all_approved_inspections(as_id: int, api_type: str = "api") -> List[Dict
         data = response.json()
 
         if data.get("success"):
-            print(f"Successfully retrieved all approved inspection reports for asset {as_id}.")
-            # The 'data' field contains the list of InspectionReportHelper objects
             return data.get("data", [])
         else:
             # Handle API-level error (success=false)
