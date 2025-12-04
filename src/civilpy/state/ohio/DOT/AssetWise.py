@@ -7,6 +7,8 @@ from typing import List, Dict, Union
 from IPython.display import display, Image as IPImage
 
 
+from .aw_fields import aw_fields
+
 base_url = "https://ohiodot-it-api.bentley.com"
 
 
@@ -208,121 +210,120 @@ def get_asset_cover_image(asset_id: int, api_type: str = "api") -> Union[bytes, 
 
 class AssetWiseBridge:
     """
-    Represents a single bridge asset from the Bentley AssetWise API, fetched by its SFN.
-    It provides access to the bridge's core data, as well as its related inspections and element data.
-
-    Example:
-        bridge = AssetWiseBridge('0702870')
-        print(bridge)  # Shows a summary including latest inspection
-
-        # Access lazy-loaded properties
-        latest_insp_reports = bridge.inspections
-        element_data = bridge.elements
-        all_snbi = bridge.snbi_data
+    Represents a single bridge asset from the Bentley AssetWise API.
+    Updated to include clean element summaries and decoded attribute values.
     """
 
     def __init__(self, sfn: str):
-        """
-        Initializes the AssetWiseBridge by fetching its core data from the API.
-
-        Args:
-            sfn (str): The SFN (Structure File Number) of the bridge asset.
-
-        Raises:
-            ValueError: If no asset is found for the specified SFN.
-            requests.exceptions.HTTPError: If the API request fails.
-        """
         self.sfn = sfn
+
+        # 1. Fetch Core Asset Identity
+        # Assumes get_bridge_by_sfn is available in your scope
         raw_data = get_bridge_by_sfn(sfn, include_coordinates=True)
 
         if not raw_data:
             raise ValueError(f"No AssetWise asset found for SFN '{sfn}'")
 
-        # Dynamically assign attributes from the API response
+        # Dynamically assign core attributes
         for key, value in raw_data.items():
-            # A simple conversion from camelCase to snake_case for Pythonic access
             snake_case_key = ''.join(['_' + i.lower() if i.isupper() else i for i in key]).lstrip('_')
             setattr(self, snake_case_key, value)
 
-        # Initialize placeholders for lazy-loaded data
+        # Initialize placeholders
         self._elements = None
         self._inspections = None
         self._snbi_data = None
+        self._decoded_attributes = None
+
+    @property
+    def attributes(self) -> Dict[str, Union[str, int, float]]:
+        """Lazy-loads and maps 'fe_id' to human-readable names."""
+        if self._decoded_attributes is None:
+            self._decoded_attributes = self._fetch_and_decode_values()
+        return self._decoded_attributes
 
     @property
     def elements(self) -> List[Dict]:
-        """Lazy-loads and returns all structural elements for the asset."""
+        """Returns the raw dictionary list of elements (good for data processing)."""
         if self._elements is None:
-            print("Fetching element data...")
+            # Assumes get_elements_for_asset is available in your scope
             self._elements = get_elements_for_asset(base_url, username, password, self.as_id)
         return self._elements
 
     @property
+    def element_summary(self) -> List[str]:
+        """
+        Returns a human-readable list of elements and their condition states.
+        Format: 'Name: CS1: X, CS2: Y, CS3: Z, CS4: A'
+        """
+        summary_list = []
+        for el in self.elements:  # Triggers fetch if needed
+            name = el.get('se_name', 'Unknown Element')
+            # Extract quantities, defaulting to 0 if missing
+            s1 = el.get('state1', 0)
+            s2 = el.get('state2', 0)
+            s3 = el.get('state3', 0)
+            s4 = el.get('state4', 0)
+
+            # Create the formatted string
+            summary_list.append(f"{name}: \n\tCS1: {s1}, CS2: {s2}, CS3: {s3}, CS4: {s4}")
+
+        return summary_list
+
+    @property
     def inspections(self) -> List[Dict]:
-        """Lazy-loads and returns all approved inspection reports for the asset."""
         if self._inspections is None:
-            print("Fetching approved inspection reports...")
             self._inspections = get_all_approved_inspections(self.as_id)
         return self._inspections
 
     @property
     def snbi_data(self) -> Dict:
-        """Lazy-loads, formats, and returns all SNBI data for the asset."""
         if self._snbi_data is None:
-            print("Fetching and formatting all SNBI data...")
             raw_data = get_all_odot_snbi_data(self.as_id)
             self._snbi_data = format_assetwise_output(raw_data)
         return self._snbi_data
 
-    def get_all_inspection_data(self, reports_to_return: int = 5) -> Dict:
-        """
-        Retrieves and processes full field values for the most recent inspection reports.
-        """
-        print(f"Fetching full data for the {reports_to_return} most recent inspection reports...")
-        # Get the most recent reports (not necessarily approved)
-        recent_reports = get_inspection_reports_for_asset(self.as_id, reports_to_return=reports_to_return)
+    def _fetch_and_decode_values(self) -> Dict[str, Union[str, int, float]]:
+        """Internal helper to fetch and map CurrentValues."""
+        api_url = f"{base_url}/api/CurrentValue/GetCurrentValuesByAssetId/{self.as_id}"
+        try:
+            response = requests.get(api_url, auth=HTTPBasicAuth(username, password))
+            response.raise_for_status()
+            raw_rows = response.json().get('data', [])
+        except Exception as e:
+            print(f"Error fetching attributes: {e}")
+            return {}
 
-        # Re-use the logic from your notebook's get_all_inspection_data function
-        # We pass an empty dict for field_ids to let it build its cache.
-        # We pass an empty dict for field_ids to let it build its cache.
-        return get_all_inspection_data(recent_reports, {})
+        decoded_data = {}
+        for row in raw_rows:
+            fid = row.get('fe_id')
+            if fid is None or fid < 0: continue
+
+            val = row.get('cv_plain_text') or row.get('cv_value')
+            if val is None or val == "": continue
+
+            try:
+                field_name = aw_fields.get(str(fid), f"Field_{fid}")
+            except ImportError:
+                field_name = f"Field_{fid}"
+
+            decoded_data[field_name] = val
+        return decoded_data
 
     def get_cover_photo(self, display_photo: bool = True):
-        """
-        Finds and optionally displays the full-resolution designated cover photo for the asset.
-
-        Args:
-            display_photo (bool): If True, the photo will be displayed in the output.
-                                  Defaults to True.
-
-        Returns:
-            bytes: The binary content of the image file, or None if not found.
-        """
-        print("Searching for the designated cover photo file...")
         try:
-            # Directly call the efficient endpoint to get the cover image.
             image_bytes = get_asset_cover_image(self.as_id)
-
             if image_bytes and display_photo:
-                print("Displaying cover photo:")
                 display(IPImage(data=image_bytes))
-
-            # The get_asset_cover_image function returns None on 404,
-            # and logs the appropriate message.
             return image_bytes
-        except Exception as e:
-            print(f"Failed to download or display photo: {e}")
+        except Exception:
             return None
 
     def __repr__(self) -> str:
-        """
-        Provides a nicely formatted, developer-friendly summary of the AssetWise bridge.
-        """
-        # Helper to safely get attributes
         def get(attr, default='N/A'):
             return getattr(self, attr, default)
 
-        # Create a clickable Google Maps link from coordinates
+        # 1. Map URL
         map_url = "N/A"
         if hasattr(self, 'coordinates') and self.coordinates:
             lat = self.coordinates.get('latitude')
@@ -330,44 +331,32 @@ class AssetWiseBridge:
             if lat and lon:
                 map_url = f"https://www.google.com/maps?q={lat},{lon}"
 
-        asset_type_name = get('at_name', 'N/A')
-        if hasattr(self, 'asset_type') and isinstance(self.asset_type, dict):
-            asset_type_name = self.asset_type.get('at_name', 'N/A')
+        # 2. Key Attributes (only if already fetched to keep print fast)
+        year = "N/A"
+        length = "N/A"
+        if self._decoded_attributes:
+            year = self._decoded_attributes.get("Year Built", "N/A")
+            length = self._decoded_attributes.get("Structure Length", "N/A")
 
-        # Add latest inspection info
-        latest_inspection_info = "No approved inspections found."
-        if self.inspections:
-            latest_report = self.inspections[0]
-            try:
-                dt = datetime.fromisoformat(latest_report['ast_date'])
-                date_str = dt.strftime('%m/%d/%Y')
+        # 3. Elements Section
+        if self._elements is None:
+            el_section = "  Elements:      (Not fetched - access .elements to load)"
+        else:
+            # If loaded, show the clean summary list
+            el_lines = ["  Elements:"]
+            for line in self.element_summary:
+                el_lines.append(f"    • {line}")
+            el_section = "\n".join(el_lines)
 
-                # Safely access nested inspection type name from the correct field
-                insp_type = "N/A"
-                type_maps = latest_report.get('inspectionReportInspTypeMaps')
-                if type_maps and len(type_maps) > 0:
-                    insp_type_obj = type_maps[0].get('inspectionType')
-                    if insp_type_obj:
-                        insp_type = insp_type_obj.get('it_name', 'Unknown Type')
-
-                latest_inspection_info = f"{date_str} ({insp_type})"
-            except (KeyError, IndexError, TypeError):
-                latest_inspection_info = "Data format error."
-
-        element_count = len(self.elements) if self._elements is not None else "Not yet fetched"
-
-        repr_str = (
+        return (
             f"<AssetWiseBridge SFN: '{self.sfn}'>\n"
-            f"  Asset Name:    {get('as_name', 'No Name')}\n"
-            f"  Asset ID:      {get('as_id')}\n"
-            f"  Asset Type:    {asset_type_name}\n"
-            f"  Description:   {get('as_description', 'No Description')}\n"
-            f"  Location Map:  {map_url}\n"
-            f"  Elements:      {element_count} defined\n"
-            f"  Latest Insp:   {latest_inspection_info}\n"
-            f"\nFor full data, access properties like .elements, .inspections, or .snbi_data"
+            f"  Name:          {get('as_name')}\n"
+            f"  ID:            {get('as_id')}\n"
+            f"  Year Built:    {year}\n"
+            f"  Length:        {length}\n"
+            f"  Map:           {map_url}\n"
+            f"{el_section}\n"
         )
-        return repr_str
 
 
 def get_elements_for_asset(base_api_url: str, username: str, password: str, as_id: int, api_type: str = "api") -> List[
