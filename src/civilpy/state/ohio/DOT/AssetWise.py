@@ -1,11 +1,13 @@
+import re
 import json
+from types import SimpleNamespace
+
 import requests
 from pathlib import Path
 from datetime import datetime
 from requests.auth import HTTPBasicAuth
-from typing import List, Dict, Union
+from typing import List, Dict, Union, Optional
 from IPython.display import display, Image as IPImage
-
 
 from .aw_fields import aw_fields
 
@@ -209,25 +211,22 @@ def get_asset_cover_image(asset_id: int, api_type: str = "api") -> Union[bytes, 
 
 
 class AssetWiseBridge:
-    """
-    Represents a single bridge asset from the Bentley AssetWise API.
-    Updated to include clean element summaries and decoded attribute values.
-    """
-
     def __init__(self, sfn: str):
         self.sfn = sfn
 
-        # 1. Fetch Core Asset Identity
-        # Assumes get_bridge_by_sfn is available in your scope
+        # Fetch Core Asset Identity
         raw_data = get_bridge_by_sfn(sfn, include_coordinates=True)
-
         if not raw_data:
             raise ValueError(f"No AssetWise asset found for SFN '{sfn}'")
 
-        # Dynamically assign core attributes
+        # Dynamically assign core attributes, converting dicts to SimpleNamespace where possible
         for key, value in raw_data.items():
-            snake_case_key = ''.join(['_' + i.lower() if i.isupper() else i for i in key]).lstrip('_')
-            setattr(self, snake_case_key, value)
+            if isinstance(value, dict):
+                try:
+                    value = SimpleNamespace(**value)
+                except TypeError:
+                    pass
+            setattr(self, key, value)
 
         # Initialize placeholders
         self._elements = None
@@ -244,31 +243,9 @@ class AssetWiseBridge:
 
     @property
     def elements(self) -> List[Dict]:
-        """Returns the raw dictionary list of elements (good for data processing)."""
         if self._elements is None:
-            # Assumes get_elements_for_asset is available in your scope
             self._elements = get_elements_for_asset(base_url, username, password, self.as_id)
         return self._elements
-
-    @property
-    def element_summary(self) -> List[str]:
-        """
-        Returns a human-readable list of elements and their condition states.
-        Format: 'Name: CS1: X, CS2: Y, CS3: Z, CS4: A'
-        """
-        summary_list = []
-        for el in self.elements:  # Triggers fetch if needed
-            name = el.get('se_name', 'Unknown Element')
-            # Extract quantities, defaulting to 0 if missing
-            s1 = el.get('state1', 0)
-            s2 = el.get('state2', 0)
-            s3 = el.get('state3', 0)
-            s4 = el.get('state4', 0)
-
-            # Create the formatted string
-            summary_list.append(f"{name}: \n\tCS1: {s1}, CS2: {s2}, CS3: {s3}, CS4: {s4}")
-
-        return summary_list
 
     @property
     def inspections(self) -> List[Dict]:
@@ -277,10 +254,26 @@ class AssetWiseBridge:
         return self._inspections
 
     @property
-    def snbi_data(self) -> Dict:
+    def snbi_data(self) -> Dict[str, Optional[str]]:
+        """Returns a flattened dictionary keyed by SNBI label."""
         if self._snbi_data is None:
-            raw_data = get_all_odot_snbi_data(self.as_id)
-            self._snbi_data = format_assetwise_output(raw_data)
+            raw = get_all_odot_snbi_data(self.as_id)
+            # Flatten the nested list-of-dicts structure into a single K:V dict
+            self._snbi_data = {
+                entry['label']: entry.get('value')
+                for entries in format_assetwise_output(raw).values()
+                for entry in entries if entry.get('label')
+            }
+
+            # Inject defaults if missing from report
+            defaults = {
+                'B.ID.01: Bridge Number': self.sfn,
+                'B.ID.02: Bridge Name': getattr(self, 'as_name', None),
+                'NBI 009: Location': getattr(self, 'location', None)
+            }
+            for k, v in defaults.items():
+                if k not in self._snbi_data and v: self._snbi_data[k] = v
+
         return self._snbi_data
 
     def _fetch_and_decode_values(self) -> Dict[str, Union[str, int, float]]:
@@ -297,66 +290,32 @@ class AssetWiseBridge:
         decoded_data = {}
         for row in raw_rows:
             fid = row.get('fe_id')
-            if fid is None or fid < 0: continue
+            if not fid: continue
 
             val = row.get('cv_plain_text') or row.get('cv_value')
-            if val is None or val == "": continue
+            if not val: continue
 
-            try:
-                field_name = aw_fields.get(str(fid), f"Field_{fid}")
-            except ImportError:
-                field_name = f"Field_{fid}"
-
+            # Map ID to Name
+            field_name = aw_fields.get(str(fid), f"Field_{fid}")
             decoded_data[field_name] = val
+
         return decoded_data
+
+    def find(self, pattern: str) -> Dict[str, Union[str, int, float]]:
+        """Search keys in SNBI Data and Attributes using regex."""
+        combined = {**self.snbi_data, **self.attributes}
+        return {k: v for k, v in combined.items() if re.search(pattern, str(k), re.IGNORECASE)}
 
     def get_cover_photo(self, display_photo: bool = True):
         try:
-            image_bytes = get_asset_cover_image(self.as_id)
-            if image_bytes and display_photo:
-                display(IPImage(data=image_bytes))
-            return image_bytes
+            img = get_asset_cover_image(self.as_id)
+            if img and display_photo and IPImage: display(IPImage(data=img))
+            return img
         except Exception:
             return None
 
     def __repr__(self) -> str:
-        def get(attr, default='N/A'):
-            return getattr(self, attr, default)
-
-        # 1. Map URL
-        map_url = "N/A"
-        if hasattr(self, 'coordinates') and self.coordinates:
-            lat = self.coordinates.get('latitude')
-            lon = self.coordinates.get('longitude')
-            if lat and lon:
-                map_url = f"https://www.google.com/maps?q={lat},{lon}"
-
-        # 2. Key Attributes (only if already fetched to keep print fast)
-        year = "N/A"
-        length = "N/A"
-        if self._decoded_attributes:
-            year = self._decoded_attributes.get("Year Built", "N/A")
-            length = self._decoded_attributes.get("Structure Length", "N/A")
-
-        # 3. Elements Section
-        if self._elements is None:
-            el_section = "  Elements:      (Not fetched - access .elements to load)"
-        else:
-            # If loaded, show the clean summary list
-            el_lines = ["  Elements:"]
-            for line in self.element_summary:
-                el_lines.append(f"    • {line}")
-            el_section = "\n".join(el_lines)
-
-        return (
-            f"<AssetWiseBridge SFN: '{self.sfn}'>\n"
-            f"  Name:          {get('as_name')}\n"
-            f"  ID:            {get('as_id')}\n"
-            f"  Year Built:    {year}\n"
-            f"  Length:        {length}\n"
-            f"  Map:           {map_url}\n"
-            f"{el_section}\n"
-        )
+        return f"<AssetWiseBridge SFN: '{self.sfn}' ID: {getattr(self, 'as_id', '?')}>"
 
 
 def get_elements_for_asset(base_api_url: str, username: str, password: str, as_id: int, api_type: str = "api") -> List[
