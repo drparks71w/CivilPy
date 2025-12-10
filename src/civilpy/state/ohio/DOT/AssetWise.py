@@ -521,10 +521,8 @@ def get_all_odot_snbi_data(asset_id: int):
                 else:
                     consecutive_failures += 1
             elif response.status_code == 404:
-                print(f"[END]   Template {current_template_id} - Not Found (404).")
                 consecutive_failures += 1
             else:
-                print(f"[SKIP]  Template {current_template_id} - Error {response.status_code}")
                 consecutive_failures += 1
 
         except Exception as e:
