@@ -485,6 +485,7 @@ def get_all_inspection_data(inspection_reports, field_ids):
 
 
 def get_all_odot_snbi_data(asset_id: int):
+    # //TODO - This code is AI garbage and needs to be fixed and optimized
     username, password = get_assetwise_secrets()
     base_url = "https://ohiodot-it-api.bentley.com"
 
@@ -493,8 +494,6 @@ def get_all_odot_snbi_data(asset_id: int):
     offset = 0
     consecutive_failures = 0
     MAX_RETRIES = 2  # Allow for 2 empty slots before assuming we are done
-
-    print(f"--- Starting Dynamic SNBI Data Discovery for Asset {asset_id} ---")
 
     while consecutive_failures < MAX_RETRIES:
         # Dynamically calculate the current Template ID
@@ -534,7 +533,6 @@ def get_all_odot_snbi_data(asset_id: int):
 
         offset += 1
 
-    print(f"--- Discovery Complete. Retrieved {len(response_data)} forms. ---")
     return response_data
 
 
@@ -558,8 +556,6 @@ def format_assetwise_output(response):
             for element in instance['elements']:
                 el_id = element['el_id']
 
-                # --- THE FIX: Check for Missing Field Definition ---
-                # If 'field' is None, we use the hidden 'fe_id' to ask the API for the name
                 if element.get('field') is None:
                     fe_id = element.get('fe_id')
 
@@ -577,7 +573,6 @@ def format_assetwise_output(response):
                             except Exception:
                                 pass  # If lookup fails, it stays Unnamed
 
-                # --- 2. Proceed as normal ---
                 field = element.get('field')
                 value = (element.get('value'), field)
                 element_dict.setdefault(el_id, []).append(value)
