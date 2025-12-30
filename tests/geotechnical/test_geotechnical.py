@@ -17,7 +17,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
 
 import unittest
-from civilpy.geotechnical import (
+from civilpy.geotech import (
     rankine_active_pressure,
     coulomb_active_pressure_with_surcharge,
 )

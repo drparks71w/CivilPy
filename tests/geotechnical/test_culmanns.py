@@ -17,7 +17,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
 
 import pytest
-from civilpy.geotechnical.culmanns import (
+from civilpy.geotech.culmanns import (
     CulmannsMethod,
     find_key_for_value_in_tuple_range,
 )

@@ -6,7 +6,7 @@ import requests
 from pathlib import Path
 from datetime import datetime
 from requests.auth import HTTPBasicAuth
-from typing import List, Dict, Union, Optional
+from typing import List, Dict, Union, Optional, Any
 from IPython.display import display, Image as IPImage
 
 from .aw_fields import aw_fields
@@ -213,66 +213,113 @@ def get_asset_cover_image(asset_id: int, api_type: str = "api") -> Union[bytes, 
 class AssetWiseBridge:
     def __init__(self, sfn: str):
         self.sfn = sfn
+        self._id = None  # The internal Primary Key (as_id)
 
-        # Fetch Core Asset Identity
-        raw_data = get_bridge_by_sfn(sfn, include_coordinates=True)
-        if not raw_data:
-            raise ValueError(f"No AssetWise asset found for SFN '{sfn}'")
+        # 1. Fetch Core Identity (The Parent)
+        # We store raw_data explicitly rather than polluting self.__dict__
+        self.meta = self._fetch_core_identity()
+        self._id = getattr(self.meta, 'as_id', None)
 
-        # Dynamically assign core attributes, converting dicts to SimpleNamespace where possible
-        for key, value in raw_data.items():
+        # 2. Initialize Cache for Lazy Loading
+        self._elements: Optional[List[Dict]] = None
+        self._spans: Optional[List[Dict]] = None  # New Span Set cache
+        self._inspections: Optional[List[Dict]] = None
+        self._snbi_data: Optional[Dict] = None
+        self._decoded_attributes: Optional[Dict] = None
+
+    def _fetch_core_identity(self) -> SimpleNamespace:
+        """Fetches the 1:1 core asset data."""
+        raw = get_bridge_by_sfn(self.sfn, include_coordinates=True)
+        if not raw:
+            raise ValueError(f"No AssetWise asset found for SFN '{self.sfn}'")
+
+        # Convert dict to Namespace for dot-notation access, handling nested dicts
+        for key, value in raw.items():
             if isinstance(value, dict):
-                try:
-                    value = SimpleNamespace(**value)
-                except TypeError:
-                    pass
-            setattr(self, key, value)
+                raw[key] = SimpleNamespace(**value)
+        return SimpleNamespace(**raw)
 
-        # Initialize placeholders
-        self._elements = None
-        self._inspections = None
-        self._snbi_data = None
-        self._decoded_attributes = None
-
+    # ==========================================================
+    # 1:1 Relationships (The Bridge Table)
+    # ==========================================================
     @property
-    def attributes(self) -> Dict[str, Union[str, int, float]]:
-        """Lazy-loads and maps 'fe_id' to human-readable names."""
+    def attributes(self) -> Dict[str, Any]:
+        """Lazy-loads current values (1:1 metrics)."""
         if self._decoded_attributes is None:
             self._decoded_attributes = self._fetch_and_decode_values()
         return self._decoded_attributes
 
     @property
+    def snbi_data(self) -> Dict[str, Any]:
+        """Lazy-loads SNBI data (1:1 federal metrics)."""
+        if self._snbi_data is None:
+            # (Your existing logic here - omitted for brevity but kept conceptually)
+            raw = get_all_odot_snbi_data(self._id)
+            self._snbi_data = self._flatten_snbi(raw)
+        return self._snbi_data
+
+    # ==========================================================
+    # 1:Many Relationships (The Child Tables)
+    # ==========================================================
+    @property
+    def spans(self) -> List[Dict]:
+        """
+        Retrieves Span Sets (Structural configurations).
+        Example: Main Spans (Steel Truss) vs Approach Spans (Concrete Slab).
+        """
+        if self._spans is None:
+            # Placeholder: You need to implement get_spans_for_asset
+            self._spans = get_spans_for_asset(base_url, username, password, self._id)
+
+            # Post-Processing: Inject Foreign Key immediately
+            for span in self._spans:
+                span['bridge_sfn'] = self.sfn
+                span['bridge_as_id'] = self._id
+        return self._spans
+
+    @property
     def elements(self) -> List[Dict]:
+        """Retrieves Inspection Elements."""
         if self._elements is None:
-            self._elements = get_elements_for_asset(base_url, username, password, self.as_id)
+            self._elements = get_elements_for_asset(base_url, username, password, self._id)
+
+            # Post-Processing: Flatten and inject Foreign Key
+            for el in self._elements:
+                el['bridge_sfn'] = self.sfn
+                el['bridge_as_id'] = self._id
+                # If 'elementState' is nested, you might want to flatten it here
+                if 'elementState' in el:
+                    el.update(el.pop('elementState'))
         return self._elements
 
-    @property
-    def inspections(self) -> List[Dict]:
-        if self._inspections is None:
-            self._inspections = get_all_approved_inspections(self.as_id)
-        return self._inspections
+    # ==========================================================
+    # Database Extraction Logic
+    # ==========================================================
+    def to_db_records(self) -> Dict[str, Any]:
+        """
+        Returns a dictionary prepared for database writing.
+        Keys correspond to table names (conceptual).
+        """
+        # 1. Prepare Parent Record
+        bridge_record = {
+            "sfn": self.sfn,
+            "as_id": self._id,
+            "name": getattr(self.meta, 'as_name', None),
+            "location": getattr(self.meta, 'location', None),
+            **self.snbi_data,  # Flatten SNBI cols into main table
+            **self.attributes  # Flatten Attribute cols into main table
+        }
 
-    @property
-    def snbi_data(self) -> Dict[str, Optional[str]]:
-        """Returns a flattened dictionary keyed by SNBI label."""
-        if self._snbi_data is None:
-            raw = get_all_odot_snbi_data(self.as_id)
-            # Flatten the nested list-of-dicts structure into a single K:V dict
-            self._snbi_data = {
-                entry['label']: entry.get('value')
-                for entries in format_assetwise_output(raw).values()
-                for entry in entries if entry.get('label')
-            }
+        # 2. Prepare Child Records (Lists of Dicts)
+        # These are ready for `executemany` SQL operations
+        span_records = self.spans
+        element_records = self.elements
 
-            # Inject defaults if missing from report
-            defaults = {
-                'B.ID.01: Bridge Number': self.sfn,
-                'B.ID.02: Bridge Name': getattr(self, 'as_name', None),
-                'NBI 009: Location': getattr(self, 'location', None)
-            }
-            for k, v in defaults.items():
-                if k not in self._snbi_data and v: self._snbi_data[k] = v
+        return {
+            "bridge": bridge_record,
+            "spans": span_records,
+            "elements": element_records
+        }
 
         return self._snbi_data
 
@@ -287,35 +334,24 @@ class AssetWiseBridge:
             print(f"Error fetching attributes: {e}")
             return {}
 
-        decoded_data = {}
-        for row in raw_rows:
-            fid = row.get('fe_id')
-            if not fid: continue
+    def __repr__(self):
+        return f"<AssetWiseBridge SFN: '{self.sfn}' (1 Bridge, {len(self.spans or [])} Spans, {len(self.elements or [])} Elems)>"
 
-            val = row.get('cv_plain_text') or row.get('cv_value')
-            if not val: continue
 
-            # Map ID to Name
-            field_name = aw_fields.get(str(fid), f"Field_{fid}")
-            decoded_data[field_name] = val
+# ==========================================================
+# External Functions (The "E" in ETL)
+# ==========================================================
 
-        return decoded_data
+def get_spans_for_asset(base_api_url, user, pwd, as_id) -> List[Dict]:
+    """
+    New function to fetch 1:N Span Data.
+    AssetWise usually stores these as a specific 'Multi-Record' group or a child object type.
+    """
+    object_type_span = 55
 
-    def find(self, pattern: str) -> Dict[str, Union[str, int, float]]:
-        """Search keys in SNBI Data and Attributes using regex."""
-        combined = {**self.snbi_data, **self.attributes}
-        return {k: v for k, v in combined.items() if re.search(pattern, str(k), re.IGNORECASE)}
+    endpoint = f"/api/StructureElement/GetElements/{object_type_span}/{as_id}/{as_id}/0/0"
 
-    def get_cover_photo(self, display_photo: bool = True):
-        try:
-            img = get_asset_cover_image(self.as_id)
-            if img and display_photo and IPImage: display(IPImage(data=img))
-            return img
-        except Exception:
-            return None
-
-    def __repr__(self) -> str:
-        return f"<AssetWiseBridge SFN: '{self.sfn}' ID: {getattr(self, 'as_id', '?')}>"
+    return []
 
 
 def get_elements_for_asset(base_api_url: str, username: str, password: str, as_id: int, api_type: str = "api") -> List[

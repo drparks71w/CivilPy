@@ -7,11 +7,9 @@ it under the terms of the GNU Affero General Public License as published by
 the Free Software Foundation, either version 3 of the License, or
 (at your option) any later version.
 """
-
-import sys
-import pint
-from pydantic import BaseModel, conint, constr, field_validator
-from typing import Optional, List
+from pydantic import BaseModel, conint, constr
+from pydantic import ValidationError, StringConstraints, field_validator, Field
+from typing import Optional, List, Annotated
 
 from civilpy.state.ohio.DOT.legacy import (
     get_cty_from_code,
@@ -28,8 +26,6 @@ from civilpy.state.ohio.DOT.legacy import (
     TimsBridge,
     get_historic_bridge_data,
 )
-
-units = pint.UnitRegistry()
 
 # SNBI Objects that need to be written to database tables
 class Element(BaseModel):
@@ -136,90 +132,92 @@ class Work(BaseModel):
 
 
 class Bridge(BaseModel):
-    BL01: int  # 1-99 (State Code)
-    BL02: Optional[int] = None  # 1-999 (County Code)
-    BL03: Optional[int] = None  # 0-99999 (Place Code)
-    BL04: Optional[int] = None  # MaxLength - 2 (Highway Agency District)
-    BL05: Optional[float] = None  # -99.999999, 99.999999 (Latitude)
+    BID01: Annotated[str, StringConstraints(max_length=15, min_length=1, strip_whitespace=True)]
+    BID02: Annotated[str, StringConstraints(min_length=1, strip_whitespace=True)]
+    BID03: Annotated[str, StringConstraints(max_length=15, strip_whitespace=True)] = "0"
 
-    # FIXED: Changed from int to float to accept coordinates like -82.148911
-    BL06: Optional[float] = None  # -999.999999, 999.999999 (Longitude)
+    @field_validator('BID02')
+    @classmethod
+    def validate_bid02_length(cls, v: str | None) -> str | None:
+        if v and len(v) > 300:
+            raise ValueError('BID02 (Bridge Name) must be <= 300 characters')
+        return v
 
-    BL07: Optional[str] = None  # MaxLength - 15 (Border Bridge Number)
-    BL08: Optional[str] = None  # MaxLength - 2 (Border Bridge State or Country Code)
-    BL09: Optional[str] = None  # MaxLength - 1 (Border Bridge Inspection Responsibility)
-    BL10: Optional[str] = None  # MaxLength - 2 (Border Bridge Designated Lead State)
-    BL11: Optional[str] = None  # MaxLength - 300 (Bridge Location)
-    BL12: Optional[str] = None  # MaxLength - 300 (Metropolitan Planning Organization)
+    BL01: Annotated[int, Field(eq=39)]                # B.L.01: State Code - Must be '39' for Ohio
+    BL02: Annotated[int, Field(ge=1, le=999)]         # B.L.02: County Code - 1 to 999
+    BL03: Annotated[int, Field(ge=0, le=99999)]       # B.L.03: Place Code - 0 to 99999
+    BL04: Annotated[int, Field(ge=1, le=12)]          # B.L.04: Highway Agency District - 01 to 12
+    BL05: Annotated[float, Field(ge=38.0, le=42.5)]   # B.L.05: Latitude - Ohio Bounding Box (Approx 38.0 to 42.5)
+    BL06: Annotated[float, Field(ge=-85.0, le=-80.0)] # B.L.06: Longitude - Ohio Bounding Box (Approx -85.0 to -80.0)
+    BL07: Annotated[str, StringConstraints(max_length=15, strip_whitespace=True)] | None = None # B.L.07: Border Bridge Number - Max length 15 (Optional but strict if present)
+    BL08: Annotated[str, StringConstraints(max_length=2, strip_whitespace=True)] | None = None # B.L.08: Border Bridge State or Country Code - Max length 2
+    BL09: Annotated[str, StringConstraints(max_length=1, strip_whitespace=True)] | None = None # B.L.09: Border Bridge Inspection Responsibility - Max length 1
+    BL10: Annotated[str, StringConstraints(max_length=2, strip_whitespace=True)] | None = None # B.L.10: Border Bridge Designated Lead State - Max length 2
+    BL12: Annotated[str, StringConstraints(max_length=300, min_length=1, strip_whitespace=True)] # B.L.12: Metropolitan Planning Organization - Max length 300
 
-    BID01: str  # MaxLength - 15 (Bridge Number)
-    BID02: Optional[str] = None  # MaxLength - 15 (Bridge Name)
-    BID03: Optional[str] = None  # MaxLength - 120 (Previous Bridge Number)
+    BCL01: Annotated[str, StringConstraints(max_length=4, min_length=1, strip_whitespace=True)] # Owner
+    BCL02: Annotated[str, StringConstraints(max_length=4, min_length=1, strip_whitespace=True)] # Maint Resp
+    BCL03: Annotated[str, StringConstraints(max_length=30, min_length=1, strip_whitespace=True)] # Fed./Tribal Land
+    BCL04: Annotated[str, StringConstraints(max_length=1, min_length=1, strip_whitespace=True)] # Historic Significance
+    BCL05: Annotated[str, StringConstraints(max_length=1, min_length=1, strip_whitespace=True)] # Toll
+    BCL06: Annotated[str, StringConstraints(max_length=1, min_length=1, strip_whitespace=True)] # Emergency Evacuation
 
-    BCL01: Optional[str] = None  # MaxLength - 4 (Owner)
-    BCL02: Optional[str] = None  # MaxLength - 4 (Maintenance Responsibility)
-    BCL03: Optional[str] = None  # MaxLength - 30 (Federal or Tribal Land Access)
-    BCL04: Optional[str] = None  # MaxLength - 1 (Historical Significance)
-    BCL05: Optional[str] = None  # MaxLength - 1 (Toll)
-    BCL06: Optional[str] = None  # MaxLength - 1 (Emergency Evacuation Designation)
+    BRH01: Annotated[str, StringConstraints(max_length=4, min_length=1, strip_whitespace=True)]  # MaxLength - 4 (Bridge Railings)
+    BRH02: Annotated[str, StringConstraints(max_length=4, min_length=1, strip_whitespace=True)]  # MaxLength - 4 (Transitions)
 
-    BRH01: Optional[str] = None  # MaxLength - 4 (Bridge Railings)
-    BRH02: Optional[str] = None  # MaxLength - 4 (Transitions)
+    BG01: float  # NBIS Bridge Length (No strict max, could be huge)
+    BG02: float  # Total Bridge Length
+    BG03: float  # Maximum Span Length
+    BG05: Annotated[float, Field(le=1000.0)]  # Bridge Width Out-to-Out - Max 1000 ft
+    BG06: Annotated[float, Field(le=1000.0)]  # Bridge Width Curb-to-Curb - Max 1000 ft
+    BG07: Annotated[float, Field(le=100.0)]  # Left Curb or Sidewalk Width - Max 100 ft
+    BG08: Annotated[float, Field(le=100.0)]  # Right Curb or Sidewalk Width - Max 100 ft
+    BG09: Annotated[float, Field(le=1000.0)]  # Approach Roadway Width - Max 1000 ft
+    BG10: Annotated[str, StringConstraints(max_length=1, min_length=1, strip_whitespace=True)]  # Bridge Median (Mandatory)
+    BG11: Annotated[int, Field(ge=0, le=90)]  # Skew (0-90 degrees)
+    BG12: Annotated[str, StringConstraints(max_length=2, strip_whitespace=True)] | None = None  # Curved Bridge
+    BG13: int | None = None  # Maximum Bridge Height
+    BG14: Annotated[str, StringConstraints(max_length=1, strip_whitespace=True)] | None = None  # Sidehill Bridge
+    BG15: float | None = None  # Irregular Deck Area
+    BG16: float  # Calculated Deck Area
 
-    BG01: Optional[float] = None  # 0-999999.9 (NBIS Bridge Length)
-    BG02: Optional[float] = None  # 0-999999.9 (Total Bridge length)
-    BG03: Optional[float] = None  # 0-9999.9 (Maximum Span Length)
-    BG04: Optional[float] = None  # 0-9999.9 (Minimum Span Length)
-    BG05: Optional[float] = None  # 0-999.9 (Bridge Width Out-to-Out)
-    BG06: Optional[float] = None  # 0-999.9 (Bridge Width Curb-to-Curb)
-    BG07: Optional[float] = None  # 0-99.9 (Left Curb or Sidewalk Width)
-    BG08: Optional[float] = None  # 0-99.9 (Right Curb or Sidewalk Width)
-    BG09: Optional[float] = None  # 0-999.9 (Approach Roadway Width)
-    BG10: Optional[str] = None  # MaxLength - 1 (Bridge Median)
-    BG11: Optional[int] = None  # 0-99 (Skew)
-    BG12: Optional[str] = None  # MaxLength - 2 (Curved bridge)
-    BG13: Optional[int] = None  # 0-9999 (Maximum Bridge Height)
-    BG14: Optional[str] = None  # MaxLength - 1 (Sidehill Bridge)
-    BG15: Optional[float] = None  # 0-999999999.9 (Irregular Deck Area)
-    BG16: Optional[float] = None  # 0-999999999.9 (Calculated Deck Area)
+    BLR01: Annotated[str, StringConstraints(max_length=8, min_length=1, strip_whitespace=True)] # Design Load (Clean)
+    BLR02: Annotated[str, StringConstraints(max_length=4, strip_whitespace=True)] | None = None # Design Method (No Current Eqv)
+    BLR03: Annotated[str, StringConstraints(max_length=8, strip_whitespace=True)] | None = None # Load Rating Date (No Current Eqv)
+    BLR04: Annotated[str, StringConstraints(max_length=4, min_length=1, strip_whitespace=True)] # Load Rating Method (Clean)
+    BLR05: float # Inventory Load Rating Factor (Clean)
+    BLR06: float # Operating Load Rating Factor (Clean)
+    BLR07: float | None = None # Controlling Legal Load Rating Factor (No Current Eqv)
+    BLR08: Annotated[str, StringConstraints(max_length=1, strip_whitespace=True)] | None = None # Routine Permit Loads (No Current Eqv)
 
-    BLR01: Optional[str] = None  # MaxLength - 8 (Designed Load)
-    BLR02: Optional[str] = None  # MaxLength - 4 (Designed Method)
-    BLR03: Optional[str] = None  # Pattern = "^[0-9]{8}$" (Load Rating Date)
-    BLR04: Optional[str] = None  # MaxLength - 4 (Load Rating Method)
-    BLR05: Optional[float] = None  # 0-99.99 (Inventory Load Rating Factor)
-    BLR06: Optional[float] = None  # 0-99.99 (Operating Load Rating Factor)
-    BLR07: Optional[float] = None  # 0-99.99 (Controlling Legal Load Rating Factor)
-    BLR08: Optional[str] = None  # MaxLength - 1 (Routine Permit Loads)
+    BIR01: Annotated[str, StringConstraints(max_length=1, min_length=1, strip_whitespace=True)] # NSTM Inspection Required (Clean)
+    BIR02: Annotated[str, StringConstraints(max_length=1, strip_whitespace=True)] | None = None # Fatigue Details (No Current Eqv)
+    BIR03: Annotated[str, StringConstraints(max_length=1, min_length=1, strip_whitespace=True)] # Underwater Inspection Required (Clean)
+    BIR04: Annotated[str, StringConstraints(max_length=1, strip_whitespace=True)] | None = None # Complex Feature (No Current Eqv)
 
-    BIR01: Optional[str] = None  # MaxLength - 1 (NSTM Inspection Required)
-    BIR02: Optional[str] = None  # MaxLength - 1 (Fatigue Details)
-    BIR03: Optional[str] = None  # MaxLength - 1 (Underwater Inspection Required)
-    BIR04: Optional[str] = None  # MaxLength - 1 (Complex Feature)
+    BC01: Annotated[str, StringConstraints(max_length=1, min_length=1, strip_whitespace=True)]  # Deck
+    BC02: Annotated[str, StringConstraints(max_length=1, min_length=1, strip_whitespace=True)]  # Super
+    BC03: Annotated[str, StringConstraints(max_length=1, min_length=1, strip_whitespace=True)]  # Sub
+    BC04: Annotated[str, StringConstraints(max_length=1, min_length=1, strip_whitespace=True)]  # Culvert
+    BC09: Annotated[str, StringConstraints(max_length=1, min_length=1, strip_whitespace=True)]  # Channel
+    BC12: Annotated[str, StringConstraints(max_length=1, min_length=1, strip_whitespace=True)]  # Condition Class
+    BC13: Annotated[str, StringConstraints(max_length=1, min_length=1, strip_whitespace=True)]  # Lowest Rating
+    BC05: Annotated[str, StringConstraints(max_length=1, strip_whitespace=True)] | None = None  # Railing
+    BC06: Annotated[str, StringConstraints(max_length=1, strip_whitespace=True)] | None = None  # Transitions
+    BC07: Annotated[str, StringConstraints(max_length=1, strip_whitespace=True)] | None = None  # Bearings
+    BC08: Annotated[str, StringConstraints(max_length=1, strip_whitespace=True)] | None = None  # Joints
+    BC10: Annotated[str, StringConstraints(max_length=1, strip_whitespace=True)] | None = None  # Channel Prot
+    BC11: Annotated[str, StringConstraints(max_length=4, strip_whitespace=True)] | None = None  # Scour
+    BC14: Annotated[str, StringConstraints(max_length=1, strip_whitespace=True)] | None = None  # NSTM Cond
+    BC15: Annotated[str, StringConstraints(max_length=1, strip_whitespace=True)] | None = None  # Underwater Cond
 
-    BC01: Optional[str] = None  # MaxLength - 1 (Deck Condition Rating)
-    BC02: Optional[str] = None  # MaxLength - 1 (Superstructure Condition Rating)
-    BC03: Optional[str] = None  # MaxLength - 1 (Substructure Condition Rating)
-    BC04: Optional[str] = None  # MaxLength - 1 (Culvert Condition Rating)
-    BC05: Optional[str] = None  # MaxLength - 1 (Bridge Railings Condition Rating)
-    BC06: Optional[str] = None  # MaxLength - 1 (Bridge Railings Transitions Condition Rating)
-    BC07: Optional[str] = None  # MaxLength - 1 (Bridge Bearings Condition Rating)
-    BC08: Optional[str] = None  # MaxLength - 1 (Bridge Joints Condition Rating)
-    BC09: Optional[str] = None  # MaxLength - 1 (Channel Condition Rating)
-    BC10: Optional[str] = None  # MaxLength - 1 (Channel Protection Condition Rating)
-    BC11: Optional[str] = None  # MaxLength - 4 (Scour Condition Rating)
-    BC12: Optional[str] = None  # MaxLength - 1 (Bridge Condition Classification)
-    BC13: Optional[str] = None  # MaxLength - 1 (Lowest Condition Rating Code)
-    BC14: Optional[str] = None  # MaxLength - 1 (NSTM Inspection Condition)
-    BC15: Optional[str] = None  # MaxLength - 1 (Underwater Inspection Condition)
+    BAP01: Annotated[str, StringConstraints(max_length=1, min_length=1, strip_whitespace=True)]  # Approach Align
+    BAP02: Annotated[str, StringConstraints(max_length=5, strip_whitespace=True)] | None = None  # Overtopping
+    BAP03: Annotated[str, StringConstraints(max_length=5, strip_whitespace=True)] | None = None  # Scour Vuln
+    BAP04: Annotated[str, StringConstraints(max_length=3, strip_whitespace=True)] | None = None  # Scour POA
+    BAP05: Annotated[str, StringConstraints(max_length=1, strip_whitespace=True)] | None = None  # Seismic
 
-    BAP01: Optional[str] = None  # MaxLength - 1 (Approach Roadway Alignment)
-    BAP02: Optional[str] = None  # MaxLength - 5 (Overtopping Likelihood)
-    BAP03: Optional[str] = None  # MaxLength - 5 (Scour Vulnerability)
-    BAP04: Optional[str] = None  # MaxLength - 3 (Scour Plan of Action)
-    BAP05: Optional[str] = None  # MaxLength - 1 (Seismic Vulnerability)
-
-    BW01: Optional[int] = None  # 0-9999 (Year Built)
+    BW01: Annotated[int, Field(ge=1700, le=2030)] # Year Built (Range sanity check)
 
     # One to Many Relationships
     Elements: Optional[List[Element]] = None
