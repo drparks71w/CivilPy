@@ -252,3 +252,5 @@ django/
 /Notebooks/temp_images/*
 /Notebooks/IT Policy Clarifications.ipynb
 /Notebooks/ODOT Internal APIs.ipynb
+/Notebooks/BDM_Markdown_Output/*
+/Notebooks/Extracted_Images/*
