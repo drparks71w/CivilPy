@@ -227,7 +227,30 @@ def get_asset_cover_image(asset_id: int, api_type: str = "api") -> Union[bytes, 
 
 
 class AssetWiseBridge:
+    """
+    Represents a single ODOT bridge asset retrieved from the AssetWise API.
+
+    Provides lazy-loaded access to the full 1:1 and 1:N relationships for a bridge
+    record: core identity, decoded current-value attributes, SNBI federal metrics,
+    span sets, inspection elements, and inspection reports.
+
+    Args:
+        sfn (str): The ODOT Structure File Number (SFN) for the bridge.
+
+    Raises:
+        ValueError: If no AssetWise record is found for the given SFN.
+    """
+
     def __init__(self, sfn: str):
+        """
+        Fetch core identity for the bridge and initialize lazy-load caches.
+
+        Args:
+            sfn (str): The ODOT Structure File Number (SFN).
+
+        Raises:
+            ValueError: If no AssetWise asset is found for the given SFN.
+        """
         self.sfn = sfn
         self._id = None  # The internal Primary Key (as_id)
 

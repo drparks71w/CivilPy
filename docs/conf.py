@@ -13,7 +13,7 @@ sys.path.insert(0, os.path.abspath("../src"))
 project = "CivilPy"
 copyright = "2019-2026, Dane Parks"
 author = "Dane Parks"
-release = "0.1.40"
+release = "0.2.0"
 
 # -- General configuration ---------------------------------------------------
 extensions = [

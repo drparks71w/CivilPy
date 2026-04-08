@@ -54,6 +54,24 @@ class SteelSection:
     """
 
     def __init__(self, label):
+        """
+        Initialize a SteelSection from an AISC shape label.
+
+        Looks up the label in the AISC Steel Construction Manual shape table and
+        populates standard section properties with Pint units attached.
+
+        Args:
+            label (str): AISC standard nomenclature, e.g. ``"W36X150"``, ``"w40x294"``,
+                ``"2L8X4X5/8LLBB"``. Case and spaces are normalized automatically.
+
+        Raises:
+            KeyError: If the label is not found in the AISC shape database.
+
+        Example:
+            >>> s = SteelSection("W36X150")
+            >>> float(s.I_x.magnitude)
+            12300.0
+        """
         self.id = self.clean_user_input(label)
         self.aisc_value = self.get_shape()
 
@@ -620,6 +638,16 @@ class HistoricSteelSection:
     """
 
     def __init__(self, label, designation=None):
+        """
+        Initialize a historic steel section from the AISC historic shapes database.
+
+        Args:
+            label (str): Shape label, e.g. ``"18WF96"`` or ``"WF36X150"``.
+                Case and spaces are normalized automatically.
+            designation (str, optional): AISC historic edition designation used to
+                disambiguate shapes that were published under multiple editions.
+                Example: ``'18WF_B18b'``. If ``None``, returns the first match.
+        """
         self.id = self.clean_user_input(label)
         self.aisc_value = self.get_historical_shape(designation)
 
@@ -708,16 +736,28 @@ class HistoricSteelSection:
 
 class WF(HistoricSteelSection):
     """
-    Class to provide more specific attributes and functions related to designing
-    with steel W s. Splitting values into multiple classes allows dropping
-    of empty values in the database.
+    Historic wide-flange section (pre-AISC W-shape standardization).
 
-    >>> t = WF("18WF96", '18WF_B18b')
-    >>> t.weight
-    96.0 force_pound/foot
+    Used for evaluating existing bridges and structures built with pre-1970 steel
+    sections. Extends :class:`HistoricSteelSection` with dimensional attributes
+    (depth, flange width, web thickness, etc.) from the AISC historic shapes table.
+
+    Example:
+        >>> t = WF("18WF96", '18WF_B18b')
+        >>> t.weight
+        96.0 force_pound/foot
     """
 
     def __init__(self, label, designation=None):
+        """
+        Initialize a historic WF section with full dimensional properties.
+
+        Args:
+            label (str): Historic shape label, e.g. ``"18WF96"``.
+            designation (str, optional): AISC edition designation to disambiguate
+                shapes with the same label across multiple editions.
+                Example: ``'18WF_B18b'``.
+        """
         super(WF, self).__init__(label, designation)
         self.depth = conv_frac_str(self.aisc_value["d"].values[0]) * units("in")
         self.detailing_depth = conv_frac_str(self.aisc_value["ddet"].values[0]) * units(

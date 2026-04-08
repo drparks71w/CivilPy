@@ -233,6 +233,34 @@ class MethodABearing:
                  plys, span, expansion_length, loads, max_dl_delta, max_ll_delta, max_ll_loc, deck_slope, plate_bev,
                  edge_cover=.25, type='rectangular', holes=False, steel_yield_strength = 60, shear_modulus=0.095,
                  exp_coeff=.000006, temp_min=-30, temp_max=120):
+        """
+        Initialize a Method A elastomeric bearing and compute derived geometry.
+
+        Args:
+            width (float): Bearing pad width, in.
+            length (float): Bearing pad length, in.
+            durometer (float): Elastomer hardness (Shore A durometer value).
+            internal_t (float): Internal elastomer layer thickness, in.
+            external_t (float): External (cover) elastomer layer thickness, in.
+            steel_t (float): Steel reinforcing shim thickness, in.
+            plys (int): Number of steel reinforcing layers.
+            span (float): Span length from bearing to bearing, ft.
+            expansion_length (float): Length from fixed bearing to expansion bearing, ft.
+            loads (dict): Applied loads dictionary (format defined per project use).
+            max_dl_delta (float): Maximum dead load deflection from analysis, in.
+            max_ll_delta (float): Maximum live load deflection from analysis, in.
+            max_ll_loc (float): Location of maximum live load, ft from bearing.
+            deck_slope (float): Deck slope, percent grade.
+            plate_bev (float): Sole plate bevel, percent.
+            edge_cover (float): Edge cover dimension, in. Defaults to ``0.25``.
+            type (str): Bearing geometry — ``'rectangular'`` (default) or ``'circular'``.
+            holes (bool): ``True`` if the bearing pad has holes. Defaults to ``False``.
+            steel_yield_strength (float): Shim yield strength, ksi. Defaults to ``60``.
+            shear_modulus (float): Elastomer shear modulus, ksi. Defaults to ``0.095``.
+            exp_coeff (float): Thermal expansion coefficient, 1/°F. Defaults to ``0.000006``.
+            temp_min (float): Minimum design temperature, °F. Defaults to ``-30``.
+            temp_max (float): Maximum design temperature, °F. Defaults to ``120``.
+        """
         self.width = width
         self.length = length
         self.durometer = durometer

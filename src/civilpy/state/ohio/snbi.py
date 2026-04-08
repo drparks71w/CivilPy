@@ -38,6 +38,14 @@ from civilpy.state.ohio.DOT.legacy import (
 
 # SNBI Objects that need to be written to database tables
 class Element(BaseModel):
+    """
+    SNBI bridge element record (BE/BCS fields).
+
+    Represents a single inspection element and its quantity distribution across
+    condition states 1–4, per the FHWA Special Notice for Bridges and Inspection
+    (SNBI) data standard. Validated with Pydantic — raises ``ValidationError``
+    if field constraints are violated.
+    """
     BE01: constr(max_length=4)              # maxLength 4 (Element Number)
     BE02: constr(max_length=4)              # maxLength 4 (Element Parent Number)
     BE03: Optional[conint(ge=0, le=99999999)] = None    # 0-99999999 (Element Total Quantity)
@@ -47,6 +55,7 @@ class Element(BaseModel):
     BCS04: Optional[conint(ge=0, le=99999999)] = None   # 0-99999999 (Element Quantity CS4)
 
 class Route(BaseModel):
+    """SNBI route record (BRT fields) — route designation, number, direction, type, and service type."""
     BRT01: str            # MaxLength - 3  (Route Designation)
     BRT02: Optional[str] = None  # MaxLength - 15 (Route Number)
     BRT03: Optional[str] = None  # MaxLength - 3  (Route Direction)
@@ -54,6 +63,13 @@ class Route(BaseModel):
     BRT05: Optional[str] = None  # MaxLength - 1  (Service Type)
 
 class Feature(BaseModel):
+    """
+    SNBI feature record (BF/BH/BRR/BN fields).
+
+    Captures the feature crossed by the bridge: highway geometry (lanes, AADT, clearances),
+    railroad clearance, and navigable waterway data. All fields are optional unless
+    required by the specific feature type.
+    """
     # Attribute: type       # Additional Restrictions to implement
     BF01: Optional[str] = None               # Max length - 3 (Feature Type) - Made Optional
     BF02: Optional[str] = None     # Max Length - 1 (Feature Location)
@@ -88,6 +104,12 @@ class Feature(BaseModel):
     Routes: Optional[List[Route]] = None
 
 class Inspection(BaseModel):
+    """
+    SNBI inspection event record (BIE fields).
+
+    Captures inspection type, dates, inspector credentials, interval, QC/QA dates,
+    notes, and equipment used — per FHWA SNBI data standard.
+    """
     BIE01: Optional[str] = None           # Max Length - 1 (Inspection Type)
     BIE02: Optional[str] = None           # Pattern = "^[0-9]{8}$" (Inspection Begin Date)
     BIE03: Optional[str] = None  # Pattern = "^[0-9]{8}$" (Inspection Completion Date)
@@ -112,6 +134,13 @@ class PostingStatus(BaseModel):
     BPS02: Optional[str] = None  # Pattern = "^[0-9]{8}$" (Posting Status Change Date)
 
 class SpanSet(BaseModel):
+    """
+    SNBI span set record (BSP fields).
+
+    Describes a structural configuration group within a bridge: material, type,
+    continuity, number of spans, deck system, wearing surface, and protective systems.
+    A bridge with both main spans and approach spans will have multiple SpanSet records.
+    """
     BSP01: Optional[str] = None            # Max Length - 3 (Span Configuration Designation)
     BSP02: Optional[int] = None  # 0-9999 (Number of Spans)
     BSP03: Optional[int] = None  # 0-999 (Number of Beam Lines)
@@ -127,6 +156,12 @@ class SpanSet(BaseModel):
     BSP13: Optional[str] = None  # Max Length - 3 (Deck Stay-In-Place Forms)
 
 class SubstructureSet(BaseModel):
+    """
+    SNBI substructure set record (BSB fields).
+
+    Describes a substructure unit group: material, type, foundation type, and
+    protective systems applied to both the substructure and foundation elements.
+    """
     BSB01: Optional[str] = None            # Max Length - 3 (Substructure Configuration Designation)
     BSB02: Optional[int] = None  # 0-999 (Number of Substructure Units)
     BSB03: Optional[str] = None  # Max Length - 3 (Substructure Material)

@@ -23,6 +23,13 @@ import math
 
 
 class GlobalDefinitions:
+    """
+    Global material and geometric constants for a through-plate-girder railroad bridge design.
+
+    All parameters are pre-populated with typical values per AREMA Chapter 15. Override
+    any argument to match project-specific conditions.
+    """
+
     def __init__(
         self,
         f_y=50000 * units("psi"),
@@ -49,6 +56,11 @@ class GlobalDefinitions:
         asphalt_unit_weight=150 * units("lbf/ft^3"),
         timber_unit_weight=60 * units("lbf/ft^3"),
     ):
+        """
+        Initialize global material and geometry constants. All arguments are
+        keyword-only with AREMA Chapter 15 defaults. Override any value for
+        project-specific conditions — see class docstring for parameter descriptions.
+        """
         self.F_y = f_y
         self.E_steel = self.E = e_steel
         self.tie_length = tie_length
@@ -73,6 +85,12 @@ class GlobalDefinitions:
 
 
 class LoadDefinitions:
+    """
+    Live and dead load definitions for a through-plate-girder railroad bridge design.
+
+    Defaults reflect E80 Cooper loading per AREMA Chapter 15. Override arguments to
+    match project-specific loading conditions or alternative load ratings.
+    """
     def __init__(
         self,
         diaphragm_weight_ft=61 * units("lbf/ft"),
@@ -93,6 +111,11 @@ class LoadDefinitions:
         axel_alternative_live_load=100 * units("kips"),
         jack_pt_offset=3.75 * units("ft"),
     ):
+        """
+        Initialize E80 Cooper load definitions. All arguments are keyword-only
+        with AREMA Chapter 15 defaults. Override any value for alternate load
+        ratings or project-specific conditions — see class docstring for descriptions.
+        """
         self.diaphragm_weight_ft = diaphragm_weight_ft
         self.diaphragm_quant = diaphragm_quant
         self.bracing_quant = bracing_quant
@@ -115,6 +138,18 @@ default_fb = W("w24x250")
 
 
 class ThroughPlateGirderFloorbeam:
+    """
+    Through-plate-girder floor beam design per AREMA Chapter 15.
+
+    Models a single floor beam in a through-plate-girder railroad bridge, including
+    bracket geometry, loading, and section properties. Works with
+    :class:`GlobalDefinitions` and :class:`LoadDefinitions` for material constants
+    and load inputs.
+
+    Defaults to a W24x250 rolled shape. Set ``rolled_shape=False`` to use a
+    built-up section defined by the dimensional arguments.
+    """
+
     def __init__(
         self,
         rolled_shape=True,

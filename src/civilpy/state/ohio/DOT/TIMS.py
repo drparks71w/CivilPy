@@ -63,6 +63,27 @@ NBI_DESIGN_TYPE_CODES = {
 
 
 def get_tims_data(data_source='Roadway'):
+    """
+    Download all records from an ODOT TIMS ArcGIS MapServer layer into a DataFrame.
+
+    Paginates through the service in batches of 1000 records until all features
+    are retrieved. Prints progress to stdout.
+
+    Args:
+        data_source (str): Which TIMS layer to query. One of:
+
+            - ``'Roadway'`` — Roadway Information layer (default)
+            - ``'Bridge'`` — Bridge Assets layer
+
+    Returns:
+        pandas.DataFrame: All feature attributes from the selected layer, one row
+        per feature. Returns an empty DataFrame if no records are found.
+
+    Example:
+        >>> df = get_tims_data('Bridge')
+        >>> 'SFN' in df.columns
+        True
+    """
     types = {
         'Roadway': "https://gis.dot.state.oh.us/arcgis/rest/services/TIMS/Roadway_Information/MapServer/8",
         'Bridge': "https://gis.dot.state.oh.us/arcgis/rest/services/TIMS/Assets/MapServer/5"

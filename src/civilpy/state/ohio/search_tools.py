@@ -342,6 +342,20 @@ default_bridge_labels = [
 
 
 class D6BridgeLookup(TimsBridge):
+    """
+    Bridge record lookup for ODOT District 6, backed by a local TSV export.
+
+    Extends ``TimsBridge`` with District 6-specific plan set and TIFF file retrieval.
+    Requires access to the District 6 file server paths (``G:\\ref\\...``).
+
+    Args:
+        sfn (str): The ODOT Structure File Number (SFN) to look up.
+        column_labels (list): Column names to include in tabular output.
+            Defaults to ``default_bridge_labels``.
+        data_path (str): Path to the local ``Bridges.tsv`` file exported from TIMS.
+            Defaults to the D6 server path.
+    """
+
     def __init__(
         self,
         sfn,
@@ -379,6 +393,15 @@ class D6BridgeLookup(TimsBridge):
         self.cty_rte_sec = self.get_summary()
 
     def get_summary(self):
+        """
+        Build and print a one-line summary for this bridge and return the CTY-RT-SEC key.
+
+        Prints the SFN, route/feature description, and GPS coordinates to stdout.
+
+        Returns:
+            str: The ``"CTY-RT-SEC"`` identifier string used for plan set lookups,
+            formatted as ``"{county_code}-{route_num}-{section_num}"``.
+        """
         substring_1 = f"{self.raw_data['County Code']} - "
         substring_2 = f"{self.raw_data['Facility Carried By Structure']} over "
         substring_3 = f"{self.raw_data['Feature Intersected']}"

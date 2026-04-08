@@ -31,16 +31,17 @@ cache:
 
 # --- STAGE 1: SANITY CHECK (The Blocker) ---
 # If this fails, the pipeline STOPS here.
+# Skip with: git tag docs && git push --tags
+#        or: -no_tests in commit title
 smoke-test-3.11:
   extends: .test_logic
   stage: sanity
   image: python:3.11
   rules:
-    - if: $CI_COMMIT_TITLE =~ /\[docs\]/
+    - if: $CI_COMMIT_TAG                           # never run on any tag push
       when: never
     - if: $CI_COMMIT_TITLE =~ /-no_tests/
       when: never
-    # Run on MRs and Main
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
 
@@ -52,7 +53,7 @@ verify-3.10:
   image: python:3.10
   allow_failure: true
   rules:
-    - if: $CI_COMMIT_TITLE =~ /\[docs\]/
+    - if: $CI_COMMIT_TAG
       when: never
     - if: $CI_COMMIT_TITLE =~ /-no_tests/
       when: never
@@ -64,7 +65,7 @@ verify-3.12:
   stage: test
   image: python:3.12
   rules:
-    - if: $CI_COMMIT_TITLE =~ /\[docs\]/
+    - if: $CI_COMMIT_TAG
       when: never
     - if: $CI_COMMIT_TITLE =~ /-no_tests/
       when: never
@@ -77,7 +78,7 @@ verify-3.13:
   image: python:3.13
   allow_failure: true
   rules:
-    - if: $CI_COMMIT_TITLE =~ /\[docs\]/
+    - if: $CI_COMMIT_TAG
       when: never
     - if: $CI_COMMIT_TITLE =~ /-no_tests/
       when: never
@@ -90,18 +91,24 @@ verify-3.14:
   image: python:3.14
   allow_failure: true
   rules:
-    - if: $CI_COMMIT_TITLE =~ /\[docs\]/
+    - if: $CI_COMMIT_TAG
       when: never
     - if: $CI_COMMIT_TITLE =~ /-no_tests/
       when: never
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
 
+# --- STAGE 3: DEPLOY ---
+# Triggered by git tags:
+#   git tag docs && git push --tags          → deploys pages only
+#   git tag v0.1.41 && git push --tags       → releases to PyPI + GitLab package registry
+#   git push (no tag)                        → pages deploys on master commits
+
 pypi_publish:
   stage: deploy
   image: python:3.11
   rules:
-    - if: $CI_COMMIT_MESSAGE =~ /Release .*/
+    - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+/     # tags like v0.1.41, v1.0.0
   script:
     - pip install -U build twine setuptools
     - python -m build
@@ -111,7 +118,7 @@ gitlab_publish:
   stage: deploy
   image: python:3.11
   rules:
-    - if: $CI_COMMIT_MESSAGE =~ /Release .*/
+    - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+/     # tags like v0.1.41, v1.0.0
   script:
     - pip install build twine setuptools
     - python -m build
@@ -128,6 +135,6 @@ pages:
     paths:
       - public
   rules:
-    # [docs] tag: deploy docs even when tests are skipped
-    - if: $CI_COMMIT_TITLE =~ /\[docs\]/ && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_TAG == "docs"                 # git tag docs && git push --tags
+    - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+/     # also deploy on version tags
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH  # and on every master commit

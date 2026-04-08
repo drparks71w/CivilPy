@@ -10,7 +10,27 @@ import Rhino.Geometry as rg
 
 def display_brep(brep, color='lightblue', opacity=1.0):
     """
-    Converts a Rhino BREP into a mesh and displays it interactively using Plotly.
+    Convert a Rhino BREP geometry to a triangulated mesh and display it interactively.
+
+    Tessellates the BREP using Rhino's default meshing parameters, converts all
+    faces to triangles, then renders the result as a Plotly ``Mesh3d`` figure with
+    a 1:1:1 aspect ratio. Intended for use inside a Jupyter notebook with
+    ``rhinoinside`` loaded.
+
+    Args:
+        brep: A ``Rhino.Geometry.Brep`` object to display.
+        color (str): Plotly-compatible color string for the mesh surface.
+            Defaults to ``'lightblue'``.
+        opacity (float): Surface opacity from 0.0 (transparent) to 1.0 (opaque).
+            Defaults to ``1.0``.
+
+    Returns:
+        None: Calls ``fig.show()`` directly; does not return the figure.
+
+    Note:
+        Requires ``rhinoinside`` to be loaded before calling this function.
+        The module-level ``rhinoinside.load()`` call handles this when the module
+        is imported in a Rhino-enabled environment.
     """
     # 1. Convert your Rhino BREP to a Mesh
     mesh_params = rg.MeshingParameters.Default
