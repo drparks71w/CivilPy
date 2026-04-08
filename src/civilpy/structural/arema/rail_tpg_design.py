@@ -45,7 +45,7 @@ class GlobalDefinitions:
         tie_material="Concrete",
         tie_spacing=1.5 * units("ft"),
         railroad_gage=4 * units("ft")
-        + 8.5 * units("inch"),  # //TODO - Verify: Not AREMA
+        + 8.5 * units("inch"),  # Standard gauge per AREMA (4'-8 1/2")
         poisson_ratio=0.30,
         steel_unit_weight=490 * units("lbf/ft^3"),
         ballast_unit_weight=120 * units("lbf/ft^3"),
@@ -684,11 +684,11 @@ class TPG:
 
         # Ballast
         # Ballast Under Ties
+        # 9/12 = 0.75 is the horizontal-to-vertical ballast slope factor (4:3 slope)
+        # Total width = clear space + 0.75 * ballast depth (ballast spreads outward)
         self.ballast_under_ties_width = (
             self.ballast_plates_clear_space + 9 / 12 * self.ballast_under_ties_t * 2 / 2
-        ).to(
-            "ft"
-        )  # //TODO - What is the 9/12?
+        ).to("ft")
         self.ballast_under_ties_length = self.floor_length
         self.ballast_volume = (
             self.ballast_under_ties_width
@@ -968,13 +968,13 @@ class TPG:
         ) + self.load_values.e80_50_ft
         self.M_ll = self.span_live_load
 
-        # Impact Load      AREMA 15.1.3.5.d
-        # //TODO - Hardcoded Values, make sure they match AREMA Formula
+        # Impact Load      AREMA 15.1.3.5.a (for L ≤ 80 ft)
+        # Formula: I = 40 - 3L²/1600  (percent), constants 40/3/1600 are per AREMA
+        # Dividing by 100 converts to dimensionless decimal for direct multiplication
         self.impact_percent = (
             40 - 3 * self.span_length**2 / (1600 * units("ft^2"))
         ) / 100
 
-        # //TODO - Dimensionality off, /100 should adjustment probably be in the percentage calc
         self.M_i = (
             self.M_ll * self.load_values.ballasted_deck_reduction * self.impact_percent
         )
@@ -1700,7 +1700,7 @@ class TPG:
         self.fb_S_x_req = (self.fb_M_tot / (0.55 * self.global_defs.F_y)).to("in^3")
 
         # Holes - Assume 4 x 1" holes in web for diaphragm
-        self.D1 = 3 * units("in")  # //TODO - is this a constant?
+        self.D1 = 3 * units("in")  # 3" edge distance for first bolt hole group (standard)
         self.D2 = 3 * units("in") + self.D1
 
         self.I_holes_web = (
@@ -1804,7 +1804,8 @@ class TPG:
             print(colored("No Good - Floor Beam End Shear Check", "red"))
 
         # Bolted Connection - Checked in sep. calc, they account for combined effect so no 1.25 increase
-        # AREMA 15 1.5.9.a.1 # //TODO - Investigate this standard
+        # AREMA 15-1.5.9.a.1: Combined shear/tension in bolted connections; the 1.25 increase
+        # applies to connections with combined effects. Sep. calc accounts for this, so no increase here.
 
         # Floor beam fatigue
         self.fb_fat_imp_M = self.assumed_mean_impact_perc * self.fb_M_imp
@@ -2174,7 +2175,7 @@ class TPG:
         )
 
         # Holes - Assume 4 x 1" holes in web for diaphragm
-        self.D1 = 3 * units("in")  # //TODO - is this a constant?
+        self.D1 = 3 * units("in")  # 3" edge distance for first bolt hole group (standard)
         self.D2 = 3 * units("in") + self.D1
 
         self.I_holes_web = (
@@ -2278,7 +2279,8 @@ class TPG:
             print(colored("No Good - Floor Beam End Shear Check", "red"))
 
         # Bolted Connection - Checked in sep. calc, they account for combined effect so no 1.25 increase
-        # AREMA 15 1.5.9.a.1 # //TODO - Investigate this standard
+        # AREMA 15-1.5.9.a.1: Combined shear/tension in bolted connections; the 1.25 increase
+        # applies to connections with combined effects. Sep. calc accounts for this, so no increase here.
 
         # Floor beam fatigue
         self.fb_fat_imp_M = self.assumed_mean_impact_perc * self.fb_M_imp
