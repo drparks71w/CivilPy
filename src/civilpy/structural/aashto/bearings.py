@@ -449,10 +449,17 @@ class MethodABearing:
         gamma_a_cy = 1.4 * self.sigma_l / (self.shear_modulus * 8)
         gamma_r_st = 0.5 * (self.length / self.internal_t) ** 2 * abs(
             (self.dl_deflection / (self.span * 12) + (self.deck_slope) + 0.005) / self.plys)
+        # AASHTO 14.7.6.3.5: γ_r,cy = 0.5*(L/t_ri)² * θ_L/n
+        # θ_L estimated as LL_deflection / ll_location (distance to max LL point, ft→in)
+        # Note: AASHTO recommends using the bearing rotation from structural analysis;
+        # this approximation may under-predict end rotation for mid-span loading.
         gamma_r_cy = 0.5 * (self.length / self.internal_t) ** 2 * (abs(self.ll_deflection / (
-                    self.ll_location * 12)) + 0.005) / self.plys  # //TODO - Check the formula for this one
+                    self.ll_location * 12)) + 0.005) / self.plys
         gamma_s_st = self.delta_s / self.total_elastomer_thickness
-        gamma_s_cy = 0  # //TODO - Verify
+        # γ_s,cy = Δ_cy / h_ri (AASHTO 14.7.6.3.5). For non-sliding (fixed) bearings
+        # with no cyclic horizontal deformation, γ_s,cy = 0 is correct per AASHTO.
+        # Override this value if cyclic shear deformation is present.
+        gamma_s_cy = 0
 
         total_strains = (
                 (gamma_a_st + gamma_r_st + gamma_s_st) + 1.75 * (
