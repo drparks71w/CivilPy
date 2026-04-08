@@ -261,13 +261,19 @@ class CrossSection:
             1)
         self.n = round(self.moment / self.area, 3)
         self.plate_dims = {x: y[1] for x, y in zip(self.ys, self.dimensions)}
-        # //TODO - have this check both negative and positive
-        plate_dims = {x: y[1] for x, y in zip(self.ys, self.dimensions)}
-        extr_neg_y = min(plate_dims.keys()) - \
-                     plate_dims[min(plate_dims.keys())] / 2
+        plate_dims = self.plate_dims
 
-        if self.check_negative_y_values():
-            self.cb = extr_neg_y - self.n
-        else:
-            self.cb = self.height - self.n
+        # Bottom extreme fiber (underside of lowest plate)
+        bot_key = min(plate_dims.keys())
+        extr_bot_y = bot_key - plate_dims[bot_key] / 2
+
+        # Top extreme fiber (top of highest plate)
+        top_key = max(plate_dims.keys())
+        extr_top_y = top_key + plate_dims[top_key] / 2
+
+        self.c_bottom = abs(self.n - extr_bot_y)
+        self.c_top = abs(extr_top_y - self.n)
+
+        # Governing distance to extreme fiber (largest → smallest S → critical)
+        self.cb = max(self.c_top, self.c_bottom)
         self.S = round(self.I_n / self.cb, 0)
