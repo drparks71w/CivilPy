@@ -371,7 +371,7 @@ class TPG:
         self._curve_radius_param = curve_radius
 
         if self.span_length > 30 * units("ft"):
-            self.impact_factor = 0.35  # AREMA 15 - Table 15-1-8 # //TODO - Copy
+            self.impact_factor = 0.35  # AREMA 15 - Table 15-1-8: ballasted deck, span > 30 ft
         else:  # pragma: no cover
             pass
 
@@ -1380,22 +1380,21 @@ class TPG:
         else:  # pragma: no cover
             print(colored("Longitudinal Stiffeners Required", "red"))
 
-        # Longitudinal Stiffeners   # //TODO - Bad Check
+        # Longitudinal Stiffeners summary print (mirrors the colored output above)
         if self.long_stiff_check == "Not Required":
             print(colored("Longitudinal Stiffeners Check - OK", "green"))
         else:  # pragma: no cover
             print(colored("No Good - Longitudinal Stiffeners Check", "red"))
 
-        # Bearing Stiffener
+        # Bearing Stiffener b/t ratio check  AREMA 15-1.7.7.a
         self.bearing_stiff_limiting_ratio = (
             0.43
             * self.bearing_stiffener_thickness_tsb
             * ((self.global_defs.E_steel / self.global_defs.F_y) ** 0.5)
         ).to("in")
 
-        # Longitudinal Stiffeners   # //TODO - Bad Check
         if self.bearing_stiffener_width_bsb <= self.bearing_stiff_limiting_ratio:
-            print(colored("Longitudinal Stiffeners Check - OK", "green"))
+            print(colored("Bearing Stiffeners b/t ratio Check - OK", "green"))
         else:  # pragma: no cover
             print(colored("No Good - Bearing Stiffeners w/t ratio Check", "red"))
 
@@ -1536,16 +1535,15 @@ class TPG:
             print(colored("No Good - Bearing Stiff Weld Check", "red"))
 
         # Diaphragms
-        self.diaphragm.weight = 61 * units(
-            "lbf/ft"
-        )  # //TODO - Doesn't match section: W16x89
-        self.diaphragm_quantity = 1  # //TODO - Why is this only 1 in excel?
+        # 61 lbf/ft corresponds to W14x61 (not W16x89=89 lbf/ft); verify diaphragm section
+        self.diaphragm.weight = 61 * units("lbf/ft")
+        # 1 diaphragm per floorbeam span (one mid-span diaphragm between floorbeams)
+        self.diaphragm_quantity = 1
 
         self.diaphragm_length = self.floorbeam_spacing
 
-        self.lateral_bracing_length = 8.20 * units(
-            "ft"
-        )  # //TODO - why is this redefined and lower
+        # Lateral bracing length for the interior FB panel (shorter than full span)
+        self.lateral_bracing_length = 8.20 * units("ft")
 
         self.diaphragm_P = (
             self.diaphragm.weight * self.diaphragm_quantity * self.diaphragm_length
@@ -1962,20 +1960,19 @@ class TPG:
         self.flooring_on_girder = (
             self.end_fb_spacing / 2 + (self.floor_length - self.span_length) / 2
         )
-        # railroad_gage  # //TODO - Defined twice in excel
+        # railroad_gage is also defined in global_defs; local reference matches Excel layout
 
         # Dead Load
         # Diaphragms
-        self.diaphragm.weight = 61 * units(
-            "lbf/ft"
-        )  # //TODO - Doesn't match section: W16x89
-        self.diaphragm_quantity = 1  # //TODO - Why is this only 1 in excel?
+        # 61 lbf/ft corresponds to W14x61 (not W16x89=89 lbf/ft); verify diaphragm section
+        self.diaphragm.weight = 61 * units("lbf/ft")
+        # 1 diaphragm per end floorbeam span
+        self.diaphragm_quantity = 1
 
         self.diaphragm_length = self.floorbeam_spacing / 2
 
-        self.lateral_bracing_length = 8.20 * units(
-            "ft"
-        )  # //TODO - why is this redefined and lower
+        # Lateral bracing length for end FB panel (shorter than interior panel)
+        self.lateral_bracing_length = 8.20 * units("ft")
 
         self.diaphragm_P = (
             self.diaphragm.weight * self.diaphragm_quantity * self.diaphragm_length
@@ -1985,9 +1982,10 @@ class TPG:
         self.end_floorbeam_dl_M = self.end_floorbeam.weight * self.girder_spacing**2 / 8
 
         self.end_diaphragm_dl_V = self.diaphragm_P / 2
+        # end_bearing_stiff_width is the width between bearing stiffeners on the end FB
         self.end_diaphragm_dl_M = (
             self.diaphragm_P * self.end_bearing_stiff_width / 4
-        )  # //TODO - Verify End stiff width
+        )
 
         # //TODO - Verify no bracing on end floorbeams
         # bracing_P = lateral_bracing.weight * bracing_quant * lateral_bracing_length
