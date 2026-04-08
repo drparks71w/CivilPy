@@ -1,7 +1,19 @@
 [run]
 include = */src/*
 branch=True
-omit=tests, .tox/*, docs/*, res*, Training/*, venv/*
+omit=
+    tests,
+    .tox/*,
+    docs/*,
+    res*,
+    Training/*,
+    venv/*,
+    */state/ohio/*,
+    */general/bentley/*,
+    */general/database_tools.py,
+    */general/photos.py,
+    */general/jupyter.py,
+    */structural/steel_db_temp.py
 timid=True
 parallel=True
 

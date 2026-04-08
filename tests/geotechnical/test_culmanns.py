@@ -84,66 +84,105 @@ class TestCulmansMethod:
         expected_result = 23.9835 * units.foot
         assert result == expected_result
 
-    # def test_calculate_c_i(self):
-    #     result = culmans_obj.calculate_c_i()
-    #     assert isinstance(result, list)
-    #
-    # def test_calculate_b_i(self):
-    #     result = culmans_obj.calculate_b_i()
-    #     assert isinstance(result, list)
-    #
-    # def test_calculate_s_i(self):
-    #     result = culmans_obj.calculate_s_i()
-    #     assert isinstance(result, list)
-    #
-    # def test_calculate_A_i(self):
-    #     result = culmans_obj.calculate_A_i()
-    #     assert isinstance(result, list)
-    #
-    # def test_calculate_x_cgi(self):
-    #     result = culmans_obj.calculate_x_cgi()
-    #     assert isinstance(result, list)
-    #
-    # def test_calculate_y_cgi(self):
-    #     result = culmans_obj.calculate_y_cgi()
-    #     assert isinstance(result, list)
-    #
-    # def test_calculate_running_total(self):
-    #     result = culmans_obj.calculate_running_total()
-    #     assert isinstance(result, list)
-    #
-    # def test_calculate_w_i(self):
-    #     result = culmans_obj.calculate_w_i()
-    #     assert isinstance(result, list)
-    #
-    # def test_calculate_cumulative_weights(self):
-    #     result = culmans_obj.calculate_cumulative_weights()
-    #     assert isinstance(result, list)
-    #
-    # def test_calculate_ll_surcharge(self):
-    #     result = culmans_obj.calculate_ll_surcharge()
-    #     assert isinstance(result, list)
-    #
-    # def test_calculate_x_ci(self):
-    #     result = culmans_obj.calculate_x_ci()
-    #     assert isinstance(result, list)
-    #
-    # def test_calculate_y_ci(self):
-    #     result = culmans_obj.calculate_y_ci()
-    #     assert isinstance(result, list)
-    #
-    # def test_calculate_x_ci_prime(self):
-    #     result = culmans_obj.calculate_x_ci_prime()
-    #     assert isinstance(result, list)
-    #
-    # def test_sort_keys(self):
-    #     result = culmans_obj.sort_keys([3, 1, 2])
-    #     assert result == [1, 2, 3]
-    #
-    # def test_generate_spreadsheet(self):
-    #     df = culmans_obj.generate_spreadsheet()
-    #     assert isinstance(df, pd.DataFrame)
-    #
-    # def test_plot_results(self):
-    #     fig = culmans_obj.plot_results()
-    #     assert fig is not None
+    def test_calculate_c_i(self):
+        keys = list(sample_data["coordinates_list"].keys())
+        result = culmans_obj.calculate_c_i("C_1", keys, sample_data["coordinates_list"])
+        assert isinstance(result, units.Quantity)
+
+    def test_calculate_c_i_not_first(self):
+        keys = list(sample_data["coordinates_list"].keys())
+        result = culmans_obj.calculate_c_i("C_2", keys, sample_data["coordinates_list"])
+        assert isinstance(result, units.Quantity)
+
+    def test_calculate_b_i(self):
+        keys = list(sample_data["coordinates_list"].keys())
+        x_val, y_val, _ = sample_data["coordinates_list"]["C_1"]
+        result = culmans_obj.calculate_b_i("C_1", keys, sample_data["coordinates_list"], x_val, y_val)
+        assert isinstance(result, units.Quantity)
+
+    def test_calculate_b_i_not_first(self):
+        keys = list(sample_data["coordinates_list"].keys())
+        x_val, y_val, _ = sample_data["coordinates_list"]["C_2"]
+        result = culmans_obj.calculate_b_i("C_2", keys, sample_data["coordinates_list"], x_val, y_val)
+        assert isinstance(result, units.Quantity)
+
+    def test_calculate_s_i(self):
+        a_i = 23.9835 * units.foot
+        b_i = 2.0 * units.foot
+        c_i = 23.9835 * units.foot
+        result = culmans_obj.calculate_s_i(a_i, b_i, c_i)
+        assert isinstance(result, units.Quantity)
+
+    def test_calculate_A_i(self):
+        s_i = 25.0 * units.foot
+        a_i = 23.9835 * units.foot
+        b_i = 2.0 * units.foot
+        c_i = 23.9835 * units.foot
+        result = culmans_obj.calculate_A_i(s_i, a_i, b_i, c_i)
+        assert isinstance(result, units.Quantity)
+
+    def test_calculate_A_i_degenerate_triangle(self):
+        # Degenerate triangle: numpy returns NaN (not ValueError) for negative sqrt
+        s_i = 1.0 * units.foot
+        a_i = 23.9835 * units.foot
+        b_i = 2.0 * units.foot
+        c_i = 23.9835 * units.foot
+        import warnings
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            result = culmans_obj.calculate_A_i(s_i, a_i, b_i, c_i)
+        import math
+        assert math.isnan(result.magnitude)
+
+    def test_calculate_x_cgi(self):
+        result = culmans_obj.calculate_x_cgi(2.0, 4.0)
+        assert isinstance(result, units.Quantity)
+
+    def test_calculate_y_cgi(self):
+        result = culmans_obj.calculate_y_cgi(10.0, 20.0)
+        assert isinstance(result, units.Quantity)
+
+    def test_calculate_running_total(self):
+        values = [1.0 * units.foot, 2.0 * units.foot, 3.0 * units.foot]
+        result = culmans_obj.calculate_running_total(values)
+        assert isinstance(result, list)
+        assert len(result) == 3
+
+    def test_calculate_w_i(self):
+        A_i = 10.0 * units.foot**2
+        soil_unit_weight = 117.7 * units("lbf/ft^3")
+        result = culmans_obj.calculate_w_i(A_i, soil_unit_weight)
+        assert isinstance(result, units.Quantity)
+
+    def test_calculate_cumulative_weights(self):
+        values = [100.0 * units("lbf/ft"), 200.0 * units("lbf/ft")]
+        result = culmans_obj.calculate_cumulative_weights(values)
+        assert isinstance(result, list)
+        assert len(result) == 2
+
+    def test_calculate_ll_surcharge(self):
+        b_i = 2.0 * units.foot
+        result = culmans_obj.calculate_ll_surcharge(b_i)
+        assert isinstance(result, units.Quantity)
+
+    def test_sort_keys(self):
+        result = culmans_obj.sort_keys(["C_3", "C_1", "C_2"])
+        assert result == ["C_1", "C_2", "C_3"]
+
+    def test_generate_spreadsheet(self):
+        df = culmans_obj.generate_spreadsheet(
+            sample_data["coordinates_list"],
+            sample_data["soil_unit_weight"],
+            sample_data["load_scale"],
+            sample_data["soil_angle_int_friction"],
+            sample_data["angle_back_wall_with_horizontal"],
+            sample_data["angle_of_wall_friction_delta"],
+        )
+        assert isinstance(df, pd.DataFrame)
+
+    def test_plot_results(self):
+        from unittest.mock import patch
+        import matplotlib
+        matplotlib.use("Agg")
+        with patch("matplotlib.pyplot.show"):
+            culmans_obj.plot_results()

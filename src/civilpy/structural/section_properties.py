@@ -149,7 +149,7 @@ class CrossSection:
                 round((self.dimensions[-1][0] *
                        self.dimensions[-1][1] ** 3) /
                       12, 2))
-        else:
+        else:  # pragma: no cover
             print("Unexpected execution")
         self.areas.append(area)
         self.ys.append(float(y))

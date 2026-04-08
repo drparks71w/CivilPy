@@ -67,3 +67,18 @@ class TestCooperE80(unittest.TestCase):
         repr_string = repr(cooper)
         self.assertIn("0 foot: 40 kip", repr_string)
         self.assertIn("109 foot: 8.0 kip / foot", repr_string)
+
+
+class TestCooperE80EqStrip(unittest.TestCase):
+    def test_initialization(self):
+        from civilpy.structural.arema import CooperE80EqStrip
+        strip = CooperE80EqStrip()
+        self.assertIsNotNone(strip.linear_loads)
+        self.assertIn("LS1", strip.linear_loads)
+
+    def test_repr(self):
+        from civilpy.structural.arema import CooperE80EqStrip
+        strip = CooperE80EqStrip()
+        result = repr(strip)
+        self.assertIn("CooperE80EqStrip", result)
+        self.assertIn("LS1", result)

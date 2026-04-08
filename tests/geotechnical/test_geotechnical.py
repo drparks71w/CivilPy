@@ -19,7 +19,11 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 import unittest
 from civilpy.geotech import (
     rankine_active_pressure,
+    rankine_active_pressure_with_surcharge,
+    coulomb_active_pressure,
     coulomb_active_pressure_with_surcharge,
+    culmann_lateral_pressure,
+    culmann_lateral_pressure_with_surcharge,
 )
 
 
@@ -96,6 +100,41 @@ class TestCoulombActivePressureWithSurcharge(unittest.TestCase):
         )
         expected_result = 38.254  # Example expected result, you'll need to calculate the actual expected value
         self.assertAlmostEqual(result, expected_result, places=2)
+
+
+class TestRankineActivePressureWithSurcharge(unittest.TestCase):
+    def test_typical(self):
+        result = rankine_active_pressure_with_surcharge(18.0, 5.0, 30.0, 10.0)
+        self.assertGreater(result, rankine_active_pressure(18.0, 5.0, 30.0))
+
+    def test_zero_surcharge(self):
+        result_no_surcharge = rankine_active_pressure(18.0, 5.0, 30.0)
+        result_with_zero = rankine_active_pressure_with_surcharge(18.0, 5.0, 30.0, 0.0)
+        self.assertAlmostEqual(result_no_surcharge, result_with_zero, places=5)
+
+
+class TestCoulombActivePresure(unittest.TestCase):
+    def test_typical(self):
+        result = coulomb_active_pressure(18.0, 5.0, 30.0, 10.0, 5.0, 0.0)
+        self.assertGreater(result, 0)
+
+
+class TestCulmannLateralPressure(unittest.TestCase):
+    def test_returns_float(self):
+        import matplotlib
+        matplotlib.use("Agg")
+        from unittest.mock import patch
+        with patch("matplotlib.pyplot.show"):
+            result = culmann_lateral_pressure(18.0, 5.0, 0.0, 30.0, 10.0, num_slices=5)
+        self.assertGreaterEqual(result, 0)
+
+    def test_with_surcharge(self):
+        import matplotlib
+        matplotlib.use("Agg")
+        from unittest.mock import patch
+        with patch("matplotlib.pyplot.show"):
+            result = culmann_lateral_pressure_with_surcharge(18.0, 5.0, 0.0, 30.0, 10.0, 5.0, num_slices=5)
+        self.assertGreaterEqual(result, 0)
 
 
 if __name__ == "__main__":

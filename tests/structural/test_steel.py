@@ -136,3 +136,36 @@ class TestSteelSectionFunctions(unittest.TestCase):
     def test_pipe(self):
         t = Pipe("Pipe10SCH140")
         self.assertEqual(t.weight, 104.0 * units("lbf/ft"))
+
+    def test_get_bolt_weights_in_table(self):
+        from src.civilpy.structural.steel import get_bolt_weights
+        result = get_bolt_weights(length=1.5, diameter=0.5, no_of_washers=0)
+        self.assertIsNotNone(result)
+
+    def test_get_bolt_weights_with_washers(self):
+        from src.civilpy.structural.steel import get_bolt_weights
+        result_no_washer = get_bolt_weights(length=1.5, diameter=0.5, no_of_washers=0)
+        result_with_washer = get_bolt_weights(length=1.5, diameter=0.5, no_of_washers=1)
+        self.assertGreater(result_with_washer, result_no_washer)
+
+    def test_get_bolt_weights_invalid(self):
+        from src.civilpy.structural.steel import get_bolt_weights
+        result = get_bolt_weights(length=99.0, diameter=99.0, no_of_washers=0)
+        self.assertIsNone(result)
+
+    def test_historic_wf_section(self):
+        from src.civilpy.structural.steel import WF
+        t = WF("18WF96", '18WF_B18b')
+        self.assertEqual(t.weight.magnitude, 96.0)
+
+    def test_historic_wf_section_no_designation_multiple(self):
+        # Covers line 698: multiple rows found → raises Exception
+        from src.civilpy.structural.steel import HistoricSteelSection
+        with self.assertRaises(Exception):
+            HistoricSteelSection("18WF96")  # 2 rows exist → raises Exception at line 698
+
+    def test_historic_wf_section_no_designation_single(self):
+        # Covers line 700: single row found → returns shape_values
+        from src.civilpy.structural.steel import HistoricSteelSection
+        t = HistoricSteelSection("10WF12")  # Only 1 row → returns it
+        assert t.weight.magnitude == 11.5

@@ -17,7 +17,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
 
 from unittest import TestCase
-from civilpy.structural.arema.rail_tpg_design import TPG
+from civilpy.structural.arema.rail_tpg_design import TPG, ThroughPlateGirderFloorbeam
 
 
 class TestTPG(TestCase):
@@ -25,3 +25,11 @@ class TestTPG(TestCase):
 
     def test_run_calcs(self):
         self.assertLessEqual(self.t.fb_deflection, self.t.max_deflection)
+
+
+class TestThroughPlateGirderFloorbeam(TestCase):
+    def test_not_rolled_shape(self):
+        # Covers lines 144-151: if not rolled_shape: branch
+        fb = ThroughPlateGirderFloorbeam(rolled_shape=False)
+        self.assertIsInstance(fb.shape, tuple)
+        self.assertIsInstance(fb.depth, tuple)

@@ -20,5 +20,5 @@ def civilpy_cli():
     print("CivilPy CLI interface.... coming soon")
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     civilpy_cli()

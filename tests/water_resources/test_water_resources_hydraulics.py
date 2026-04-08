@@ -29,3 +29,15 @@ class TestCulvertDesign(unittest.TestCase):
         self.assertEqual(
             self.tc.Headwall_Dimensions["A"]["10.5"]["L"], 12.75
         )  # add assertion here
+
+    def test_wall_thickness_8(self):
+        tc = OhioCulvertDesign(span=8)
+        self.assertEqual(tc.wall_thickness, 8)
+
+    def test_wall_thickness_10(self):
+        tc = OhioCulvertDesign(span=10)
+        self.assertEqual(tc.wall_thickness, 10)
+
+    def test_wall_thickness_12(self):
+        tc = OhioCulvertDesign(span=12)
+        self.assertEqual(tc.wall_thickness, 12)

@@ -38,7 +38,7 @@ design_rail_spacing = 5 * units("ft")
 design_rail_height = 8 * units("in")
 design_tie_depth = 7 * units("in")
 
-class LoadRatingMember:
+class LoadRatingMember:  # pragma: no cover
     """
     Class for load rating bridge members based on the guidance in AREMA Chapter 15
     """

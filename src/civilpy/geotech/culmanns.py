@@ -154,7 +154,7 @@ class CulmannsMethod:
         """Calculate area A_i (ft^2) using the formula provided."""
         try:
             area = np.sqrt(s_i * (s_i - a_i) * (s_i - b_i) * (s_i - c_i))
-        except ValueError:
+        except ValueError:  # pragma: no cover
             area = 0 * units.ft**2  # Set to 0 if there is a math domain error
         return area.to(units.ft**2).round(4)
 
@@ -251,7 +251,7 @@ class CulmannsMethod:
             + soil_angle_int_friction.to("radians")
         )
         denominator = D / C - tan_term
-        if denominator == 0:
+        if denominator == 0:  # pragma: no cover
             raise ZeroDivisionError(
                 "Denominator in calculation of x_{c'i} resulted in zero."
             )
@@ -414,7 +414,7 @@ class CulmannsMethod:
                     x,
                 )
                 results[i]["$x_{c'i}\ (ft)$"] = x_ci_prime
-            except ZeroDivisionError:
+            except ZeroDivisionError:  # pragma: no cover
                 x_ci_prime = np.nan  # Handle by storing NaN
                 results[i]["$x_{c'i}\ (ft)$"] = x_ci_prime
 

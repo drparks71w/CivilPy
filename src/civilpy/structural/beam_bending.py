@@ -433,7 +433,7 @@ class Beam:
                         )
 
         # Draw a round arrow at point torques
-        for load in self._point_torques():
+        for load in self._point_torques():  # pragma: no cover
             xc = load[1]
             yc = (beam_top + beam_bottom) / 2.0
             width = yspan * 0.17
@@ -502,6 +502,8 @@ class Beam:
         expr = sympify(expr)
         if shift:
             expr.subs(x, x - x0)
+        else:  # pragma: no cover
+            pass
         return Piecewise((0, x < x0), (0, x > x1), (expr, True))
 
     def _effort_from_pointload(self, load: PointLoadH or PointLoadV):

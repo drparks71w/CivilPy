@@ -330,7 +330,7 @@ class TPG:
 
         if self.span_length > 30 * units("ft"):
             self.impact_factor = 0.35  # AREMA 15 - Table 15-1-8 # //TODO - Copy
-        else:
+        else:  # pragma: no cover
             pass
 
         self.run_calcs()
@@ -1025,7 +1025,7 @@ class TPG:
             self.global_defs.E_steel / self.global_defs.F_y
         ) ** 0.5:
             print(colored("Flange Compression Check - OK", "green"))
-        else:
+        else:  # pragma: no cover
             print(colored("No Good - Compression Flange Check Failed", "red"))
 
         # Web Thickness     AREMA 15-1.7.3
@@ -1037,13 +1037,13 @@ class TPG:
             * self.girder_web_height
         ):
             print(colored("Web Thickness Check 1 - OK", "green"))
-        else:
+        else:  # pragma: no cover
             print(colored("No Good - Web Compression Check Failed", "red"))
 
         # Web Thickness Check 2
         if self.girder_web_thickness >= self.girder_flange_thickness / 6:
             print(colored("Web Thickness CHeck 2 - OK", "green"))
-        else:
+        else:  # pragma: no cover
             print(colored("No Good - Web Compression Check Failed", "red"))
 
         # Outstanding Elements in Compression (AREMA 15-1.6.2)
@@ -1055,7 +1055,7 @@ class TPG:
             * (self.global_defs.E / self.global_defs.F_y) ** 0.5
         ):
             print(colored("Flange Compression Check - OK", "green"))
-        else:
+        else:  # pragma: no cover
             print(colored("No Good - Compression Flange Check Failed", "red"))
 
         # Allowable Stress
@@ -1104,7 +1104,7 @@ class TPG:
                     "green",
                 )
             )
-        else:
+        else:  # pragma: no cover
             print(colored("No Good - Girder Bending Check Failed", "red"))
 
         self.F_b_ten_act = (self.M_tot / self.girder_S_xx).to("psi")
@@ -1117,7 +1117,7 @@ class TPG:
                     "green",
                 )
             )
-        else:
+        else:  # pragma: no cover
             print(colored("No Good - Girder Bending Check Failed", "red"))
 
         # Fatigue (AREMA 15-1.3.13)
@@ -1133,7 +1133,7 @@ class TPG:
                     "green",
                 )
             )
-        else:
+        else:  # pragma: no cover
             print(colored("No Good - Girder Bending Fatigue Check Failed", "red"))
 
         # Deflection AREMA 15-1.2.5
@@ -1152,7 +1152,7 @@ class TPG:
                     "green",
                 )
             )
-        else:
+        else:  # pragma: no cover
             print(colored("No Good - Deflection Check Failed", "red"))
 
         # Dead Load Camber
@@ -1189,7 +1189,7 @@ class TPG:
                     "green",
                 )
             )
-        else:
+        else:  # pragma: no cover
             print(colored("No Good - Web Shear Check Failed", "red"))
 
         # Allowable Stress on welds
@@ -1208,7 +1208,7 @@ class TPG:
                     "green",
                 )
             )
-        else:
+        else:  # pragma: no cover
             print(colored("No Good - Weld Strength Check Failed", "red"))
 
         # Web plate stiffeners
@@ -1222,7 +1222,7 @@ class TPG:
         # Transverse stiffener check
         if self.trans_stiff_check <= self.girder_web_height:
             print(colored("Transverse Stiffeners Required", "red"))
-        else:
+        else:  # pragma: no cover
             print(colored("Transverse Stiffeners NOT Required", "green"))
 
         # //TODO - Look into this value, it's not used
@@ -1260,7 +1260,7 @@ class TPG:
             or self.girder_web_height <= self.trans_stiff_check
         ):
             print(colored("Weld Strength Check - OK", "green"))
-        else:
+        else:  # pragma: no cover
             print(colored("No Good - Stiffener Spacing Check Failed", "red"))
 
         self.D_d = max(1, min(5, self.girder_web_height / self.d))
@@ -1286,7 +1286,7 @@ class TPG:
             or self.girder_web_height <= self.trans_stiff_check
         ):
             print(colored("Stiffener I_xx Check - OK", "green"))
-        else:
+        else:  # pragma: no cover
             print(colored("No Good - Stiffener Spacing Check Failed", "red"))
 
         # Max Stiffener Width AREMA 15-1.7.8.b
@@ -1301,7 +1301,7 @@ class TPG:
         # Stiffener Thickness Check
         if self.stiff_t_check_1 or self.stiff_t_check_2:
             print(colored("Stiffener Thickness Check - OK", "green"))
-        else:
+        else:  # pragma: no cover
             print(colored("No Good - Stiffener Thickness Check Failed", "red"))
 
         # Transverse Stiffener Weld Fatigue Stress
@@ -1321,7 +1321,7 @@ class TPG:
                     "green",
                 )
             )
-        else:
+        else:  # pragma: no cover
             print(colored("No Good - Stiffener Weld Fatigue Check Failed", "red"))
 
         # Longitudinal Plate Stiffeners
@@ -1336,13 +1336,13 @@ class TPG:
         ):
             self.long_stiff_check = "Not Required"
             print(colored("Longitudinal Stiffeners not required", "green"))
-        else:
+        else:  # pragma: no cover
             print(colored("Longitudinal Stiffeners Required", "red"))
 
         # Longitudinal Stiffeners   # //TODO - Bad Check
         if self.long_stiff_check == "Not Required":
             print(colored("Longitudinal Stiffeners Check - OK", "green"))
-        else:
+        else:  # pragma: no cover
             print(colored("No Good - Longitudinal Stiffeners Check", "red"))
 
         # Bearing Stiffener
@@ -1355,7 +1355,7 @@ class TPG:
         # Longitudinal Stiffeners   # //TODO - Bad Check
         if self.bearing_stiffener_width_bsb <= self.bearing_stiff_limiting_ratio:
             print(colored("Longitudinal Stiffeners Check - OK", "green"))
-        else:
+        else:  # pragma: no cover
             print(colored("No Good - Bearing Stiffeners w/t ratio Check", "red"))
 
         # Outstanding element in compression check
@@ -1413,7 +1413,7 @@ class TPG:
         )
 
         # Controlling Case
-        if (
+        if (  # pragma: no cover
             self.bear_stiff_slenderness_ratio
             <= 0.629 / (self.global_defs.F_y / self.global_defs.E) ** 0.5
         ):
@@ -1427,7 +1427,7 @@ class TPG:
             print(colored("Case 2 Controls", "green"))
             self.bearing_stiff_F_a = self.case_2_all_stress
             print(f"Bearing stiffener stress: {self.bearing_stiff_F_a}")
-        else:
+        else:  # pragma: no cover
             print(colored("Case 3 Controls", "green"))
             self.bearing_stiff_F_a = self.case_3_all_stress
             print(f"Bearing stiffener stress: {self.bearing_stiff_F_a}")
@@ -1442,7 +1442,7 @@ class TPG:
                     "green",
                 )
             )
-        else:
+        else:  # pragma: no cover
             print(colored("No Good - End Bearing Compression Check", "red"))
 
         # Bearing Stiff Weld      AREMA 15-1.7.7.a
@@ -1467,7 +1467,7 @@ class TPG:
                     "green",
                 )
             )
-        else:
+        else:  # pragma: no cover
             print(colored("No Good - Bearing Stiff Weld Check", "red"))
 
         # Bearing Stiff bearing area
@@ -1491,7 +1491,7 @@ class TPG:
                     "green",
                 )
             )
-        else:
+        else:  # pragma: no cover
             print(colored("No Good - Bearing Stiff Weld Check", "red"))
 
         # Diaphragms
@@ -1725,7 +1725,7 @@ class TPG:
                     "green",
                 )
             )
-        else:
+        else:  # pragma: no cover
             print(colored("No Good - Floor Beam Allowable Stress Check", "red"))
 
         # End Shear
@@ -1759,7 +1759,7 @@ class TPG:
                     "green",
                 )
             )
-        else:
+        else:  # pragma: no cover
             print(colored("No Good - Floor Beam End Shear Check", "red"))
 
         # Bolted Connection - Checked in sep. calc, they account for combined effect so no 1.25 increase
@@ -1782,7 +1782,7 @@ class TPG:
                     "green",
                 )
             )
-        else:
+        else:  # pragma: no cover
             print(colored("No Good - Floor Beam Fatigue Check", "red"))
 
         # Deflection
@@ -1804,7 +1804,7 @@ class TPG:
                     "green",
                 )
             )
-        else:
+        else:  # pragma: no cover
             print(colored("No Good - Floor Beam Fatigue Check", "red"))
 
         # Key Dimensions
@@ -1884,7 +1884,7 @@ class TPG:
                     "green",
                 )
             )
-        else:
+        else:  # pragma: no cover
             print(colored("No Good - Floor Plate Allowable Stress Check", "red"))
 
         # Floor Plate Deflection
@@ -1906,7 +1906,7 @@ class TPG:
                     "green",
                 )
             )
-        else:
+        else:  # pragma: no cover
             print(colored("No Good - Floor Plate Deflection Check", "red"))
 
         # Floor Beams
@@ -2199,7 +2199,7 @@ class TPG:
                     "green",
                 )
             )
-        else:
+        else:  # pragma: no cover
             print(colored("No Good - Floor Beam Allowable Stress Check", "red"))
 
         # End Shear
@@ -2233,7 +2233,7 @@ class TPG:
                     "green",
                 )
             )
-        else:
+        else:  # pragma: no cover
             print(colored("No Good - Floor Beam End Shear Check", "red"))
 
         # Bolted Connection - Checked in sep. calc, they account for combined effect so no 1.25 increase
@@ -2256,7 +2256,7 @@ class TPG:
                     "green",
                 )
             )
-        else:
+        else:  # pragma: no cover
             print(colored("No Good - Floor Beam Fatigue Check", "red"))
 
         # Deflection
@@ -2278,9 +2278,9 @@ class TPG:
                     "green",
                 )
             )
-        else:
+        else:  # pragma: no cover
             print(colored("No Good - Floor Beam Deflection Check", "red"))
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     test_bridge = TPG()

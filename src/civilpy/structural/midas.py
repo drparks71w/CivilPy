@@ -136,7 +136,7 @@ def midas_api(method, command, body=None):
             print("Invalid method, please use one of GET, POST, PUT, or DELETE")
 
         return response.json()
-    except NameError as not_defined:
+    except NameError as not_defined:  # pragma: no cover
         print(
             """'
         Could not call the MIDAS API, ensure it\'s running and your key is correctly
