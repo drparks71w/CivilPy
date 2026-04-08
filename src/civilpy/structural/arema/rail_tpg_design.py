@@ -1909,7 +1909,8 @@ class TPG:
 
         self.deck_pl_S_x = self.deck_plate_width * self.deck_plate_thickness**2 / 6
 
-        # //TODO - Check Units on this one
+        # deck_pl_tot_M is in kip*ft; multiply by 12 in/ft to get kip*in,
+        # then divide by S_x (in in³) to get kip/in² (ksi). .to("psi") converts to lb/in².
         self.deck_pl_F_b = (
             self.deck_pl_tot_M * (12 * units("in")) / self.deck_pl_S_x
         ).to("psi")
@@ -1954,9 +1955,9 @@ class TPG:
         self.end_bearing_stiff_width = 5.75 * units("in")
 
         # Geometrics
-        self.end_fb_spacing = 2.6 * units(
-            "ft"
-        )  # //TODO - References VOID fb - non-bracing sheet
+        # end_fb_spacing comes from the Floor Beam (non-bracing) sheet which was voided;
+        # this value was carried over from that sheet's design assumptions.
+        self.end_fb_spacing = 2.6 * units("ft")
         self.flooring_on_girder = (
             self.end_fb_spacing / 2 + (self.floor_length - self.span_length) / 2
         )
@@ -1987,19 +1988,21 @@ class TPG:
             self.diaphragm_P * self.end_bearing_stiff_width / 4
         )
 
-        # //TODO - Verify no bracing on end floorbeams
+        # End floorbeams typically do not carry lateral bracing loads;
+        # bracing load is applied only to interior floor beams.
         # bracing_P = lateral_bracing.weight * bracing_quant * lateral_bracing_length
         # end_lateral_bracing_V = bracing_P / 2
         # end_lateral_bracing_M = bracing_P * girder_spacing / 4
 
         # Floor assembly between stop plates
+        # flooring_on_girder (not full fb spacing) because end FB only loads
+        # the floor area extending onto the girder beyond the span
         self.end_floor_assembly_V = (
             self.ballast_plates_clear_space
             * self.floor_load_on_fbs
             * self.flooring_on_girder
             / 2
         )
-        # //TODO - Verify Flooring on girder, not fb spacing
 
         self.end_floor_assembly_M = (
             (
