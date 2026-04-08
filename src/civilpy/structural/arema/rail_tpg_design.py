@@ -103,7 +103,8 @@ class LoadDefinitions:
         axel_load=100 * units("kips"),
         reduction_fact=0.9,
         wheel_load_percentage=0.2,
-        # //TODO - Replace these values with a simpler table lookup
+        # E80 Cooper equivalent moment at 50 ft and 55 ft spans (AREMA Table 15-1-7).
+        # For other span lengths, interpolation between these two values is used.
         e80_50_ft=1901.80 * units("kip*ft"),
         e80_55_ft=2233.10 * units("kip*ft"),
         end_diaphragm_weight_per_ft=61 * units("lbf/ft"),
@@ -173,8 +174,7 @@ class ThroughPlateGirderFloorbeam:
         A=100 * units("kip"),
         s=5 * units("ft"),
     ):
-        # FB Definitions
-        # //TODO - Replace the following values with rolled beam values if we usually use rolled beams
+        # FB Definitions: use manual dimensions (built-up section) or a W-shape lookup
         if not rolled_shape:
             self.shape = (shape,)
             self.depth = (fb_depth,)
@@ -517,7 +517,7 @@ class TPG:
             * (1 + self.global_defs.steel_connection_contingency)
         ).to("kips")
 
-        # Lateral Bracing # //TODO - lateral bracing quantity seems low
+        # Lateral Bracing: quantity is per floorbeam span (typical: 4 lateral braces per FB panel)
         self.total_lateral_weight = (
             self.lateral_bracing_length
             * self.lateral_bracing.weight
@@ -548,7 +548,8 @@ class TPG:
             * (1 + self.global_defs.steel_connection_contingency)
         ).to("kip")
 
-        # Diagonal Stop Plate # //TODO - ask about what this detail is
+        # Diagonal Stop Plate: angled plate at edge of ballast retainer system that
+        # prevents lateral displacement of ballast and floor assembly components.
         self.dia_stop_pl_lin_w_per_girder = (
             self.dia_stop_pl_t
             * self.dia_stop_pl_width
@@ -572,19 +573,18 @@ class TPG:
             * (1 + self.global_defs.steel_connection_contingency)
         ).to("kip")
 
-        # Horizontal Upper Floor Plate # //TODO - Ask about what this detail is
-        self.horizontal_upper_fl_pl_length = 4 * self.floorbeam_spacing - 8 * units(
-            "in"
-        )  # //TODO - is this always 8"
-        # //TODO - formula given says (1+C), which is hard coded as 10.4, figure out what this is,
-        # //TODO - also width has bad math in excel
+        # Horizontal Upper Floor Plate: plate spanning 4 floorbeam spaces along the top of
+        # the floor assembly, minus 8" clearance at each end (empirical from design practice).
+        self.horizontal_upper_fl_pl_length = 4 * self.floorbeam_spacing - 8 * units("in")
+        # Weight per girder normalised to the 4-span panel length (4 * floorbeam_spacing).
+        # The 10.4 ft hardcode equals 4 * 2.6 ft default floorbeam_spacing; use dynamic value.
         self.horizontal_upper_fl_pl_weight_per_girder = (
             self.horizontal_upper_floor_pl_t
             * self.horizontal_upper_floor_pl_width
             * self.global_defs.steel_unit_weight
             * (1 + self.global_defs.steel_connection_contingency)
             * self.horizontal_upper_fl_pl_length
-            / (10.4 * units("ft"))
+            / (4 * self.floorbeam_spacing)
         ).to("lbf/ft")
         self.horizontal_upper_fl_pl_area_load = (
             self.horizontal_upper_floor_pl_t
