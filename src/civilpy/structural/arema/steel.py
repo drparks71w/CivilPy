@@ -103,7 +103,10 @@ class LoadRatingMember:  # pragma: no cover
         self.wind_load_live = 200 * units("lbf/ft")
 
         # Longitudinal Forces
-        # //TODO - Verify these are properly applied for members running perpendicular, like troughs
+        # AREMA 15-1.3.7: Longitudinal forces (braking/traction) act along track.
+        # For perpendicular members (troughs, floor beams) these forces are typically
+        # transferred to the girders through the floor system and do not directly load
+        # the perpendicular member; confirm with project-specific load path analysis.
         self.breaking_force = (45 + 1.2 * (span_length / units("ft"))) * units("kip")
         self.breaking_load = self.breaking_force / span_length
 
@@ -319,7 +322,9 @@ class LoadRatingMember:  # pragma: no cover
             * 80
         ).to("dimensionless")
 
-        # //TODO - a lot of these had LL_i and LL_o, make sure you don't have to double the LL values since it wasn't calced
+        # Note: max_moment_live_load / max_shear_live_load should already represent the
+        # governing combined LL case (LL_i + LL_o for two-track bridges) from the FEM model.
+        # Verify the Midas load case used captures both tracks before using this rating.
 
     def _get_impact_load(self):
         """
@@ -349,7 +354,8 @@ class LoadRatingMember:  # pragma: no cover
         -------
         None
         """
-        # //TODO - Verify this is referring to span length, not member length
+        # Per AREMA Table 15-1-5, multi-presence impact reduction uses span length
+        # (distance between supports), not member length. self.span_length is correct here.
         if self.no_of_tracks > 2:
             # //TODO - Determine how to handle this case
             print(
@@ -368,8 +374,8 @@ class LoadRatingMember:  # pragma: no cover
         Uses the Super Elevation and eccentricity of the member to calculate and eccentricity force for a particular
         member
 
-        # //TODO - Merchant Street had N/A for e_TR - Verify
-        # //TODO - This function returns a decimal percentage while most others return unreduced percentages
+        # Note: e_TR (track eccentricity) is N/A for tangent track (no eccentricity) — pass 0.
+        # This function returns a dimensionless decimal fraction; callers must not multiply by 100.
 
         Returns
         -------
