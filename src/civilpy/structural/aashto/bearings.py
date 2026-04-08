@@ -323,7 +323,7 @@ class MethodABearing:
         shear deformation, combined strain, stability, and reinforcement
         checks.
         """
-        # //TODO - Cleanup and organize these to be utilized in a more reusable way
+        # Each check below corresponds to an AASHTO 14.7.6 check; results stored in self.checks
         self.check_edge_cover()
         self.check_layer_thickness()
         # Excel Check '1' - Not Carried forward, see "Bearings - Notes" Notebook
@@ -341,8 +341,9 @@ class MethodABearing:
             self.checks['#3 - Service LL < 1.25 ksi'] = 0
             print("Service LL Check Failed - Service LL > 1.25 ksi")
 
-        # //TODO - Disagree with using this method, think the formulaic approach is superior
         # Excel Check '5' (AASHTO 14.7.6.3.3 & 14.7.5.3.6)
+        # Uses get_strain_from_stress (inverted power-law, AASHTO Table approach).
+        # Alternative: direct formula from AASHTO C14.7.5.3.6 may be more transparent.
         self.ll_deflection = get_strain_from_stress(self.service_ll, self.internal_shape_factor, self.durometer)
 
         if self.ll_deflection <= 0.125:
