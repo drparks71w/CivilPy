@@ -281,6 +281,9 @@ class TPG:
         global_values=GlobalDefinitions(),
         # Loads Floorbeam Variables
         floorbeam_values=ThroughPlateGirderFloorbeam(),
+        # Centrifugal Force inputs  AREMA 15-1.3.6
+        design_speed=35 * units("miles/hour"),
+        curve_radius=2000 * units("ft"),
     ):
         self.global_defs = global_values
         self.load_values = load_values
@@ -362,6 +365,10 @@ class TPG:
         self.stop_plate_detail_width = (
             girder_spacing - self.ballast_plates_clear_space
         ) / 2
+
+        # Centrifugal force inputs  AREMA 15-1.3.6
+        self._design_speed_param = design_speed
+        self._curve_radius_param = curve_radius
 
         if self.span_length > 30 * units("ft"):
             self.impact_factor = 0.35  # AREMA 15 - Table 15-1-8 # //TODO - Copy
@@ -984,19 +991,18 @@ class TPG:
         self.M_re = self.load_on_girder_rocking * self.L**2 / 8
 
         # Centrifugal Force    AREMA 15-1.3.6
-        # //TODO - Hardcoded Values, should be inputs
-        self.design_speed = 35 * units("miles/hour")
+        self.design_speed = self._design_speed_param
+        self.curve_radius = self._curve_radius_param
 
-        # //TODO - Hardcoded Values, should be inputs
-        self.curve_radius = 2000 * units("ft")
-
-        # //TODO - Find a better way to handle units
+        # Degree of curve: 100-ft chord definition  D = 2*arcsin(50/R) (degrees)
         self.deg_curve = (
-            2 * math.atan(100 / (2 * self.curve_radius.magnitude)) * units("rad")
-        )
-        self.centrifugal_percentage = 0.00117 * self.design_speed ** (
-            2 * self.deg_curve
-        )
+            2 * math.asin(50 / self.curve_radius.to("ft").magnitude) * (180 / math.pi)
+        ) * units("deg")
+
+        # C = 0.00117 * V^2 * D  (AREMA 15.1.3.6; V in mph, D in degrees, C as decimal)
+        V = self.design_speed.to("miles/hour").magnitude
+        D = self.deg_curve.magnitude
+        self.centrifugal_percentage = 0.00117 * V**2 * D / 100
 
         # Wind Load    # AREMA 15-1.3.7
         self.wind_load_8_ft_offset = 300 * units("lbf/ft")
