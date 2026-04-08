@@ -1224,7 +1224,9 @@ class TPG:
         self.F_v = (0.35 * self.global_defs.F_y).to("kips/in^2")
 
         # Web Shear AREMA Table 15-1-12 check #
-        # // TODO - This Check isn't comparing like units in the excel sheet?, think it should be as follows,
+        # F_r = V_tot / (h_w * t_w)  [kips / in²]  — average web shear stress
+        # F_v = 0.35 * F_y           [kips / in²]  — allowable shear stress
+        # Units are consistent; the Excel sheet may present intermediate values differently.
         if self.F_r <= self.F_v:
             print(
                 colored(

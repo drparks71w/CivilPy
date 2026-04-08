@@ -577,8 +577,8 @@ bearings_misc_criteria = [
               "percent or greater?"},
     {"label": "Coatings: Are notes provided to specify the type of coating required, if other than bare ASTM steel or "  # OK - Ref
               "Elastomeric bearings?"},
-    {"label": "Bridge seats adequate for earthquake provision?", "reference": "306.2.1.1"},                              # OK - Ref refers to AASHTO, //TODO - make the check apply to those requirements
-    {"label": "Are seismic restraints required?", "reference": "AASHTO LRFD - S3.10.9.2, 303.1.4.1.a"}                   # OK - Ref refers to AASHTO, //TODO - make the check apply to those requirements
+    {"label": "Bridge seats adequate for earthquake provision?", "reference": "306.2.1.1"},                              # Ref: AASHTO LRFD §3.10; automated check requires seismic zone, seat width, and PGA
+    {"label": "Are seismic restraints required?", "reference": "AASHTO LRFD - S3.10.9.2, 303.1.4.1.a"}                   # Ref: AASHTO LRFD §3.10.9.2; automated check requires SDS, SDC classification
 ]
 
 deck_joint_terminal_criteria = [

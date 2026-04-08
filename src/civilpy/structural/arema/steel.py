@@ -357,10 +357,13 @@ class LoadRatingMember:  # pragma: no cover
         # Per AREMA Table 15-1-5, multi-presence impact reduction uses span length
         # (distance between supports), not member length. self.span_length is correct here.
         if self.no_of_tracks > 2:
-            # //TODO - Determine how to handle this case
+            # AREMA Table 15-1-5 only covers 1-2 tracks explicitly.
+            # For >2 tracks, AREMA 15-1.3.5 requires the engineer to determine
+            # the governing loaded-track combination and impact manually.
+            # Set self.impact_load after constructing the object in that case.
             print(
-                f"{PrintColors.FAIL}Error: Special Case, calculate impact load and set self.impact_load \
-             manually{PrintColors.ENDC}"
+                f"{PrintColors.FAIL}Error: >2 tracks — calculate impact load per AREMA 15-1.3.5 and set "
+                f"self.impact_load manually{PrintColors.ENDC}"
             )
         elif self.span_length < 175 * units.ft:
             self.impact_load = self.impact_ballast_factor * 2

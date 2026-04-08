@@ -454,7 +454,10 @@ class D6BridgeLookup(TimsBridge):
             network access
         :return: Dumps .pdf files into a folder on the local machine at W:\\CivilPy_Output\\pulled_plans\\
         """
-        # //TODO - Replace this dataframe with a version that works with new plans, map other districts fs's
+        # NOTE: This CSV is specific to District 6's file-server layout.
+        # Other districts use different FS paths/formats; extend district_df_path
+        # parameter to accept a dict keyed by district number when multi-district
+        # support is needed.
         d6_plans_df = pd.read_csv(district_df_path, delimiter="^", quotechar="~")
         county_code, route_num, section_num = self.cty_rte_sec.split("-")
 
