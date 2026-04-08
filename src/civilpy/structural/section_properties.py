@@ -62,6 +62,22 @@ class CrossSection:
 
     def __init__(self, label, dimensions=None, shape=None, y=None,
                  axis='strong'):
+        """Initialise a built-up cross-section with its first plate or shape.
+
+        Args:
+            label (str): Identifier for this plate (e.g. ``"bottom flange"``).
+            dimensions (tuple[float, float], optional): ``(width, height)`` of
+                a rectangular plate in consistent units. Required when *shape*
+                is ``None``.
+            shape (W, optional): A steel wide-flange shape object from
+                :mod:`civilpy.structural.steel`. When supplied, *dimensions*
+                is derived from the shape's flange width and depth.
+            y (float, optional): Distance from the datum to the centroid of
+                this plate. Defaults to half the plate height (i.e. the plate
+                sits with its bottom at y = 0).
+            axis (str): ``'strong'`` (default) to use I_x and depth, or
+                ``'weak'`` to use I_y and flange width for rolled shapes.
+        """
         self.labels = [label, ]
         if shape:
             self.shape = shape  # //TODO - Replace with generalized function
@@ -88,12 +104,34 @@ class CrossSection:
 
     def __call__(self, label, dimensions=None, y=None, shape=None,
                  axis='strong'):
+        """Append a new plate or shape to the cross-section.
+
+        Calling the instance is the preferred way to build up a section
+        incrementally. Each call delegates to :meth:`append_value` and
+        recalculates aggregate section properties.
+
+        Args:
+            label (str): Identifier for the new plate.
+            dimensions (tuple[float, float], optional): ``(width, height)`` of
+                a rectangular plate. Required when *shape* is ``None``.
+            y (float, optional): Centroid distance from the datum. When
+                omitted, the plate is stacked directly on top of the current
+                section.
+            shape (W, optional): Rolled steel shape; overrides *dimensions*.
+            axis (str): ``'strong'`` or ``'weak'`` axis for rolled shapes.
+        """
         self.labels.append(label)
         if shape:
             self.shape = shape
         self.append_value(dimensions, y, shape)
 
     def __repr__(self):
+        """Return a human-readable summary of all plates in the section.
+
+        Returns:
+            str: One line per plate with its label and ``(width, height)``
+            dimensions.
+        """
         return "\n".join([f"{x} {y}" for x, y in zip(
             self.labels,
             self.dimensions
@@ -101,6 +139,30 @@ class CrossSection:
 
     def append_value(self, dimensions=None, y=None, shape=None,
                      axis=None):
+        """Add a plate or rolled shape to the cross-section and update properties.
+
+        Four dispatch paths are supported:
+
+        1. **Rectangular plate stacked on top** (``y=None``, ``shape=None``):
+           plate sits directly above the current top of section.
+        2. **Rolled shape at explicit y** (``shape`` provided, ``y`` provided):
+           uses I_x or I_y depending on *axis*.
+        3. **Rolled shape stacked on top** (``shape`` provided, ``y=None``):
+           depth/flange width derived from shape; stacked on current top.
+        4. **Rectangular plate at explicit y** (``shape=None``, ``y`` provided):
+           plate placed with centroid at *y*.
+
+        Args:
+            dimensions (tuple[float, float], optional): ``(width, height)`` of
+                a rectangular plate.
+            y (float, optional): Centroid position from datum.
+            shape (W, optional): Rolled steel shape object.
+            axis (str, optional): ``'strong'`` or ``'weak'`` for rolled shapes.
+
+        Note:
+            :meth:`_calc_gen_properties` is called automatically after each
+            plate is added.
+        """
         if y is None and shape is None:  # Adding rect sect at top of xsection
             self.dimensions.append(dimensions)
             y = self.height + dimensions[1] / 2
@@ -162,12 +224,34 @@ class CrossSection:
     # //TODO - Update Steel library to ID symmetrical shapes (no y value)
 
     def check_negative_y_values(self):
+        """Check whether any plate centroid lies below the datum (y < 0).
+
+        Returns:
+            bool: ``True`` if at least one y-coordinate key in
+            ``self.plate_dims`` is negative, ``False`` otherwise.
+        """
         for value in self.plate_dims.keys():
             if value < 0:
                 return True
         return False
 
     def _calc_gen_properties(self):
+        """Recalculate aggregate section properties from the current plate list.
+
+        Updates the following instance attributes after each plate is added:
+
+        - ``area``: total cross-sectional area.
+        - ``moment``: first moment of area about the datum.
+        - ``I_y``: sum of individual plate second moments about their own
+          centroids.
+        - ``I_g``: sum of individual plate second moments about the global
+          centroid.
+        - ``I_n``: net moment of inertia (parallel-axis adjustment applied).
+        - ``n``: location of the elastic neutral axis from the datum.
+        - ``plate_dims``: mapping of centroid y-values to plate heights.
+        - ``cb``: distance from neutral axis to the extreme fibre.
+        - ``S``: elastic section modulus.
+        """
         self.area = sum(self.areas)
         self.moment = sum(self.moments)
         self.I_y = sum(self.I_ys)

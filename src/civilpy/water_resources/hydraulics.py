@@ -17,7 +17,33 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
 
 class OhioCulvertDesign:
+    """ODOT standard culvert headwall and wing-wall design lookup table.
+
+    Encapsulates the Ohio DOT standard drawings for box culvert headwall
+    and wing-wall dimensions, reinforcement sizes, and concrete quantities.
+    Dimensions are keyed by headwall type, design height, and culvert span.
+
+    Attributes:
+        hw_type (str): Headwall type code (e.g. ``"A"``).
+        des_h (str): Design height key (e.g. ``"6.5"``).
+        span (int): Culvert span (ft).
+        wall_theta (str): Wing-wall skew angle (``"All"`` or specific angle).
+        footing (dict): Footing reinforcement schedule keyed by design index.
+        Headwall_Dimensions (dict): Nested dimension and reinforcement
+            lookup keyed by headwall type → design height → property.
+    """
+
     def __init__(self, hw_type="A", des_h="6.5", span=14, wall_theta="All"):
+        """Initialise an ODOT culvert design lookup object.
+
+        Args:
+            hw_type (str): Headwall type (default ``"A"``).
+            des_h (str): Design height string key matching ODOT tables
+                (default ``"6.5"``).
+            span (int): Box culvert span in feet (default ``14``).
+            wall_theta (str): Wing-wall skew angle descriptor
+                (default ``"All"``).
+        """
         self.hw_type = hw_type
         self.des_h = des_h
         self.span = span

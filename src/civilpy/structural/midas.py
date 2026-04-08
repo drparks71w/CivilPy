@@ -197,36 +197,78 @@ def convert_node_units(
 
 
 def get_elements():
+    """Retrieve all elements from the active MIDAS Civil model.
+
+    Returns:
+        dict: MIDAS API response containing element definitions keyed by
+        element ID under ``"ELEM"``.
+    """
     elements = midas_api("GET", "db/elem")
     return elements
 
 
 def get_nodes():
+    """Retrieve all nodes from the active MIDAS Civil model.
+
+    Returns:
+        dict: MIDAS API response containing node coordinates keyed by node ID
+        under ``"NODE"``.
+    """
     nodes = midas_api("GET", "db/node")
     return nodes
 
 
 def get_materials():
+    """Retrieve all material definitions from the active MIDAS Civil model.
+
+    Returns:
+        dict: MIDAS API response containing material properties keyed by
+        material ID under ``"MATL"``.
+    """
     materials = midas_api("GET", "db/matl")
     return materials
 
 
 def get_sections():
+    """Retrieve all section definitions from the active MIDAS Civil model.
+
+    Returns:
+        dict: MIDAS API response containing section properties keyed by
+        section ID under ``"SECT"``.
+    """
     sections = midas_api("GET", "db/sect")
     return sections
 
 
 def get_static_loads():
+    """Retrieve all static load case definitions from the active MIDAS Civil model.
+
+    Returns:
+        dict: MIDAS API response containing static load cases keyed by load
+        case ID under ``"STLD"``.
+    """
     static_loads = midas_api("GET", "db/stld")
     return static_loads
 
 
 def get_units():
+    """Retrieve the current unit system settings from the active MIDAS Civil model.
+
+    Returns:
+        dict: MIDAS API response containing force, length, heat, and
+        temperature unit settings.
+    """
     current_units = midas_api("GET", "db/unit")
     return current_units
 
 
 def get_supports():
+    """Retrieve all support (constraint) definitions from the active MIDAS Civil model.
+
+    Returns:
+        dict: MIDAS API response containing nodal boundary conditions keyed by
+        node ID under ``"CONS"``.
+    """
     support_definitions = midas_api("GET", "db/cons")
     return support_definitions
 
@@ -282,6 +324,16 @@ def get_elements_by_material_index(material_index: int = None):
 
 
 def setup_output_directory(output_directory: str = os.getcwd()):
+    """Create an ``output`` subdirectory inside *output_directory* if absent.
+
+    Args:
+        output_directory (str): Parent directory path. Defaults to the current
+            working directory.
+
+    Note:
+        Prints a status message indicating whether the directory was found or
+        created.
+    """
     if os.path.isdir(Path(output_directory) / "output"):
         print("Output directory already exists")
     else:

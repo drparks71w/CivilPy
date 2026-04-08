@@ -59,7 +59,27 @@ def build_coordinates_list(
     wall_height=19.5,
     soil_height_above_wall=0,
 ):
+    """Populate a Culmann's method coordinate dictionary with trial wedge points.
 
+    Adds ``num_slices`` C-points (``"C_1"`` … ``"C_n"``) to
+    *starting_coordinates_list*. Each point represents the top of a trial
+    failure wedge at a horizontal spacing of ``total_length / num_slices``
+    starting from *track_offset*.
+
+    Args:
+        starting_coordinates_list (dict): Base dictionary containing at least
+            the fixed ``"A"`` (wall top) and ``"B"`` (wall toe) points.
+        total_length (float): Horizontal extent of the soil wedge area (ft).
+        num_slices (int): Number of trial wedge points to generate.
+        track_offset (float): Horizontal offset from the wall face to the
+            first trial point (ft).
+        wall_height (float): Height of the retaining wall (ft).
+        soil_height_above_wall (float): Additional soil height above the wall
+            top (ft).
+
+    Returns:
+        dict: Updated coordinate dictionary with the new C-points added.
+    """
     # Build a list of C values based on the user input
     for x in range(0, num_slices):
         starting_coordinates_list[f"C_{x+1}"] = (
@@ -76,6 +96,19 @@ default_coordinates_list = build_coordinates_list()
 
 
 class CulmannsMethod:
+    """Implements Culmann's graphical method for lateral earth pressure.
+
+    Culmann's method is a graphical/tabular approach for determining the
+    maximum active lateral earth pressure on a retaining wall under
+    arbitrary backfill geometry and surcharge loading. This class builds the
+    calculation spreadsheet and provides plotting utilities.
+
+    Attributes:
+        table (pandas.DataFrame): Spreadsheet of intermediate Culmann
+            calculations (a_i, b_i, c_i, wedge areas, weights, x/y
+            coordinates, and resultant forces).
+    """
+
     def __init__(
         self,
         coordinates_list=None,
@@ -91,6 +124,35 @@ class CulmannsMethod:
         total_length=38 * units("ft"),
         track_offset=2 * units("ft"),
     ):
+        """Initialise the Culmann's method calculator and generate the table.
+
+        Args:
+            coordinates_list (dict, optional): Dictionary of labelled
+                coordinate points defining the wall geometry and trial wedge
+                locations. Defaults to ``default_coordinates_list`` built from
+                Cooper E80 loading.
+            soil_unit_weight (pint.Quantity): Unit weight of the retained soil
+                (default 117.7 lbf/ft³).
+            soil_angle_int_friction (pint.Quantity): Angle of internal friction
+                φ (default 29.8°).
+            angle_back_wall_with_horizontal (pint.Quantity): Angle α between
+                the back of the wall and horizontal (default 0°).
+            angle_of_wall_friction_delta (pint.Quantity): Wall friction angle δ
+                (default 0°).
+            angle_of_wall_friction_gamma (pint.Quantity): Angle γ used in the
+                force polygon construction (default 90°).
+            load_scale (pint.Quantity): Scale factor converting cumulative
+                wedge weight to plot coordinates (default 2.9059 kips/ft).
+            wall_height (pint.Quantity): Height of the retaining wall
+                (default 19.5 ft).
+            soil_height_above_wall (pint.Quantity): Height of soil above the
+                wall top (default 4.4 ft).
+            num_slices (int): Number of trial wedge slices (default 19).
+            total_length (pint.Quantity): Total horizontal extent of the backfill
+                area (default 38 ft).
+            track_offset (pint.Quantity): Horizontal offset to the first trial
+                point (default 2 ft).
+        """
         self.coordinates_list = coordinates_list
         self.soil_unit_weight = soil_unit_weight
         self.soil_angle_int_friction = soil_angle_int_friction
@@ -196,6 +258,17 @@ class CulmannsMethod:
 
     # //TODO - Units are wonky here - Verify formula
     def calculate_ll_surcharge(self, b_i):
+        """Calculate the cumulative live-load surcharge for a wedge slice.
+
+        Uses a simplified Cooper E80 equivalent strip load distribution.
+        Note: unit handling in this formula is under review; see TODO above.
+
+        Args:
+            b_i (pint.Quantity): Length of the wedge base segment b_i (ft).
+
+        Returns:
+            pint.Quantity: Live load surcharge contribution (lbf).
+        """
         return (
             (80000 * units.lbf * 4 / 18 / 8.5 * b_i.magnitude).to(units("lbf")).round(4)
         )
@@ -258,6 +331,15 @@ class CulmannsMethod:
         return ((y_ci - tan_term * x_ci) / denominator).round(4)
 
     def sort_keys(self, keys):
+        """Sort C-point keys numerically by their integer suffix.
+
+        Args:
+            keys (list[str]): List of keys in the form ``"C_1"``, ``"C_2"``,
+                etc.
+
+        Returns:
+            list[str]: Keys sorted in ascending numerical order.
+        """
         # Extract the numerical part of the keys and sort
         return sorted(keys, key=lambda x: int(x.split("_")[1]))
 
@@ -469,6 +551,17 @@ class CulmannsMethod:
         return df
 
     def plot_results(self):
+        """Plot the retaining wall geometry and Culmann's method construction.
+
+        Generates a matplotlib figure showing:
+
+        - Trial wedge points (C_1 … C_n) and the base points A and B.
+        - Dashed green lines connecting each C-point back to B.
+        - The ground surface line from A through all C-points.
+        - A trapezoidal retaining wall cross-section.
+
+        The figure is displayed via ``plt.show()``.
+        """
         # Extract x and y coordinates
         x_coordinates = [value[0] for value in self.coordinates_list.values()]
         y_coordinates = [value[1] for value in self.coordinates_list.values()]

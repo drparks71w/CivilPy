@@ -18,6 +18,23 @@ durometer_strain_factors = {
 }
 
 def find_closest_key(user_input, durometer_values, category):
+    """Return the strain-factor table key nearest to *user_input*.
+
+    AASHTO shape-factor tables are defined at discrete values (3, 4, 5, 6, 9,
+    12). When a designer provides an intermediate shape factor this function
+    finds the nearest tabulated key so the correct strain factor can be looked
+    up.
+
+    Args:
+        user_input: Shape factor value to match (numeric or string).
+        durometer_values (dict): Nested dict keyed by durometer → shape factor
+            → strain factor (e.g. ``durometer_strain_factors``).
+        category (str): Durometer hardness category key (e.g. ``"50"``).
+
+    Returns:
+        str: The integer key in *durometer_values[category]* closest to
+        *user_input*, returned as a string.
+    """
     # Convert keys to numbers and compute the closest match
     values = map(float, durometer_values[category].keys())
     closest_key = min(values, key=lambda x: abs(x - float(user_input)))
@@ -43,5 +60,21 @@ def find_closest_key(user_input, durometer_values, category):
 # seems wrong. So x and y in the formulas got twisted around during this
 # This function results in the inverse of the y = Ax^1.3 formula
 def get_strain_from_stress(stress, durometer, shape_factor):
+    """Calculate elastomer compressive strain from applied stress.
+
+    Inverts the AASHTO power-law relationship ``stress = A * strain^1.3``
+    (where *A* is the durometer/shape-factor dependent coefficient) to solve
+    for strain given a known stress. AASHTO tables list strain as the
+    independent variable, so this inversion is necessary for stress-driven
+    design workflows.
+
+    Args:
+        stress (float): Applied compressive stress on the bearing (ksi).
+        durometer (int): Rubber hardness (50 or 60 Shore A).
+        shape_factor (float): Bearing shape factor S = LW / [2t(L+W)].
+
+    Returns:
+        float: Compressive strain (dimensionless) corresponding to *stress*.
+    """
     shape_factor = find_closest_key(shape_factor, durometer_strain_factors, str(durometer))
     return (stress / durometer_strain_factors[str(durometer)][shape_factor]) ** (1 / 1.3)

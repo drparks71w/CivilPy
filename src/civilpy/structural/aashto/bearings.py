@@ -33,12 +33,31 @@ class BearingSuitability:
             continue
     """
     def __init__(self, type='rectangular', movement='fixed', axis='x'):
+        """Initialise a BearingSuitability checker and build the lookup table.
+
+        Args:
+            type (str): Bearing type descriptor (e.g. ``'rectangular'``).
+            movement (str): Expected movement type (``'fixed'`` or
+                ``'expansion'``).
+            axis (str): Principal movement axis (``'x'`` longitudinal or
+                ``'y'`` transverse).
+        """
         self.type = type
         self.movement = movement
         self.axis = axis
         self.table = self.get_table()
 
     def get_table(self):
+        """Build and return the AASHTO bearing suitability reference table.
+
+        The table maps movement/rotation/load categories to bearing types with
+        suitability codes: ``'S'`` = suitable, ``'U'`` = unsuitable,
+        ``'R'`` = requires special consideration.
+
+        Returns:
+            pandas.DataFrame: Rows are bearing types; columns are movement,
+            rotation, and load categories.
+        """
         table = {
             'Movement:Longitudinal': {
                 'Plain Elastomeric Pad': 'S',
@@ -252,9 +271,30 @@ class MethodABearing:
         self.run_checks()
 
     def get_shape_factors(self, thickness):
+        """Calculate the AASHTO shape factor S for a single elastomer layer.
+
+        Per AASHTO 14.7.5.1, S = LW / [2t_ri(L + W)].
+
+        Args:
+            thickness (float): Thickness of a single internal elastomer layer
+                t_ri (inches).
+
+        Returns:
+            float: Dimensionless shape factor S.
+        """
         return (self.width * self.length) / (2 * thickness * (self.length + self.width))
 
     def run_checks(self):
+        """Execute all AASHTO Method A elastomeric bearing design checks.
+
+        Runs checks #2 through #19 per AASHTO LRFD 14.7.6. Results are stored
+        in ``self.checks`` as ``1`` (pass) or ``0`` (fail). Failed checks also
+        print a descriptive message.
+
+        Checks performed include service stress limits, deflection limits,
+        shear deformation, combined strain, stability, and reinforcement
+        checks.
+        """
         # //TODO - Cleanup and organize these to be utilized in a more reusable way
         self.check_edge_cover()
         self.check_layer_thickness()
@@ -414,6 +454,12 @@ class MethodABearing:
             print('Combined Strain Check 2 Failed')
 
     def check_edge_cover(self):
+        """Verify steel laminate edge cover meets the 1/4-inch minimum.
+
+        Per AASHTO 14.7.6.1, edge cover must be at least 0.25 inches.
+        Updates ``self.checks['Steel Laminate Edge Cover Check']`` with
+        ``1`` (pass) or ``0`` (fail).
+        """
         if self.edge_cover < .25:
             self.checks['Steel Laminate Edge Cover Check'] = 0
             print("Steel Laminate Edge Cover > 1/4\" - Failed")
@@ -421,6 +467,12 @@ class MethodABearing:
             self.checks['Steel Laminate Edge Cover Check'] = 1
 
     def check_layer_thickness(self):
+        """Verify external elastomer layer thickness constraints.
+
+        Per AASHTO 14.7.6.1, the external layer must not exceed 5/16 inch
+        and must not exceed 70 % of the internal layer thickness. Updates
+        ``self.checks`` with ``1`` (pass) or ``0`` (fail) for each sub-check.
+        """
         if self.external_t > 5/16:
             self.checks['External Thickness Check > 5/16\"'] = 0
             print("External Thickness Check Failed > 5/16\"")
@@ -432,6 +484,12 @@ class MethodABearing:
             self.checks['External Thickness > 70% Internal'] = 1
 
     def get_deflections(self):
+        """Calculate service compressive stress values from applied loads.
+
+        Divides live and total dead loads by the bearing plan area to obtain
+        bearing pressures, stored as ``self.sigma_l`` (live load stress, ksi)
+        and ``self.sigma_s`` (dead load stress, ksi).
+        """
         self.sigma_l = self.loads['live'] / (self.width * self.length)
         self.sigma_s = self.loads['total_dead_load'] / (self.width * self.length)
 

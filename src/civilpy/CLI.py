@@ -17,6 +17,12 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
 
 def civilpy_cli():
+    """Entry point for the CivilPy command-line interface.
+
+    Currently a placeholder. Future versions will expose CivilPy functionality
+    through subcommands for data processing, structural calculations, and
+    report generation.
+    """
     print("CivilPy CLI interface.... coming soon")
 
 
