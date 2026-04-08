@@ -256,56 +256,54 @@ class CulmannsMethod:
             cumulative_weights.append(total.to(units.lbf / units.ft).round(4))
         return cumulative_weights
 
-    # //TODO - Units are wonky here - Verify formula
     def calculate_ll_surcharge(self, b_i):
-        """Calculate the cumulative live-load surcharge for a wedge slice.
+        """Calculate the live-load surcharge for a wedge slice per unit wall length.
 
         Uses a simplified Cooper E80 equivalent strip load distribution.
-        Note: unit handling in this formula is under review; see TODO above.
+        The E80 axle load (80 000 lbf) is distributed over a 4-rail area
+        (18 ft tie spacing × 8.5 ft track width) and integrated over the
+        wedge base length b_i.
 
         Args:
             b_i (pint.Quantity): Length of the wedge base segment b_i (ft).
 
         Returns:
-            pint.Quantity: Live load surcharge contribution (lbf).
+            pint.Quantity: Live load surcharge contribution (lbf/ft).
         """
-        return (
-            (80000 * units.lbf * 4 / 18 / 8.5 * b_i.magnitude).to(units("lbf")).round(4)
-        )
+        load_per_area = 80000 * units.lbf * 4 / (18 * units.ft) / (8.5 * units.ft)
+        return (load_per_area * b_i).to(units("lbf/ft")).round(4)
 
-    # //TODO - Units are wonky here - Verify formula
     def calculate_x_ci(self, total_weight, load_scale, soil_angle_int_friction):
-        """
-        Calculate x_ci using the formula:
-        x_ci = Total Weight * (1 / load_scale / 1000) * cos(soil_angle_int_friction)
+        """Calculate x_ci (dimensionless plotting coordinate on the force polygon).
+
+        Converts total wedge weight to a force-polygon x-coordinate by dividing
+        by the load scale (converted to matching units) and projecting onto the
+        friction angle direction.
 
         Args:
-        total_weight (pint.Quantity): The total weight in lbf/ft.
-        load_scale (float): The load scale factor.
-        soil_angle_int_friction (float): Soil angle of internal friction in radians.
+            total_weight (pint.Quantity): Total cumulative wedge weight in lbf/ft.
+            load_scale (pint.Quantity): Force-polygon scale factor in kips/ft.
+            soil_angle_int_friction (pint.Quantity): Angle of internal friction φ.
 
         Returns:
-        float: The calculated x_ci in ft.
+            float: The x_ci plotting coordinate (dimensionless).
         """
-        return (
-            total_weight.magnitude
-            * (1 / load_scale / 1000)
-            * np.cos(soil_angle_int_friction)
-        ).round(4)
+        ratio = total_weight.to("kips/ft") / load_scale
+        phi_rad = soil_angle_int_friction.to("radians").magnitude
+        return round(float(ratio.magnitude) * np.cos(phi_rad), 4)
 
     def calculate_y_ci(self, x_ci, soil_angle_int_friction):
-        """
-        Calculate y_ci using the formula:
-        y_ci = x_ci * tan(soil_angle_int_friction)
+        """Calculate y_ci (dimensionless plotting coordinate on the force polygon).
 
         Args:
-        x_ci (float): The x_ci value in ft.
-        soil_angle_int_friction (float): Soil angle of internal friction in radians.
+            x_ci (float): The x_ci plotting coordinate (dimensionless).
+            soil_angle_int_friction (pint.Quantity): Angle of internal friction φ.
 
         Returns:
-        float: The calculated y_ci in ft.
+            float: The y_ci plotting coordinate (dimensionless).
         """
-        return (x_ci * np.tan(soil_angle_int_friction)).round(4)
+        phi_rad = soil_angle_int_friction.to("radians").magnitude
+        return round(x_ci * np.tan(phi_rad), 4)
 
     def calculate_x_ci_prime(
         self,
@@ -410,7 +408,7 @@ class CulmannsMethod:
             # Calculate weight and cumulative live load surcharge
             w_i = self.calculate_w_i(A_i, soil_unit_weight)
             w_i_list.append(w_i)
-            LL_surcharge = self.calculate_ll_surcharge(b_i) / units("ft")
+            LL_surcharge = self.calculate_ll_surcharge(b_i)
             cumulative_LL_surcharge += LL_surcharge
 
             results.append(
