@@ -246,7 +246,8 @@ class TPG:
         tie_level_ballast_quant=1,
         tie_level_ballast_sloped_reduction=2 * units("ft^2"),
         tie_level_ballast_include_pre_move_weight=False,
-        # //TODO - Verify what these diagonal/horizontal formulas/values are dependent on
+        # Diagonal stop plate width is the hypotenuse of a right triangle defined by
+        # the floor plan geometry: legs are (1 ft 10 in) horizontal and (1 ft 1-3/16 in) vertical.
         dia_stop_pl_t=0.5 * units("in"),
         dia_stop_pl_width=(
             (1 * units("ft") + 10 * units("inch")) ** 2
@@ -641,7 +642,8 @@ class TPG:
         self.asp_plank_area_load = (
             self.asphaltic_plank_t * self.global_defs.asphalt_unit_weight
         ).to("lbf/ft^2")
-        # Between stop Plates        # //TODO - Hardcoded values
+        # Area load between stop plates (outside track zone).
+        # 14 ft is the two-track zone width (2 × 7 ft centers); adjust for project geometry.
         self.asp_plank_area_load_2 = (
             self.asphaltic_plank_t
             * self.global_defs.asphalt_unit_weight

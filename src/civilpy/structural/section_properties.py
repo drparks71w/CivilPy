@@ -82,7 +82,7 @@ class CrossSection:
         """
         self.labels = [label, ]
         if shape:
-            self.shape = shape  # //TODO - Replace with generalized function
+            self.shape = shape  # Currently only W() wide-flange shapes are supported
             self.dimensions = [(
                 self.shape.flange_width.magnitude,
                 self.shape.depth.magnitude
@@ -190,8 +190,8 @@ class CrossSection:
                 self.I_gs.append(float(self.shape.I_y.magnitude))
 
         elif shape and y is None:  # Shape provided, no y value
-            # //TODO - Update to account for non-symmetrical shapes
-            # //TODO - Update to use a general function
+            # Assumes centroid at depth/2 (valid for symmetrical W-shapes).
+            # For non-symmetrical shapes (channels, tees), centroid location must be supplied via y.
             if axis == 'strong':
                 self.dimensions.append((
                     self.shape.flange_width.magnitude,
@@ -222,8 +222,7 @@ class CrossSection:
 
         self._calc_gen_properties()
 
-    # //TODO - Update a function in the steel library to accept general input
-    # //TODO - Update Steel library to ID symmetrical shapes (no y value)
+    # Future: extend steel library to support non-W shapes (channels, tees) with explicit centroid offsets
 
     def check_negative_y_values(self):
         """Check whether any plate centroid lies below the datum (y < 0).
