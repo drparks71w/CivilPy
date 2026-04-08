@@ -21,7 +21,8 @@ cache:
     - source venv/bin/activate
     - pip install --upgrade setuptools pip
     - pip install -e ".[db,geo,web,jupyter,validation]"
-    - pytest --cov --cov-report term --cov-report xml:coverage.xml
+    - pip install pytest pytest-cov
+    - python -m pytest --cov --cov-report term --cov-report xml:coverage.xml
   coverage: '/TOTAL.*\s+(\d+\%)/'
   artifacts:
     reports:

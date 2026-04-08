@@ -73,6 +73,10 @@ validation = [
     "pydantic_core>=2.0",
     "python-dotenv>=1.0",
 ]
+test = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+]
 full = [
     "civilpy[db,pdf,geo,web,jupyter,validation]",
     "FreeSimpleGUI>=5.0",
