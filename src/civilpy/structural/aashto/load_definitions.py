@@ -460,14 +460,36 @@ for combo_name, combo_data in load_combinations.items():
 
 aashto_load_combos_df = pd.DataFrame(load_combos_data)
 
-# Create a dictionary for permanent load factors (Table 3.4.1-2 in AASHTO)
+# Permanent load factors - AASHTO LRFD Table 3.4.1-2
+# Simple (most common) values for DC, DW, EL, ES. For EH and EV, use
+# permanent_load_factors_detailed below when the sub-case matters.
 permanent_load_factors = {
     "DC": {"Maximum": 1.25, "Minimum": 0.90},
     "DW": {"Maximum": 1.50, "Minimum": 0.65},
-    "EH": {"Maximum": 1.50, "Minimum": 0.90},
+    "EH": {"Maximum": 1.50, "Minimum": 0.90},   # Active (governing); see detailed below
     "EL": {"Maximum": 1.00, "Minimum": 1.00},
-    "EV": {"Maximum": 1.35, "Minimum": 0.90},
+    "EV": {"Maximum": 1.35, "Minimum": 0.90},   # Retaining structures; see detailed below
     "ES": {"Maximum": 1.50, "Minimum": 0.75}
+}
+
+# Detailed sub-case load factors for EH and EV per AASHTO LRFD Table 3.4.1-2.
+# EH (Horizontal Earth Pressure) and EV (Vertical Earth Pressure) have multiple
+# sub-cases depending on the structural system.  None means "not applicable" (only
+# the governing direction applies to that sub-case).
+permanent_load_factors_detailed = {
+    "EH": {
+        "Active":          {"Maximum": 1.50, "Minimum": 0.90},
+        "At-Rest":         {"Maximum": 1.35, "Minimum": 0.90},
+        "AEP-Anchored":    {"Maximum": 1.35, "Minimum": None},   # Anchored walls only
+    },
+    "EV": {
+        "Overall-Stability":        {"Maximum": 1.00, "Minimum": None},
+        "Retaining-Walls":          {"Maximum": 1.35, "Minimum": 1.00},
+        "Rigid-Buried-Structure":   {"Maximum": 1.30, "Minimum": 0.90},
+        "Rigid-Frames":             {"Maximum": 1.35, "Minimum": 0.90},
+        "Flexible-Metallic":        {"Maximum": 1.50, "Minimum": 0.90},  # w/ approved backfill
+        "Flexible-Thermoplastic":   {"Maximum": 1.30, "Minimum": 0.90},
+    },
 }
 
 permanent_loads = [
