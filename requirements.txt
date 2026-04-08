@@ -54,13 +54,6 @@ termcolor==3.1.0
 natsort==8.4.0
 rich==14.1.0
 
-# Deep learning (used in state/ohio/DOT/Rhino.py)
-torch==2.8.0+cu126
-torchvision==0.23.0+cu126
-
-# Rhino geometry (used in state/ohio/DOT/Rhino.py)
-rhinoinside==0.8.2
-
 # Typing
 typing_extensions==4.14.1
 

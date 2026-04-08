@@ -10,7 +10,7 @@ Subpackages
    civilpy.construction
    civilpy.environmental
    civilpy.general
-   civilpy.geotechnical
+   civilpy.geotech
    civilpy.state
    civilpy.structural
    civilpy.transportation

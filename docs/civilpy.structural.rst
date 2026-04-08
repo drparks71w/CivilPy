@@ -1,6 +1,16 @@
 civilpy.structural package
 ==========================
 
+Subpackages
+-----------
+
+.. toctree::
+   :maxdepth: 4
+
+   civilpy.structural.aashto
+   civilpy.structural.aashtoware
+   civilpy.structural.arema
+
 Submodules
 ----------
 
@@ -12,10 +22,18 @@ civilpy.structural.beam\_bending module
    :undoc-members:
    :show-inheritance:
 
-civilpy.structural.search\_tools module
----------------------------------------
+civilpy.structural.midas module
+--------------------------------
 
-.. automodule:: civilpy.structural.search_tools
+.. automodule:: civilpy.structural.midas
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+civilpy.structural.section\_properties module
+----------------------------------------------
+
+.. automodule:: civilpy.structural.section_properties
    :members:
    :undoc-members:
    :show-inheritance:

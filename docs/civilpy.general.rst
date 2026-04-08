@@ -1,6 +1,14 @@
 civilpy.general package
 =======================
 
+Subpackages
+-----------
+
+.. toctree::
+   :maxdepth: 4
+
+   civilpy.general.bentley
+
 Submodules
 ----------
 
@@ -12,42 +20,10 @@ civilpy.general.database\_tools module
    :undoc-members:
    :show-inheritance:
 
-civilpy.general.gis module
---------------------------
+civilpy.general.jupyter module
+------------------------------
 
-.. automodule:: civilpy.general.gis
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-civilpy.general.kml\_tools module
----------------------------------
-
-.. automodule:: civilpy.general.kml_tools
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-civilpy.general.math module
----------------------------
-
-.. automodule:: civilpy.general.math
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-civilpy.general.microstation module
------------------------------------
-
-.. automodule:: civilpy.general.microstation
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-civilpy.general.pdf module
---------------------------
-
-.. automodule:: civilpy.general.pdf
+.. automodule:: civilpy.general.jupyter
    :members:
    :undoc-members:
    :show-inheritance:
@@ -56,22 +32,6 @@ civilpy.general.photos module
 -----------------------------
 
 .. automodule:: civilpy.general.photos
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-civilpy.general.physics module
-------------------------------
-
-.. automodule:: civilpy.general.physics
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-civilpy.general.plan\_development module
-----------------------------------------
-
-.. automodule:: civilpy.general.plan_development
    :members:
    :undoc-members:
    :show-inheritance:

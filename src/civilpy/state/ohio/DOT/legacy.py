@@ -33,7 +33,9 @@ def help_function():
     basemap_labels['BA'] will return "Aerial Mapping"
 
     General Notes:
-    General File Naming Format:
+
+    General File Naming Format::
+
         nnnnn(n)_aa###.dgn where:
             nnnnnn - 5 (or 6) digit PID
             aa     - Two-letter code signifying sheet type (see dicts)
@@ -1007,8 +1009,10 @@ def get_df_from_url(url):
 
 
 fips_location = r"C:\Users\dparks1\Downloads\county_fips_master.csv"
-fips_codes = pd.read_csv(fips_location, encoding="ISO-8859-1"
-)
+try:
+    fips_codes = pd.read_csv(fips_location, encoding="ISO-8859-1")
+except (FileNotFoundError, OSError):
+    fips_codes = pd.DataFrame()
 
 
 def convert_latitudinal_values(latitude):

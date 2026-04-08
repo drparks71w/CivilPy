@@ -411,9 +411,9 @@ class D6BridgeLookup(TimsBridge):
         value up and down to be inclusive, effectively giving every plan segment
         for that 1 mile segment.
 
-        :param district_df_path: set to default but overrideable to allow development on various devices without network
-        access
-        :return: Dumps .pdf files into a folder on the local machine at W:\CivilPy_Output\pulled_plans\
+        :param district_df_path: set to default but overrideable to allow development on various devices without
+            network access
+        :return: Dumps .pdf files into a folder on the local machine at W:\\CivilPy_Output\\pulled_plans\\
         """
         # //TODO - Replace this dataframe with a version that works with new plans, map other districts fs's
         d6_plans_df = pd.read_csv(district_df_path, delimiter="^", quotechar="~")
