@@ -612,9 +612,6 @@ def get_all_odot_snbi_data(asset_id: int):
 # Global cache to prevent re-fetching the same field definitions repeatedly
 field_definition_cache = {}
 
-# Global cache to prevent re-fetching the same field definitions repeatedly
-field_definition_cache = {}
-
 
 def format_assetwise_output(response):
     """
