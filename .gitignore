@@ -254,3 +254,4 @@ django/
 /Notebooks/ODOT Internal APIs.ipynb
 /Notebooks/BDM_Markdown_Output/*
 /Notebooks/Extracted_Images/*
+/.claude/settings.local.json

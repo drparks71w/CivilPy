@@ -20,8 +20,7 @@ cache:
     - python -m venv venv
     - source venv/bin/activate
     - pip install --upgrade setuptools pip
-    - pip install -r requirements.txt
-    - pip install .
+    - pip install -e ".[db,geo,web,jupyter,validation]"
     - pytest --cov --cov-report term --cov-report xml:coverage.xml
   coverage: '/TOTAL.*\s+(\d+\%)/'
   artifacts:
@@ -37,6 +36,8 @@ smoke-test-3.11:
   stage: sanity
   image: python:3.11
   rules:
+    - if: $CI_COMMIT_TITLE =~ /\[docs\]/
+      when: never
     - if: $CI_COMMIT_TITLE =~ /-no_tests/
       when: never
     # Run on MRs and Main
@@ -49,9 +50,10 @@ verify-3.10:
   extends: .test_logic
   stage: test
   image: python:3.10
-  # Scipy library support already dead for these
   allow_failure: true
   rules:
+    - if: $CI_COMMIT_TITLE =~ /\[docs\]/
+      when: never
     - if: $CI_COMMIT_TITLE =~ /-no_tests/
       when: never
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
@@ -62,6 +64,8 @@ verify-3.12:
   stage: test
   image: python:3.12
   rules:
+    - if: $CI_COMMIT_TITLE =~ /\[docs\]/
+      when: never
     - if: $CI_COMMIT_TITLE =~ /-no_tests/
       when: never
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
@@ -73,6 +77,8 @@ verify-3.13:
   image: python:3.13
   allow_failure: true
   rules:
+    - if: $CI_COMMIT_TITLE =~ /\[docs\]/
+      when: never
     - if: $CI_COMMIT_TITLE =~ /-no_tests/
       when: never
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
@@ -84,6 +90,8 @@ verify-3.14:
   image: python:3.14
   allow_failure: true
   rules:
+    - if: $CI_COMMIT_TITLE =~ /\[docs\]/
+      when: never
     - if: $CI_COMMIT_TITLE =~ /-no_tests/
       when: never
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
@@ -111,13 +119,15 @@ gitlab_publish:
 
 pages:
   stage: deploy
-  image: alpine:latest
+  image: python:3.11
   script:
-    - mkdir .public
-    - cp -r src/civilpy/webpages/* .public
-    - mv .public public
+    - pip install -r docs/requirements.txt
+    - pip install .
+    - python -m sphinx docs public
   artifacts:
     paths:
       - public
   rules:
-    - if: $CI_COMMIT_BRANCH == "main"
+    # [docs] tag: deploy docs even when tests are skipped
+    - if: $CI_COMMIT_TITLE =~ /\[docs\]/ && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
