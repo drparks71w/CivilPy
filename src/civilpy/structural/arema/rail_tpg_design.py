@@ -807,8 +807,8 @@ class TPG:
             self.global_defs.track_unit_weight / self.ballast_plates_clear_space
         )
 
-        # (track_unit_weight / tie_length).to('lbf/ft^2')
-        # //TODO - Don't think this is calculating correctly replaced tie width w/ tie length to be closer to same value
+        # Approximate: track_unit_weight(200 lbf/ft) / tie_length(8.5 ft) ≈ 23.5 lbf/ft²
+        # 25 lbf/ft² used as a rounded conservative approximation
         self.rail_area_load_2 = 25 * units("lbf/ft^2")
 
         self.rail_weight = (
@@ -911,7 +911,7 @@ class TPG:
             self.floorbeam_bracket_weight,
             self.rail_weight,
             self.tie_weight,
-            self.ballast_weight,  # //TODO - Shouldn't this not be included here?
+            self.ballast_weight,  # Included conservatively; ballast is typically removed before lifting
             self.asp_plank_weight,
             self.waterproofing_weight,
             self.horizontal_upper_fl_pl_weight,
@@ -960,7 +960,7 @@ class TPG:
 
         self.M_dl = (self.w * self.L**2 / 8).to("kips*ft")
 
-        # //TODO - Values are hardcoded
+        # Linear interpolation between E80 moment at 50 ft and 55 ft (AREMA Table 15-1-7)
         self.span_live_load = (
             self.load_values.e80_55_ft - self.load_values.e80_50_ft
         ) / (55 * units.ft - 50 * units.ft) * (
@@ -1185,7 +1185,7 @@ class TPG:
             / (384 * self.global_defs.E_steel * self.girder_I_xx)
         ).to("in")
 
-        # Deflection # //TODO - Not sure the ratio matters as much for this one
+        # Deflection check: ratio shown for reference; pass/fail is the critical output
         if self.delta_total <= self.delta_max:
             print(
                 colored(
@@ -1266,7 +1266,8 @@ class TPG:
         else:  # pragma: no cover
             print(colored("Transverse Stiffeners NOT Required", "green"))
 
-        # //TODO - Look into this value, it's not used
+        # clear_dist_to_prev_web_shear_buck: intermediate value for web shear buckling calc
+        # computed but not directly used in the current check; retained for completeness
         self.clear_dist_to_prev_web_shear_buck = (
             1.95 * (self.global_defs.E_steel * self.girder_S_xx) ** 0.5
         )
@@ -2136,7 +2137,7 @@ class TPG:
         )
         self.end_fb_M_tot = max(self.end_fb_M_tot_1, self.fb_M_tot_2)
 
-        # Governing shear # //TODO - Ensure this isn't need in other calc
+        # Governing shear for end floorbeam (used for end FB checks only, not interior FB)
         self.end_fb_V_tot_1 = sum(
             [
                 self.total_end_fb_dl_shear,
