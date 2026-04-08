@@ -560,7 +560,15 @@ def get_all_inspection_data(inspection_reports, field_ids):
 
 
 def get_all_odot_snbi_data(asset_id: int):
-    # //TODO - This code is AI garbage and needs to be fixed and optimized
+    """Fetch all SNBI inspection data for an asset by probing sequential template IDs.
+
+    Template IDs are presumed to start at 1000000 and increment by 1. Iteration stops
+    after MAX_CONSECUTIVE_FAILURES consecutive empty/failed responses.
+
+    Note: The sequential probe strategy is fragile if template IDs are not contiguous.
+    If gaps in template IDs exceed MAX_CONSECUTIVE_FAILURES, valid data may be missed.
+    A preferred approach would be to query for all valid template IDs first.
+    """
     username, password = get_assetwise_secrets()
     base_url = "https://ohiodot-it-api.bentley.com"
 
@@ -568,9 +576,9 @@ def get_all_odot_snbi_data(asset_id: int):
     base_template_id = 1000000
     offset = 0
     consecutive_failures = 0
-    MAX_RETRIES = 2  # Allow for 2 empty slots before assuming we are done
+    MAX_CONSECUTIVE_FAILURES = 2  # Stop after this many consecutive empty/missing slots
 
-    while consecutive_failures < MAX_RETRIES:
+    while consecutive_failures < MAX_CONSECUTIVE_FAILURES:
         # Dynamically calculate the current Template ID
         # Note: We use integer math, not string concatenation, to safely handle 1000009 -> 1000010
         current_template_id = base_template_id + offset
