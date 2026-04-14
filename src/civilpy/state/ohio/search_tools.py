@@ -373,24 +373,40 @@ class D6BridgeLookup(TimsBridge):
         self.photo_url = ""
         self.plan_sets_list = []
 
-        # //TODO - Seperate the following lines into a function
-        dirty_long = str(self.raw_data["Longitude"])
-        dirty_lat = str(self.raw_data["Latitude"])
-
-        self.clean_lat = (
-            float(dirty_lat[:2])
-            + (float(dirty_lat[2:4]) / 60)
-            + (float(f"{dirty_lat[4:6]}.{dirty_lat[6:]}") / 3600)
-        )
-        self.clean_long = -(
-            float(dirty_long[:2])
-            + (
-                (float(dirty_long[2:4]) / 60)
-                + (float(f"{dirty_long[4:6]}.{dirty_long[6:]}") / 3600)
-            )
+        self.clean_lat, self.clean_long = self._parse_coordinates(
+            self.raw_data["Latitude"], self.raw_data["Longitude"]
         )
 
         self.cty_rte_sec = self.get_summary()
+
+    @staticmethod
+    def _parse_coordinates(latitude, longitude):
+        """Convert NBI packed DDMMSS.ss coordinates to decimal degrees.
+
+        The NBI stores coordinates as a string in DDMMSSSS format where DD=degrees,
+        MM=minutes, SSSS=hundredths of seconds (e.g. ``"382112345"`` → 38°21'23.45").
+        Longitude is returned as a negative value (Western hemisphere).
+
+        Args:
+            latitude: Raw NBI latitude value (string or numeric ``DDMMSSSS``).
+            longitude: Raw NBI longitude value (string or numeric ``DDMMSSSS``).
+
+        Returns:
+            tuple[float, float]: ``(clean_lat, clean_long)`` as decimal degrees.
+        """
+        lat = str(latitude)
+        lon = str(longitude)
+        clean_lat = (
+            float(lat[:2])
+            + (float(lat[2:4]) / 60)
+            + (float(f"{lat[4:6]}.{lat[6:]}") / 3600)
+        )
+        clean_long = -(
+            float(lon[:2])
+            + (float(lon[2:4]) / 60)
+            + (float(f"{lon[4:6]}.{lon[6:]}") / 3600)
+        )
+        return clean_lat, clean_long
 
     def get_summary(self):
         """
@@ -438,7 +454,10 @@ class D6BridgeLookup(TimsBridge):
             network access
         :return: Dumps .pdf files into a folder on the local machine at W:\\CivilPy_Output\\pulled_plans\\
         """
-        # //TODO - Replace this dataframe with a version that works with new plans, map other districts fs's
+        # NOTE: This CSV is specific to District 6's file-server layout.
+        # Other districts use different FS paths/formats; extend district_df_path
+        # parameter to accept a dict keyed by district number when multi-district
+        # support is needed.
         d6_plans_df = pd.read_csv(district_df_path, delimiter="^", quotechar="~")
         county_code, route_num, section_num = self.cty_rte_sec.split("-")
 

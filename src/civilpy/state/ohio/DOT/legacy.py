@@ -1041,7 +1041,9 @@ def convert_place_code(code):
 
     Takes in bridge SFN, returns FIPS County Code location conversion,
 
-    //TODO - Download FIPS definitions for various states, currently configured for only Ohio
+    NOTE: Currently only Ohio FIPS definitions are loaded (ohio_fips). Multi-state
+    support would require loading the full FIPS dataset (available from census.gov)
+    and filtering by state code before lookup.
 
     returns: Human readable version of 5 digit fips code
     """
@@ -1082,10 +1084,9 @@ def state_code_conversion(code):
 def get_cty_from_code(cty_code, st_code):
     """
 
-    //TODO - Use geocoding spatial joints with GPS coords to verify bentley value against
-    result from geocoding library (verify county codes)
-
-    //TODO - Make function not specific to Ohio by replacing "OH" below with appropriate dict
+    NOTE: County codes can be verified against GPS coordinates via reverse geocoding
+    (e.g., geopy/nominatim). Generalize by replacing the hardcoded state lookup with
+    a state-code-keyed FIPS county dict loaded from the full census.gov FIPS dataset.
 
     returns: 3 character numeric county code
     """
@@ -1160,7 +1161,8 @@ def get_historic_bridge_data(sfn=2701464, state="Ohio"):
     """
     Gets historic bridge values for a given sfn
 
-    // TODO - Create database of values to speed this up
+    NOTE: Reads from a flat CSV on first call every time. A local SQLite cache of
+    the NBI data would significantly speed up repeated lookups for large analyses.
     """
     if state == "Ohio":
         nbi_df = pd.read_csv(

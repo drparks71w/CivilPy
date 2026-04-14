@@ -95,8 +95,30 @@ class TestCrossSection:
         assert len(cs.areas) == 2
 
     def test_negative_y_check_negative_values(self):
-        # Covers line 167: check_negative_y_values returns True
-        # and line 186: self.cb = extr_neg_y - self.n
+        # check_negative_y_values returns True when a plate centroid is below datum
         cs = CrossSection("A", (10, 4), y=-5.0)
         result = cs.check_negative_y_values()
         assert result is True
+
+    def test_c_top_and_c_bottom_symmetric(self):
+        # Symmetric section: c_top == c_bottom, cb == either, S > 0
+        cs = CrossSection("A", (10, 4))
+        assert cs.c_top > 0
+        assert cs.c_bottom > 0
+        assert cs.cb == max(cs.c_top, cs.c_bottom)
+        assert cs.S > 0
+
+    def test_cb_governs_larger_extreme_fiber(self):
+        # Asymmetric section: bottom plate (100x2) + thin top plate (2x20)
+        # NA will be low → c_top > c_bottom → cb should equal c_top
+        cs = CrossSection("bottom", (100, 2))
+        cs("top", (2, 20))
+        assert cs.cb == max(cs.c_top, cs.c_bottom)
+        # With heavy bottom flange NA is near bottom, so top fiber governs
+        assert cs.c_top > cs.c_bottom
+
+    def test_s_uses_governing_cb(self):
+        # S = I_n / cb (governing), so S_top != S_bottom for asymmetric section
+        cs = CrossSection("bottom", (100, 2))
+        cs("top", (2, 20))
+        assert cs.S == round(cs.I_n / cs.cb, 0)

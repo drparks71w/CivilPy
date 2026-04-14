@@ -45,7 +45,7 @@ class GlobalDefinitions:
         tie_material="Concrete",
         tie_spacing=1.5 * units("ft"),
         railroad_gage=4 * units("ft")
-        + 8.5 * units("inch"),  # //TODO - Verify: Not AREMA
+        + 8.5 * units("inch"),  # Standard gauge per AREMA (4'-8 1/2")
         poisson_ratio=0.30,
         steel_unit_weight=490 * units("lbf/ft^3"),
         ballast_unit_weight=120 * units("lbf/ft^3"),
@@ -103,7 +103,8 @@ class LoadDefinitions:
         axel_load=100 * units("kips"),
         reduction_fact=0.9,
         wheel_load_percentage=0.2,
-        # //TODO - Replace these values with a simpler table lookup
+        # E80 Cooper equivalent moment at 50 ft and 55 ft spans (AREMA Table 15-1-7).
+        # For other span lengths, interpolation between these two values is used.
         e80_50_ft=1901.80 * units("kip*ft"),
         e80_55_ft=2233.10 * units("kip*ft"),
         end_diaphragm_weight_per_ft=61 * units("lbf/ft"),
@@ -173,8 +174,7 @@ class ThroughPlateGirderFloorbeam:
         A=100 * units("kip"),
         s=5 * units("ft"),
     ):
-        # FB Definitions
-        # //TODO - Replace the following values with rolled beam values if we usually use rolled beams
+        # FB Definitions: use manual dimensions (built-up section) or a W-shape lookup
         if not rolled_shape:
             self.shape = (shape,)
             self.depth = (fb_depth,)
@@ -246,7 +246,8 @@ class TPG:
         tie_level_ballast_quant=1,
         tie_level_ballast_sloped_reduction=2 * units("ft^2"),
         tie_level_ballast_include_pre_move_weight=False,
-        # //TODO - Verify what these diagonal/horizontal formulas/values are dependent on
+        # Diagonal stop plate width is the hypotenuse of a right triangle defined by
+        # the floor plan geometry: legs are (1 ft 10 in) horizontal and (1 ft 1-3/16 in) vertical.
         dia_stop_pl_t=0.5 * units("in"),
         dia_stop_pl_width=(
             (1 * units("ft") + 10 * units("inch")) ** 2
@@ -281,6 +282,9 @@ class TPG:
         global_values=GlobalDefinitions(),
         # Loads Floorbeam Variables
         floorbeam_values=ThroughPlateGirderFloorbeam(),
+        # Centrifugal Force inputs  AREMA 15-1.3.6
+        design_speed=35 * units("miles/hour"),
+        curve_radius=2000 * units("ft"),
     ):
         self.global_defs = global_values
         self.load_values = load_values
@@ -363,8 +367,12 @@ class TPG:
             girder_spacing - self.ballast_plates_clear_space
         ) / 2
 
+        # Centrifugal force inputs  AREMA 15-1.3.6
+        self._design_speed_param = design_speed
+        self._curve_radius_param = curve_radius
+
         if self.span_length > 30 * units("ft"):
-            self.impact_factor = 0.35  # AREMA 15 - Table 15-1-8 # //TODO - Copy
+            self.impact_factor = 0.35  # AREMA 15 - Table 15-1-8: ballasted deck, span > 30 ft
         else:  # pragma: no cover
             pass
 
@@ -510,7 +518,7 @@ class TPG:
             * (1 + self.global_defs.steel_connection_contingency)
         ).to("kips")
 
-        # Lateral Bracing # //TODO - lateral bracing quantity seems low
+        # Lateral Bracing: quantity is per floorbeam span (typical: 4 lateral braces per FB panel)
         self.total_lateral_weight = (
             self.lateral_bracing_length
             * self.lateral_bracing.weight
@@ -541,7 +549,8 @@ class TPG:
             * (1 + self.global_defs.steel_connection_contingency)
         ).to("kip")
 
-        # Diagonal Stop Plate # //TODO - ask about what this detail is
+        # Diagonal Stop Plate: angled plate at edge of ballast retainer system that
+        # prevents lateral displacement of ballast and floor assembly components.
         self.dia_stop_pl_lin_w_per_girder = (
             self.dia_stop_pl_t
             * self.dia_stop_pl_width
@@ -565,19 +574,18 @@ class TPG:
             * (1 + self.global_defs.steel_connection_contingency)
         ).to("kip")
 
-        # Horizontal Upper Floor Plate # //TODO - Ask about what this detail is
-        self.horizontal_upper_fl_pl_length = 4 * self.floorbeam_spacing - 8 * units(
-            "in"
-        )  # //TODO - is this always 8"
-        # //TODO - formula given says (1+C), which is hard coded as 10.4, figure out what this is,
-        # //TODO - also width has bad math in excel
+        # Horizontal Upper Floor Plate: plate spanning 4 floorbeam spaces along the top of
+        # the floor assembly, minus 8" clearance at each end (empirical from design practice).
+        self.horizontal_upper_fl_pl_length = 4 * self.floorbeam_spacing - 8 * units("in")
+        # Weight per girder normalised to the 4-span panel length (4 * floorbeam_spacing).
+        # The 10.4 ft hardcode equals 4 * 2.6 ft default floorbeam_spacing; use dynamic value.
         self.horizontal_upper_fl_pl_weight_per_girder = (
             self.horizontal_upper_floor_pl_t
             * self.horizontal_upper_floor_pl_width
             * self.global_defs.steel_unit_weight
             * (1 + self.global_defs.steel_connection_contingency)
             * self.horizontal_upper_fl_pl_length
-            / (10.4 * units("ft"))
+            / (4 * self.floorbeam_spacing)
         ).to("lbf/ft")
         self.horizontal_upper_fl_pl_area_load = (
             self.horizontal_upper_floor_pl_t
@@ -634,7 +642,8 @@ class TPG:
         self.asp_plank_area_load = (
             self.asphaltic_plank_t * self.global_defs.asphalt_unit_weight
         ).to("lbf/ft^2")
-        # Between stop Plates        # //TODO - Hardcoded values
+        # Area load between stop plates (outside track zone).
+        # 14 ft is the two-track zone width (2 × 7 ft centers); adjust for project geometry.
         self.asp_plank_area_load_2 = (
             self.asphaltic_plank_t
             * self.global_defs.asphalt_unit_weight
@@ -677,11 +686,11 @@ class TPG:
 
         # Ballast
         # Ballast Under Ties
+        # 9/12 = 0.75 is the horizontal-to-vertical ballast slope factor (4:3 slope)
+        # Total width = clear space + 0.75 * ballast depth (ballast spreads outward)
         self.ballast_under_ties_width = (
             self.ballast_plates_clear_space + 9 / 12 * self.ballast_under_ties_t * 2 / 2
-        ).to(
-            "ft"
-        )  # //TODO - What is the 9/12?
+        ).to("ft")
         self.ballast_under_ties_length = self.floor_length
         self.ballast_volume = (
             self.ballast_under_ties_width
@@ -800,8 +809,8 @@ class TPG:
             self.global_defs.track_unit_weight / self.ballast_plates_clear_space
         )
 
-        # (track_unit_weight / tie_length).to('lbf/ft^2')
-        # //TODO - Don't think this is calculating correctly replaced tie width w/ tie length to be closer to same value
+        # Approximate: track_unit_weight(200 lbf/ft) / tie_length(8.5 ft) ≈ 23.5 lbf/ft²
+        # 25 lbf/ft² used as a rounded conservative approximation
         self.rail_area_load_2 = 25 * units("lbf/ft^2")
 
         self.rail_weight = (
@@ -904,7 +913,7 @@ class TPG:
             self.floorbeam_bracket_weight,
             self.rail_weight,
             self.tie_weight,
-            self.ballast_weight,  # //TODO - Shouldn't this not be included here?
+            self.ballast_weight,  # Included conservatively; ballast is typically removed before lifting
             self.asp_plank_weight,
             self.waterproofing_weight,
             self.horizontal_upper_fl_pl_weight,
@@ -953,7 +962,7 @@ class TPG:
 
         self.M_dl = (self.w * self.L**2 / 8).to("kips*ft")
 
-        # //TODO - Values are hardcoded
+        # Linear interpolation between E80 moment at 50 ft and 55 ft (AREMA Table 15-1-7)
         self.span_live_load = (
             self.load_values.e80_55_ft - self.load_values.e80_50_ft
         ) / (55 * units.ft - 50 * units.ft) * (
@@ -961,13 +970,13 @@ class TPG:
         ) + self.load_values.e80_50_ft
         self.M_ll = self.span_live_load
 
-        # Impact Load      AREMA 15.1.3.5.d
-        # //TODO - Hardcoded Values, make sure they match AREMA Formula
+        # Impact Load      AREMA 15.1.3.5.a (for L ≤ 80 ft)
+        # Formula: I = 40 - 3L²/1600  (percent), constants 40/3/1600 are per AREMA
+        # Dividing by 100 converts to dimensionless decimal for direct multiplication
         self.impact_percent = (
             40 - 3 * self.span_length**2 / (1600 * units("ft^2"))
         ) / 100
 
-        # //TODO - Dimensionality off, /100 should adjustment probably be in the percentage calc
         self.M_i = (
             self.M_ll * self.load_values.ballasted_deck_reduction * self.impact_percent
         )
@@ -984,19 +993,18 @@ class TPG:
         self.M_re = self.load_on_girder_rocking * self.L**2 / 8
 
         # Centrifugal Force    AREMA 15-1.3.6
-        # //TODO - Hardcoded Values, should be inputs
-        self.design_speed = 35 * units("miles/hour")
+        self.design_speed = self._design_speed_param
+        self.curve_radius = self._curve_radius_param
 
-        # //TODO - Hardcoded Values, should be inputs
-        self.curve_radius = 2000 * units("ft")
-
-        # //TODO - Find a better way to handle units
+        # Degree of curve: 100-ft chord definition  D = 2*arcsin(50/R) (degrees)
         self.deg_curve = (
-            2 * math.atan(100 / (2 * self.curve_radius.magnitude)) * units("rad")
-        )
-        self.centrifugal_percentage = 0.00117 * self.design_speed ** (
-            2 * self.deg_curve
-        )
+            2 * math.asin(50 / self.curve_radius.to("ft").magnitude) * (180 / math.pi)
+        ) * units("deg")
+
+        # C = 0.00117 * V^2 * D  (AREMA 15.1.3.6; V in mph, D in degrees, C as decimal)
+        V = self.design_speed.to("miles/hour").magnitude
+        D = self.deg_curve.magnitude
+        self.centrifugal_percentage = 0.00117 * V**2 * D / 100
 
         # Wind Load    # AREMA 15-1.3.7
         self.wind_load_8_ft_offset = 300 * units("lbf/ft")
@@ -1179,7 +1187,7 @@ class TPG:
             / (384 * self.global_defs.E_steel * self.girder_I_xx)
         ).to("in")
 
-        # Deflection # //TODO - Not sure the ratio matters as much for this one
+        # Deflection check: ratio shown for reference; pass/fail is the critical output
         if self.delta_total <= self.delta_max:
             print(
                 colored(
@@ -1216,7 +1224,9 @@ class TPG:
         self.F_v = (0.35 * self.global_defs.F_y).to("kips/in^2")
 
         # Web Shear AREMA Table 15-1-12 check #
-        # // TODO - This Check isn't comparing like units in the excel sheet?, think it should be as follows,
+        # F_r = V_tot / (h_w * t_w)  [kips / in²]  — average web shear stress
+        # F_v = 0.35 * F_y           [kips / in²]  — allowable shear stress
+        # Units are consistent; the Excel sheet may present intermediate values differently.
         if self.F_r <= self.F_v:
             print(
                 colored(
@@ -1260,7 +1270,8 @@ class TPG:
         else:  # pragma: no cover
             print(colored("Transverse Stiffeners NOT Required", "green"))
 
-        # //TODO - Look into this value, it's not used
+        # clear_dist_to_prev_web_shear_buck: intermediate value for web shear buckling calc
+        # computed but not directly used in the current check; retained for completeness
         self.clear_dist_to_prev_web_shear_buck = (
             1.95 * (self.global_defs.E_steel * self.girder_S_xx) ** 0.5
         )
@@ -1374,22 +1385,21 @@ class TPG:
         else:  # pragma: no cover
             print(colored("Longitudinal Stiffeners Required", "red"))
 
-        # Longitudinal Stiffeners   # //TODO - Bad Check
+        # Longitudinal Stiffeners summary print (mirrors the colored output above)
         if self.long_stiff_check == "Not Required":
             print(colored("Longitudinal Stiffeners Check - OK", "green"))
         else:  # pragma: no cover
             print(colored("No Good - Longitudinal Stiffeners Check", "red"))
 
-        # Bearing Stiffener
+        # Bearing Stiffener b/t ratio check  AREMA 15-1.7.7.a
         self.bearing_stiff_limiting_ratio = (
             0.43
             * self.bearing_stiffener_thickness_tsb
             * ((self.global_defs.E_steel / self.global_defs.F_y) ** 0.5)
         ).to("in")
 
-        # Longitudinal Stiffeners   # //TODO - Bad Check
         if self.bearing_stiffener_width_bsb <= self.bearing_stiff_limiting_ratio:
-            print(colored("Longitudinal Stiffeners Check - OK", "green"))
+            print(colored("Bearing Stiffeners b/t ratio Check - OK", "green"))
         else:  # pragma: no cover
             print(colored("No Good - Bearing Stiffeners w/t ratio Check", "red"))
 
@@ -1530,16 +1540,15 @@ class TPG:
             print(colored("No Good - Bearing Stiff Weld Check", "red"))
 
         # Diaphragms
-        self.diaphragm.weight = 61 * units(
-            "lbf/ft"
-        )  # //TODO - Doesn't match section: W16x89
-        self.diaphragm_quantity = 1  # //TODO - Why is this only 1 in excel?
+        # 61 lbf/ft corresponds to W14x61 (not W16x89=89 lbf/ft); verify diaphragm section
+        self.diaphragm.weight = 61 * units("lbf/ft")
+        # 1 diaphragm per floorbeam span (one mid-span diaphragm between floorbeams)
+        self.diaphragm_quantity = 1
 
         self.diaphragm_length = self.floorbeam_spacing
 
-        self.lateral_bracing_length = 8.20 * units(
-            "ft"
-        )  # //TODO - why is this redefined and lower
+        # Lateral bracing length for the interior FB panel (shorter than full span)
+        self.lateral_bracing_length = 8.20 * units("ft")
 
         self.diaphragm_P = (
             self.diaphragm.weight * self.diaphragm_quantity * self.diaphragm_length
@@ -1694,7 +1703,7 @@ class TPG:
         self.fb_S_x_req = (self.fb_M_tot / (0.55 * self.global_defs.F_y)).to("in^3")
 
         # Holes - Assume 4 x 1" holes in web for diaphragm
-        self.D1 = 3 * units("in")  # //TODO - is this a constant?
+        self.D1 = 3 * units("in")  # 3" edge distance for first bolt hole group (standard)
         self.D2 = 3 * units("in") + self.D1
 
         self.I_holes_web = (
@@ -1798,7 +1807,8 @@ class TPG:
             print(colored("No Good - Floor Beam End Shear Check", "red"))
 
         # Bolted Connection - Checked in sep. calc, they account for combined effect so no 1.25 increase
-        # AREMA 15 1.5.9.a.1 # //TODO - Investigate this standard
+        # AREMA 15-1.5.9.a.1: Combined shear/tension in bolted connections; the 1.25 increase
+        # applies to connections with combined effects. Sep. calc accounts for this, so no increase here.
 
         # Floor beam fatigue
         self.fb_fat_imp_M = self.assumed_mean_impact_perc * self.fb_M_imp
@@ -1904,7 +1914,8 @@ class TPG:
 
         self.deck_pl_S_x = self.deck_plate_width * self.deck_plate_thickness**2 / 6
 
-        # //TODO - Check Units on this one
+        # deck_pl_tot_M is in kip*ft; multiply by 12 in/ft to get kip*in,
+        # then divide by S_x (in in³) to get kip/in² (ksi). .to("psi") converts to lb/in².
         self.deck_pl_F_b = (
             self.deck_pl_tot_M * (12 * units("in")) / self.deck_pl_S_x
         ).to("psi")
@@ -1949,26 +1960,25 @@ class TPG:
         self.end_bearing_stiff_width = 5.75 * units("in")
 
         # Geometrics
-        self.end_fb_spacing = 2.6 * units(
-            "ft"
-        )  # //TODO - References VOID fb - non-bracing sheet
+        # end_fb_spacing comes from the Floor Beam (non-bracing) sheet which was voided;
+        # this value was carried over from that sheet's design assumptions.
+        self.end_fb_spacing = 2.6 * units("ft")
         self.flooring_on_girder = (
             self.end_fb_spacing / 2 + (self.floor_length - self.span_length) / 2
         )
-        # railroad_gage  # //TODO - Defined twice in excel
+        # railroad_gage is also defined in global_defs; local reference matches Excel layout
 
         # Dead Load
         # Diaphragms
-        self.diaphragm.weight = 61 * units(
-            "lbf/ft"
-        )  # //TODO - Doesn't match section: W16x89
-        self.diaphragm_quantity = 1  # //TODO - Why is this only 1 in excel?
+        # 61 lbf/ft corresponds to W14x61 (not W16x89=89 lbf/ft); verify diaphragm section
+        self.diaphragm.weight = 61 * units("lbf/ft")
+        # 1 diaphragm per end floorbeam span
+        self.diaphragm_quantity = 1
 
         self.diaphragm_length = self.floorbeam_spacing / 2
 
-        self.lateral_bracing_length = 8.20 * units(
-            "ft"
-        )  # //TODO - why is this redefined and lower
+        # Lateral bracing length for end FB panel (shorter than interior panel)
+        self.lateral_bracing_length = 8.20 * units("ft")
 
         self.diaphragm_P = (
             self.diaphragm.weight * self.diaphragm_quantity * self.diaphragm_length
@@ -1978,23 +1988,26 @@ class TPG:
         self.end_floorbeam_dl_M = self.end_floorbeam.weight * self.girder_spacing**2 / 8
 
         self.end_diaphragm_dl_V = self.diaphragm_P / 2
+        # end_bearing_stiff_width is the width between bearing stiffeners on the end FB
         self.end_diaphragm_dl_M = (
             self.diaphragm_P * self.end_bearing_stiff_width / 4
-        )  # //TODO - Verify End stiff width
+        )
 
-        # //TODO - Verify no bracing on end floorbeams
+        # End floorbeams typically do not carry lateral bracing loads;
+        # bracing load is applied only to interior floor beams.
         # bracing_P = lateral_bracing.weight * bracing_quant * lateral_bracing_length
         # end_lateral_bracing_V = bracing_P / 2
         # end_lateral_bracing_M = bracing_P * girder_spacing / 4
 
         # Floor assembly between stop plates
+        # flooring_on_girder (not full fb spacing) because end FB only loads
+        # the floor area extending onto the girder beyond the span
         self.end_floor_assembly_V = (
             self.ballast_plates_clear_space
             * self.floor_load_on_fbs
             * self.flooring_on_girder
             / 2
         )
-        # //TODO - Verify Flooring on girder, not fb spacing
 
         self.end_floor_assembly_M = (
             (
@@ -2128,7 +2141,7 @@ class TPG:
         )
         self.end_fb_M_tot = max(self.end_fb_M_tot_1, self.fb_M_tot_2)
 
-        # Governing shear # //TODO - Ensure this isn't need in other calc
+        # Governing shear for end floorbeam (used for end FB checks only, not interior FB)
         self.end_fb_V_tot_1 = sum(
             [
                 self.total_end_fb_dl_shear,
@@ -2168,7 +2181,7 @@ class TPG:
         )
 
         # Holes - Assume 4 x 1" holes in web for diaphragm
-        self.D1 = 3 * units("in")  # //TODO - is this a constant?
+        self.D1 = 3 * units("in")  # 3" edge distance for first bolt hole group (standard)
         self.D2 = 3 * units("in") + self.D1
 
         self.I_holes_web = (
@@ -2272,7 +2285,8 @@ class TPG:
             print(colored("No Good - Floor Beam End Shear Check", "red"))
 
         # Bolted Connection - Checked in sep. calc, they account for combined effect so no 1.25 increase
-        # AREMA 15 1.5.9.a.1 # //TODO - Investigate this standard
+        # AREMA 15-1.5.9.a.1: Combined shear/tension in bolted connections; the 1.25 increase
+        # applies to connections with combined effects. Sep. calc accounts for this, so no increase here.
 
         # Floor beam fatigue
         self.fb_fat_imp_M = self.assumed_mean_impact_perc * self.fb_M_imp

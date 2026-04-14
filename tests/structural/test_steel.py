@@ -169,3 +169,82 @@ class TestSteelSectionFunctions(unittest.TestCase):
         from src.civilpy.structural.steel import HistoricSteelSection
         t = HistoricSteelSection("10WF12")  # Only 1 row → returns it
         assert t.weight.magnitude == 11.5
+
+
+class TestRebar(unittest.TestCase):
+    def test_rebar_no5_properties(self):
+        from src.civilpy.structural.steel import Rebar
+        bar = Rebar(5)
+        self.assertEqual(bar.bar_number, 5)
+        self.assertAlmostEqual(bar.diameter.magnitude, 0.625)
+        self.assertAlmostEqual(bar.area.magnitude, 0.31)
+        self.assertAlmostEqual(bar.weight.magnitude, 1.043)
+
+    def test_rebar_default_grade_60(self):
+        from src.civilpy.structural.steel import Rebar
+        bar = Rebar(8)
+        self.assertEqual(bar.grade, 60)
+        self.assertEqual(bar.f_y.magnitude, 60)
+        self.assertEqual(bar.f_u.magnitude, 90)
+
+    def test_rebar_grade_40(self):
+        from src.civilpy.structural.steel import Rebar
+        bar = Rebar(4, grade=40)
+        self.assertEqual(bar.grade, 40)
+        self.assertEqual(bar.f_y.magnitude, 40)
+
+    def test_rebar_invalid_size(self):
+        from src.civilpy.structural.steel import Rebar
+        with self.assertRaises(ValueError):
+            Rebar(13)
+
+    def test_rebar_all_standard_sizes(self):
+        from src.civilpy.structural.steel import Rebar
+        for size in [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 14, 18]:
+            bar = Rebar(size)
+            self.assertGreater(bar.area.magnitude, 0)
+            self.assertGreater(bar.weight.magnitude, 0)
+
+    def test_rebar_repr(self):
+        from src.civilpy.structural.steel import Rebar
+        bar = Rebar(5)
+        self.assertIn("#5", repr(bar))
+
+
+class TestSteelMaterial(unittest.TestCase):
+    def test_a36_properties(self):
+        from src.civilpy.structural.steel import A36
+        self.assertEqual(A36.f_y.magnitude, 36)
+        self.assertEqual(A36.f_u.magnitude, 58)
+        self.assertEqual(A36.E.magnitude, 29000)
+
+    def test_a572gr50_properties(self):
+        from src.civilpy.structural.steel import A572Gr50
+        self.assertEqual(A572Gr50.f_y.magnitude, 50)
+        self.assertEqual(A572Gr50.f_u.magnitude, 65)
+
+    def test_a992_properties(self):
+        from src.civilpy.structural.steel import A992
+        self.assertEqual(A992.f_y.magnitude, 50)
+        self.assertEqual(A992.f_u.magnitude, 65)
+
+    def test_steel_material_repr(self):
+        from src.civilpy.structural.steel import A36
+        self.assertIn("A36", repr(A36))
+
+
+class TestBoltMaterial(unittest.TestCase):
+    def test_a325_properties(self):
+        from src.civilpy.structural.steel import A325
+        self.assertEqual(A325.f_y.magnitude, 92)
+        self.assertEqual(A325.f_u.magnitude, 120)
+        self.assertEqual(A325.f_v.magnitude, 48)
+
+    def test_a490_properties(self):
+        from src.civilpy.structural.steel import A490
+        self.assertEqual(A490.f_u.magnitude, 150)
+        self.assertEqual(A490.f_v.magnitude, 60)
+
+    def test_bolt_material_repr(self):
+        from src.civilpy.structural.steel import A325
+        self.assertIn("A325", repr(A325))

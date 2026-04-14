@@ -49,8 +49,6 @@ class SteelSection:
     """
     Main Steel Section Class, the goal is to make the attributes of various
     steel sections easily accessible in various python scripts.
-
-    # //TODO - Add Rebar values
     """
 
     def __init__(self, label):
@@ -633,8 +631,6 @@ class HistoricSteelSection:
     """
     Main Steel Section Class, the goal is to make the attributes of various
     steel sections easily accessible in various python scripts.
-
-    # //TODO - Add Rebar values
     """
 
     def __init__(self, label, designation=None):
@@ -824,6 +820,175 @@ class WF(HistoricSteelSection):
         # self.fastener_workable_gage = conv_frac_str(
         #     self.aisc_value["WGi"].values[0]
         # ) * units("in")
+
+
+# ---------------------------------------------------------------------------
+# Rebar
+# ---------------------------------------------------------------------------
+
+# ASTM A615 / A706 standard rebar properties
+# Source: ASTM A615/A615M, Table 1 and Table 2
+# Columns: nominal_diameter (in), area (in²), weight (lb/ft)
+_REBAR_TABLE = {
+    2:  (0.250, 0.05,  0.167),
+    3:  (0.375, 0.11,  0.376),
+    4:  (0.500, 0.20,  0.668),
+    5:  (0.625, 0.31,  1.043),
+    6:  (0.750, 0.44,  1.502),
+    7:  (0.875, 0.60,  2.044),
+    8:  (1.000, 0.79,  2.670),
+    9:  (1.128, 1.00,  3.400),
+    10: (1.270, 1.27,  4.303),
+    11: (1.410, 1.56,  5.313),
+    14: (1.693, 2.25,  7.650),
+    18: (2.257, 4.00, 13.600),
+}
+
+
+class Rebar:
+    """
+    Standard deformed reinforcing bar per ASTM A615 / A706.
+
+    Provides nominal diameter, cross-sectional area, and unit weight for
+    standard US rebar sizes #2 through #18.  All dimensional properties
+    carry Pint units.
+
+    Args:
+        bar_number (int): Standard bar designator (2, 3, 4, 5, 6, 7, 8, 9,
+            10, 11, 14, or 18).
+        grade (int): Yield strength grade in ksi.  Common values are
+            40, 60, 75, or 80 per ASTM A615; 60 or 80 per ASTM A706.
+            Defaults to ``60``.
+
+    Raises:
+        ValueError: If *bar_number* is not a standard ASTM size.
+
+    Example:
+        >>> bar = Rebar(5)
+        >>> float(bar.area.magnitude)
+        0.31
+        >>> float(bar.weight.magnitude)
+        1.043
+        >>> bar.diameter
+        0.625 inch
+
+        >>> bar = Rebar(8, grade=60)
+        >>> bar.bar_number
+        8
+    """
+
+    def __init__(self, bar_number: int, grade: int = 60):
+        if bar_number not in _REBAR_TABLE:
+            raise ValueError(
+                f"Bar #{bar_number} is not a standard ASTM rebar size. "
+                f"Valid sizes: {sorted(_REBAR_TABLE)}"
+            )
+        self.bar_number = bar_number
+        self.grade = grade
+        diameter_in, area_in2, weight_plf = _REBAR_TABLE[bar_number]
+        self.diameter = diameter_in * units("in")
+        self.area = area_in2 * units("in^2")
+        self.weight = weight_plf * units("lb/ft")
+        self.f_y = grade * units("ksi")
+        # ASTM A615 tensile strength: 90 ksi for Grade 60/75, 100 ksi for 80
+        _tensile = {40: 60, 60: 90, 75: 100, 80: 100}
+        self.f_u = _tensile.get(grade, 90) * units("ksi")
+
+    def __repr__(self):
+        return (
+            f"<Rebar #{self.bar_number} Grade {self.grade} | "
+            f"d={self.diameter} A={self.area} w={self.weight}>"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Steel Material Classes
+# ---------------------------------------------------------------------------
+
+class SteelMaterial:
+    """
+    Structural steel material specification.
+
+    Stores yield strength, tensile strength, and modulus of elasticity for
+    common ASTM structural steel grades.  Properties carry Pint units.
+
+    Args:
+        designation (str): ASTM material designation, e.g. ``'A36'``,
+            ``'A572Gr50'``, ``'A992'``.
+        f_y (float): Minimum yield strength, ksi.
+        f_u (float): Minimum tensile strength, ksi.
+        e_s (float): Modulus of elasticity, ksi.  Defaults to ``29000``.
+
+    Example:
+        >>> m = SteelMaterial('A36', f_y=36, f_u=58)
+        >>> m.f_y
+        36 kip/inch²
+    """
+
+    def __init__(self, designation: str, f_y: float, f_u: float,
+                 e_s: float = 29000):
+        self.designation = designation
+        self.f_y = f_y * units("ksi")
+        self.f_u = f_u * units("ksi")
+        self.E = e_s * units("ksi")
+
+    def __repr__(self):
+        return (
+            f"<SteelMaterial {self.designation} | "
+            f"Fy={self.f_y} Fu={self.f_u}>"
+        )
+
+
+# Pre-built instances for the most common structural grades
+# Sources: AISC Steel Construction Manual, Table 2-4
+A36       = SteelMaterial("A36",        f_y=36,  f_u=58)
+A572Gr50  = SteelMaterial("A572Gr50",   f_y=50,  f_u=65)
+A572Gr60  = SteelMaterial("A572Gr60",   f_y=60,  f_u=75)
+A572Gr65  = SteelMaterial("A572Gr65",   f_y=65,  f_u=80)
+A992      = SteelMaterial("A992",        f_y=50,  f_u=65)   # W-shapes
+A500GrB   = SteelMaterial("A500GrB",    f_y=46,  f_u=58)   # HSS rectangular
+A500GrC   = SteelMaterial("A500GrC",    f_y=50,  f_u=62)   # HSS rectangular
+A53GrB    = SteelMaterial("A53GrB",     f_y=35,  f_u=60)   # Pipe
+
+
+class BoltMaterial:
+    """
+    Structural bolt material specification.
+
+    Args:
+        designation (str): ASTM bolt designation, e.g. ``'A325'``, ``'A490'``,
+            ``'F3125GrA325'``.
+        f_y (float): Proof load / yield strength, ksi.
+        f_u (float): Minimum tensile strength, ksi.
+        f_v (float): Nominal shear strength (ASD allowable or LRFD nominal),
+            ksi.  Defaults to ``48`` (A325 threads excluded from shear plane).
+
+    Example:
+        >>> b = BoltMaterial('A325', f_y=92, f_u=120, f_v=48)
+        >>> b.f_u
+        120 kip/inch²
+    """
+
+    def __init__(self, designation: str, f_y: float, f_u: float,
+                 f_v: float = 48):
+        self.designation = designation
+        self.f_y = f_y * units("ksi")
+        self.f_u = f_u * units("ksi")
+        self.f_v = f_v * units("ksi")
+
+    def __repr__(self):
+        return (
+            f"<BoltMaterial {self.designation} | "
+            f"Fu={self.f_u} Fv={self.f_v}>"
+        )
+
+
+# Pre-built instances for common structural bolt grades
+# Source: AISC SCM Table J3.2 and ASTM specifications
+A325 = BoltMaterial("A325",      f_y=92,  f_u=120, f_v=48)
+A490 = BoltMaterial("A490",      f_y=130, f_u=150, f_v=60)
+F3125_A325 = BoltMaterial("F3125GrA325", f_y=92,  f_u=120, f_v=48)
+F3125_A490 = BoltMaterial("F3125GrA490", f_y=130, f_u=150, f_v=60)
 
 
 if __name__ == "__main__":  # pragma: no cover

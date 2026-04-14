@@ -16,6 +16,8 @@ You should have received a copy of the GNU Affero General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
 
+import math
+
 from civilpy.structural.steel import W
 
 
@@ -80,7 +82,7 @@ class CrossSection:
         """
         self.labels = [label, ]
         if shape:
-            self.shape = shape  # //TODO - Replace with generalized function
+            self.shape = shape  # Currently only W() wide-flange shapes are supported
             self.dimensions = [(
                 self.shape.flange_width.magnitude,
                 self.shape.depth.magnitude
@@ -188,8 +190,8 @@ class CrossSection:
                 self.I_gs.append(float(self.shape.I_y.magnitude))
 
         elif shape and y is None:  # Shape provided, no y value
-            # //TODO - Update to account for non-symmetrical shapes
-            # //TODO - Update to use a general function
+            # Assumes centroid at depth/2 (valid for symmetrical W-shapes).
+            # For non-symmetrical shapes (channels, tees), centroid location must be supplied via y.
             if axis == 'strong':
                 self.dimensions.append((
                     self.shape.flange_width.magnitude,
@@ -220,8 +222,7 @@ class CrossSection:
 
         self._calc_gen_properties()
 
-    # //TODO - Update a function in the steel library to accept general input
-    # //TODO - Update Steel library to ID symmetrical shapes (no y value)
+    # Future: extend steel library to support non-W shapes (channels, tees) with explicit centroid offsets
 
     def check_negative_y_values(self):
         """Check whether any plate centroid lies below the datum (y < 0).
@@ -261,13 +262,148 @@ class CrossSection:
             1)
         self.n = round(self.moment / self.area, 3)
         self.plate_dims = {x: y[1] for x, y in zip(self.ys, self.dimensions)}
-        # //TODO - have this check both negative and positive
-        plate_dims = {x: y[1] for x, y in zip(self.ys, self.dimensions)}
-        extr_neg_y = min(plate_dims.keys()) - \
-                     plate_dims[min(plate_dims.keys())] / 2
+        plate_dims = self.plate_dims
 
-        if self.check_negative_y_values():
-            self.cb = extr_neg_y - self.n
-        else:
-            self.cb = self.height - self.n
+        # Bottom extreme fiber (underside of lowest plate)
+        bot_key = min(plate_dims.keys())
+        extr_bot_y = bot_key - plate_dims[bot_key] / 2
+
+        # Top extreme fiber (top of highest plate)
+        top_key = max(plate_dims.keys())
+        extr_top_y = top_key + plate_dims[top_key] / 2
+
+        self.c_bottom = abs(self.n - extr_bot_y)
+        self.c_top = abs(extr_top_y - self.n)
+
+        # Governing distance to extreme fiber (largest → smallest S → critical)
+        self.cb = max(self.c_top, self.c_bottom)
         self.S = round(self.I_n / self.cb, 0)
+
+
+def get_rectangular_section_properties(b, d):
+    """Return (I, S, r) for a rectangle about its neutral axis (centroid).
+
+    Args:
+        b: Width of the rectangle.
+        d: Height of the rectangle.
+
+    Returns:
+        tuple: (I, S, r) — moment of inertia, section modulus, radius of gyration.
+    """
+    I = (b * d ** 3) / 12
+    S = (b * d ** 2) / 6
+    r = d / math.sqrt(12)
+    return I, S, r
+
+
+def get_rectangular_section_properties_baseline(b, d):
+    """Return (I, S, r) for a rectangle about its baseline (bottom edge).
+
+    Args:
+        b: Width of the rectangle.
+        d: Height of the rectangle.
+
+    Returns:
+        tuple: (I, S, r) — moment of inertia, section modulus, radius of gyration.
+    """
+    I = (b * d ** 3) / 3
+    S = (b * d ** 2) / 3
+    r = d / math.sqrt(3)
+    return I, S, r
+
+
+def get_triangular_section_properties(b, d):
+    """Return (I, S, r) for a triangle about its neutral axis.
+
+    Args:
+        b: Base width of the triangle.
+        d: Height of the triangle.
+
+    Returns:
+        tuple: (I, S, r) — moment of inertia, section modulus, radius of gyration.
+    """
+    I = (b * d ** 3) / 36
+    S = (b * d ** 2) / 24
+    r = d / math.sqrt(18)
+    return I, S, r
+
+
+def get_triangular_section_properties_baseline(b, d):
+    """Return (I, S, r) for a triangle about its baseline.
+
+    Args:
+        b: Base width of the triangle.
+        d: Height of the triangle.
+
+    Returns:
+        tuple: (I, S, r) — moment of inertia, section modulus, radius of gyration.
+    """
+    I = (b * d ** 3) / 12
+    S = (b * d ** 2) / 12
+    r = d / math.sqrt(6)
+    return I, S, r
+
+
+def get_bar_section_properties(d):
+    """Return (I, S, r) for a solid circular bar about its centroidal axis.
+
+    Args:
+        d: Diameter of the bar.
+
+    Returns:
+        tuple: (I, S, r) — moment of inertia, section modulus, radius of gyration.
+    """
+    I = (math.pi * d ** 4) / 64
+    S = (math.pi * d ** 3) / 32
+    r = d / 4
+    return I, S, r
+
+
+def get_pipe_section_properties(D, d):
+    """Return (I, S, r) for a hollow circular pipe about its centroidal axis.
+
+    Args:
+        D: Outer diameter.
+        d: Inner diameter.
+
+    Returns:
+        tuple: (I, S, r) — moment of inertia, section modulus, radius of gyration.
+    """
+    I = (math.pi / 64) * (D ** 4 - d ** 4)
+    S = (math.pi / 32) * (D ** 4 - d ** 4) / D
+    r = math.sqrt(D ** 2 + d ** 2) / 4
+    return I, S, r
+
+
+def get_oval_section_properties(b, a):
+    """Return (I, S, r) for a solid ellipse about its centroidal axis.
+
+    Args:
+        b: Semi-axis width (horizontal half-width).
+        a: Semi-axis height (vertical half-height).
+
+    Returns:
+        tuple: (I, S, r) — moment of inertia, section modulus, radius of gyration.
+    """
+    I = (math.pi * a ** 3 * b) / 4
+    S = (math.pi * a ** 2 * b) / 4
+    r = a / 2
+    return I, S, r
+
+
+def get_hollow_oval_section_properties(a, b, c, d):
+    """Return (I, S, r) for a hollow ellipse (elliptical tube) about its centroidal axis.
+
+    Args:
+        a: Outer semi-axis height.
+        b: Outer semi-axis width.
+        c: Inner semi-axis height.
+        d: Inner semi-axis width.
+
+    Returns:
+        tuple: (I, S, r) — moment of inertia, section modulus, radius of gyration.
+    """
+    I = (math.pi / 4) * (a ** 3 * b - c ** 3 * d)
+    S = (math.pi * (a ** 3 * b - c ** 3 * d)) / (4 * a)
+    r = math.sqrt((a ** 3 * b - c ** 3 * d) / (4 * (a * b - c * d)))
+    return I, S, r
