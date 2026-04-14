@@ -16,8 +16,10 @@
 
 import pandas as pd
 
-# Create AASHTO Table 3.4.1-1 - Load Combinations and Load Factors
-# Based on AASHTO LRFD Bridge Design Specifications
+# Load combinations and load factors per AASHTO LRFD Bridge Design Specifications.
+# Table 3.4.1-1 — Load Combinations and Load Factors.
+# Table 3.4.1-2 — Load Factors for Permanent Loads (gamma_p).
+# Refer to the current edition of AASHTO LRFD for authoritative values.
 load_combinations = {
     "Strength I": {
         "Description": "Basic load combination for normal vehicular use of the bridge",
@@ -460,7 +462,7 @@ for combo_name, combo_data in load_combinations.items():
 
 aashto_load_combos_df = pd.DataFrame(load_combos_data)
 
-# Create a dictionary for permanent load factors (Table 3.4.1-2 in AASHTO)
+# Permanent load factors per AASHTO LRFD Table 3.4.1-2
 permanent_load_factors = {
     "DC": {"Maximum": 1.25, "Minimum": 0.90},
     "DW": {"Maximum": 1.50, "Minimum": 0.65},

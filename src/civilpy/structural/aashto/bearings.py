@@ -50,9 +50,13 @@ class BearingSuitability:
     def get_table(self):
         """Build and return the AASHTO bearing suitability reference table.
 
+        Suitability ratings are derived from AASHTO LRFD Bridge Design
+        Specifications, Table 14.6.2-1 (Bearing Suitability).
+
         The table maps movement/rotation/load categories to bearing types with
         suitability codes: ``'S'`` = suitable, ``'U'`` = unsuitable,
-        ``'R'`` = requires special consideration.
+        ``'R'`` = requires special consideration, ``'L'`` = suitable for
+        limited applications.
 
         Returns:
             pandas.DataFrame: Rows are bearing types; columns are movement,

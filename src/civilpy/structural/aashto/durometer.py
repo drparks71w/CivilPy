@@ -1,3 +1,7 @@
+# Strain factors for elastomeric bearings indexed by durometer hardness (Shore A)
+# and shape factor. Values derived from AASHTO LRFD Bridge Design Specifications,
+# Section 14.7.6 (Method B), stress-strain relationships for steel-reinforced
+# elastomeric bearings.
 durometer_strain_factors = {
     "50": {
         "12": .1697,
