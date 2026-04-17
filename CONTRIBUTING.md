@@ -127,6 +127,9 @@ should review your contribution, ask in the merge request and the maintainer wil
 Merge requests that touch engineering calculations will not be merged without at least one
 named reviewer comment confirming the calculation against the reference.
 
+The above is all placeholder text for similar projects and there should be no expectation that 
+the above efforts were made for any existing code in the repository.
+
 ---
 
 ## AI Use Policy
