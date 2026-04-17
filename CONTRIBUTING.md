@@ -19,10 +19,10 @@ All thoughtful issues, bug reports, and suggestions are welcome regardless of ba
 
 ## Identity Verification
 
-CivilPy is used in professional engineering contexts. Contributors submitting substantial changes
-are expected to verify their identity in person with the maintainer before those changes are merged.
-This is not bureaucracy — it is professional accountability. Anonymous contributions may be accepted
-at the maintainer's discretion for minor fixes.
+CivilPy is a demonstration library only and not intend to be used in professional engineering 
+contexts. Contributors submitting substantial changes are expected to verify their identity in 
+person with the maintainer before those changes are merged. All bug reports are welcome by email
+to dane@daneparks.com. Feature requests or expansions will likely be ignored.
 
 ---
 
@@ -31,7 +31,7 @@ at the maintainer's discretion for minor fixes.
 CivilPy is licensed under [AGPL-3.0](LICENSE). By submitting a contribution, you agree that your
 code becomes part of the project under that license. Individual attribution cannot be maintained in
 the codebase. Your contribution is acknowledged in the git history, but not in the source files or
-documentation.
+documentation. The git history is frequently wiped at the maintainers discretion.
 
 ---
 
