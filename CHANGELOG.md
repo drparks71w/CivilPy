@@ -5,6 +5,11 @@ Versions follow [Semantic Versioning](https://semver.org/) (major.minor.patch).
 
 ---
 
+## [0.2.3] - 2026-05-03
+- Bumped version to 0.2.3 for next patch release.
+- Updated `pyproject.toml` and synchronized `uv.lock`.
+- Preparation for structural engineering TODO implementations.
+
 ## [0.1.40] - 2025
 
 - Added extensive docstrings to structural, geotechnical, water resources, and transportation modules
