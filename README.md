@@ -7,8 +7,9 @@
 [![PyPI Downloads](https://static.pepy.tech/badge/civilpy/month)](https://pepy.tech/projects/civilpy)
 
 Python tools for civil and structural engineering — every AISC steel shape as a Python object
-with Pint units, built-up section properties, AASHTO/AREMA design references, Midas Civil API
-integration, and ODOT/SNBI bridge asset management tools.
+with Pint units, NDS wood design, ACI 318 anchor checks, beam shear/moment/deflection diagrams,
+built-up section properties, AASHTO/AREMA design references, Midas Civil API integration, and
+ODOT/SNBI bridge asset management tools.
 
 **[Source](https://daneparks.com/Dane/civilpy) · [Docs](https://dane.daneparks.com/civilpy) · [PyPI](https://pypi.org/project/civilpy/)**
 
@@ -153,6 +154,124 @@ comp = CrossSection(label="W33X201", shape=beam)
 comp(label="top cover plate", dimensions=(12, 0.75))
 print(f"Composite I: {comp.I_n:.2f} in⁴")
 ```
+
+---
+
+## Wood Design (NDS)
+
+Sawn lumber and glulam sections with NDS reference design values, adjustment factors, and
+ASD/LRFD member checks. Sections are created from a size label, mirroring the steel workflow:
+
+```python
+from civilpy.structural.wood import LumberSection, GlulamSection
+from civilpy.general import units
+
+# Sawn lumber — dressed dimensions, section properties, and NDS Supplement
+# reference design values looked up automatically
+beam = LumberSection("6x12", "Douglas Fir-Larch", "No. 1")
+print(beam.b, beam.d)        # 5.5 inch, 11.25 inch (dressed)
+print(beam.A, beam.Sx)       # 61.875 in², 116.0 in³
+print(beam.Fb, beam.E)       # 1350 psi, 1.6e6 psi
+
+# Glulam — combination symbol lookup (NDS Supplement Table 5A)
+gl = GlulamSection("6.75x30", "24F-V4", "Douglas Fir")
+print(gl.Fb_pos, gl.Fb_neg)  # 2400 psi positive face, 1850 psi negative
+```
+
+### Member design checks
+
+`WoodMemberCheck` applies the full NDS adjustment factor chain
+(C<sub>D</sub>, C<sub>M</sub>, C<sub>t</sub>, C<sub>L</sub>, C<sub>F</sub>, C<sub>i</sub>,
+C<sub>r</sub>, C<sub>P</sub>, C<sub>b</sub>, C<sub>V</sub>) and reports demand/capacity per check:
+
+```python
+from civilpy.structural.wood import LumberSection, WoodMemberCheck
+from civilpy.general import units
+
+# Beam: bending, shear, deflection, bearing
+beam = LumberSection("6x12", "Douglas Fir-Larch", "No. 1")
+check = WoodMemberCheck(beam, method="ASD", wet_service=False, load_duration="normal")
+
+bend = check.check_bending(9600 * units("lbf*ft"))
+print(bend["ratio"], bend["status"])      # 0.736 OK
+
+shear = check.check_shear(2400 * units("lbf"))
+defl = check.check_deflection(200 * units("lbf/ft"), 16 * units("ft"), limit="L/360")
+check.summary()                            # DataFrame of all checks run
+
+# Column: stability factor Cp computed per NDS 3.7.1
+col = LumberSection("6x6", "Douglas Fir-Larch", "No. 1")
+comp = WoodMemberCheck(col).check_compression(15000 * units("lbf"), le_strong=10 * units("ft"))
+print(comp["Cp"], comp["ratio"])           # 0.692, 0.717
+
+# Combined bending + compression interaction per NDS Eq. 3.9-3
+inter = WoodMemberCheck(LumberSection("6x8", "Douglas Fir-Larch", "No. 1")) \
+    .check_combined_bending_compression(
+        P=5000 * units("lbf"), M=8000 * units("lbf*ft"),
+        le_strong=8 * units("ft"), lu=8 * units("ft"))
+```
+
+Also included: `TimberBridgeDeck` and `TimberStringer` for AASHTO LRFD timber bridge checks
+and MBE load rating, and `BoltConnection` for NDS Chapter 12 bolted connections via the
+European Yield Model.
+
+---
+
+## Beam Analysis
+
+Shear, moment, and deflection diagrams for statically determinate beams, following AISC
+Table 3-23 sign conventions. Supports may be placed anywhere in the span (overhanging beams).
+
+```python
+from civilpy.structural.beam_bending import Beam, PointLoadV, DistributedLoadV
+
+# 30 ft simple span: 15 kip point load at 10 ft + 2 klf uniform
+beam = Beam(span=30)
+beam.pinned_support = 0
+beam.rolling_support = 30
+beam.add_loads([
+    PointLoadV(15, 10),          # 15 kips down at x=10 ft
+    DistributedLoadV(2, (0, 30)),  # 2 kips/ft over full span
+])
+
+axial, R1, R2 = beam.get_reaction_forces()
+print(R1, R2)                    # 40.0, 35.0 kips
+
+beam.plot_all()                  # beam diagram + V + M (+ deflection) figure
+
+# Other support conditions
+from civilpy.structural.beam_bending import (
+    CantileverBeam, ProppedCantileverBeam, FixedFixedBeam, ContinuousBeam
+)
+```
+
+---
+
+## Concrete Anchor Design (ACI 318-19)
+
+Chapter 17 anchor checks for cast-in anchors: steel strength, concrete breakout, pullout,
+side-face blowout, shear, and interaction — with a calc-sheet style summary.
+
+```python
+from civilpy.structural.concrete import AnchorBolts
+
+# 2x2 group of 3/4" F1554 Gr 36 headed anchors, 12" embedment,
+# 4000 psi concrete, 6" edge distances
+group = AnchorBolts(
+    f_c=4000, h_a=24,
+    d_a=0.75, h_ef=12,
+    f_ya=36000, f_uta=58000,   # ASTM F1554 Gr 36
+    n_x=2, n_y=2, s_x=6, s_y=6,
+    c_a1=6, c_a2=6,
+    A_brg=0.654,               # heavy hex head bearing area
+    N_ua=5000, V_ua=3000,      # factored demands (lbs)
+)
+
+results = group.check_all()    # dict of every limit state
+print(group.summary())         # formatted table: φSn, demand, DCR, OK/NG
+```
+
+`ShearLugCheck` covers shear lug design per ACI 318-19 17.11.
 
 ---
 
