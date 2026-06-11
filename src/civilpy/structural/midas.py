@@ -166,20 +166,22 @@ def convert_node_units(
     # Get the current list of nodes in midas
     nodes = midas_api("GET", "db/node")
 
+    if to_units is None:
+        print('Please specify units to convert to ("feet"/"inches")')
+        return None
     if from_units is None:
         units_api_response = midas_api("GET", "db/unit")
         from_units = units_api_response["UNIT"]["1"]["DIST"].lower()
-    elif to_units is None:
-        print('Please specify units to convert to ("feet"/"inches")')
-        print("\n")
 
-    # Go through every node and multiply/divide depending on need
+    # Go through every node and scale into the target units. One from_unit
+    # equals `conversion_factor` to_units, so values multiply by the factor
+    # (e.g. inch -> feet: factor = 1/12, 12 in becomes 1 ft).
+    conversion_factor = (1 * units[from_units]).to(units[to_units]).magnitude
     for index_value in nodes["NODE"]:
         print(index_value, end=": ")
         for xyz_value in nodes["NODE"][index_value]:
             print(f"{xyz_value}: {nodes['NODE'][index_value][xyz_value]}", end=", ")
-            conversion_factor = (1 * units[from_units]).to(units[to_units]).magnitude
-            nodes["NODE"][index_value][xyz_value] /= conversion_factor
+            nodes["NODE"][index_value][xyz_value] *= conversion_factor
             print(
                 f"Updated to {xyz_value}: {nodes['NODE'][index_value][xyz_value]}",
                 end=", ",
@@ -340,4 +342,270 @@ def setup_output_directory(output_directory: str = os.getcwd()):
         print(
             f"Directory doesn't exist, creating at {Path(output_directory) / 'output'}"
         )
-        os.mkdir(output_directory)
+        os.makedirs(Path(output_directory) / "output")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# MidasCivil — object-oriented client covering the full MIDAS API surface
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class MidasApiError(RuntimeError):
+    """Raised when the MIDAS API returns an HTTP or application error."""
+
+    def __init__(self, message, response=None):
+        super().__init__(message)
+        self.response = response
+
+
+class MidasCivil:
+    """
+    A connection to a running MIDAS Civil NX (or Gen NX) instance through
+    the MIDAS API — the same API the MIDAS GH Rhino/Grasshopper extension
+    uses, so anything sent from here lands in the connected session.
+
+    Three lines::
+
+        from civilpy.structural.midas import MidasCivil
+
+        midas = MidasCivil()              # key from ~/secrets.json MIDAS_API_KEY
+        nodes = midas.nodes()             # GET  /db/NODE
+        midas.put_nodes({"1": {"X": 0, "Y": 0, "Z": 0}})   # PUT /db/NODE
+
+    Coverage:
+
+    * **Model database** — typed helpers for the common tables (nodes,
+      elements, materials, sections, supports, static loads, units, groups,
+      load combinations) plus generic :meth:`get_db` / :meth:`put_db` /
+      :meth:`post_db` / :meth:`delete_db` that reach *every* ``/db/*`` table
+      in the MIDAS API manual.
+    * **Document operations** — :meth:`new`, :meth:`open`, :meth:`save`,
+      :meth:`save_as`, :meth:`analyze`, :meth:`import_file`, :meth:`export_file`.
+    * **Results** — :meth:`result_table` wrapping ``POST /post/TABLE``.
+
+    Unlike the module-level functions above (kept for backwards
+    compatibility), this class holds no global state, supports custom base
+    URLs (regional/local API servers), applies request timeouts, and raises
+    :class:`MidasApiError` instead of printing.
+    """
+
+    DEFAULT_BASE_URL = "https://moa-engineers.midasit.com:443/civil"
+
+    def __init__(self, base_url=None, mapi_key=None, timeout=30,
+                 secrets_path=None):
+        if mapi_key is None or base_url is None:
+            secrets = {}
+            path = Path(secrets_path) if secrets_path else Path.home() / "secrets.json"
+            try:
+                with open(path, "r") as f:
+                    secrets = json.load(f)
+            except (FileNotFoundError, json.JSONDecodeError):
+                pass
+            mapi_key = mapi_key or secrets.get("MIDAS_API_KEY", "")
+            base_url = base_url or secrets.get("MIDAS_BASE_URL", "")
+        self.base_url = (base_url or self.DEFAULT_BASE_URL).rstrip("/")
+        self.mapi_key = mapi_key
+        self.timeout = timeout
+        if not self.mapi_key:
+            raise MidasApiError(
+                "MIDAS API key missing — copy it from Civil NX "
+                "(Apps > API > Midas Settings) into ~/secrets.json as "
+                '"MIDAS_API_KEY", or pass mapi_key=.'
+            )
+
+    # ── Transport ─────────────────────────────────────────────────────────────
+
+    def request(self, method, command, body=None):
+        """
+        Send one request to the MIDAS API and return the parsed JSON.
+
+        ``command`` is the endpoint path, e.g. ``"/db/NODE"`` or
+        ``"/doc/ANAL"``. Raises :class:`MidasApiError` on HTTP errors or
+        when the response carries an ``{"error": ...}`` payload.
+        """
+        url = f"{self.base_url}/{command.lstrip('/')}"
+        headers = {"Content-Type": "application/json", "MAPI-Key": self.mapi_key}
+        try:
+            response = requests.request(method.upper(), url, headers=headers,
+                                        json=body, timeout=self.timeout)
+        except requests.RequestException as exc:
+            raise MidasApiError(
+                f"Could not reach the MIDAS API at {self.base_url} — is "
+                f"Civil NX open and connected? ({exc})"
+            ) from exc
+        try:
+            data = response.json() if response.content else {}
+        except ValueError:
+            data = {}
+        if not response.ok:
+            raise MidasApiError(
+                f"{method.upper()} {command} returned HTTP "
+                f"{response.status_code}: {data or response.text[:300]}",
+                response=data,
+            )
+        if isinstance(data, dict) and "error" in data:
+            raise MidasApiError(
+                f"{method.upper()} {command} rejected: {data['error']}",
+                response=data,
+            )
+        return data
+
+    def ping(self):
+        """True when Civil NX is reachable and the key is accepted."""
+        try:
+            self.request("GET", "/db/UNIT")
+            return True
+        except MidasApiError:
+            return False
+
+    # ── Generic model database access (any /db/* table) ──────────────────────
+
+    def get_db(self, table):
+        """``GET /db/{table}`` — full contents of any model database table."""
+        return self.request("GET", f"/db/{table.upper()}")
+
+    def put_db(self, table, assign):
+        """``PUT /db/{table}`` — create/update rows. ``assign`` maps id → fields."""
+        return self.request("PUT", f"/db/{table.upper()}", {"Assign": assign})
+
+    def post_db(self, table, assign):
+        """``POST /db/{table}`` — create rows (errors when an id exists)."""
+        return self.request("POST", f"/db/{table.upper()}", {"Assign": assign})
+
+    def delete_db(self, table, ids=None):
+        """``DELETE /db/{table}`` — remove ids (everything when ids is None)."""
+        command = f"/db/{table.upper()}"
+        if ids is not None:
+            id_list = ",".join(str(i) for i in ids)
+            command += f"/{id_list}"
+        return self.request("DELETE", command)
+
+    # ── Typed table helpers ───────────────────────────────────────────────────
+
+    def nodes(self):
+        """All nodes — ``{"NODE": {id: {X, Y, Z}}}``."""
+        return self.get_db("NODE")
+
+    def put_nodes(self, assign):
+        """Create/update nodes: ``{id: {"X":, "Y":, "Z":}}``."""
+        return self.put_db("NODE", assign)
+
+    def elements(self):
+        """All elements — ``{"ELEM": {id: {TYPE, MATL, SECT, NODE, ...}}}``."""
+        return self.get_db("ELEM")
+
+    def put_elements(self, assign):
+        """Create/update elements: ``{id: {"TYPE": "BEAM", "MATL":, "SECT":, "NODE": [i, j]}}``."""
+        return self.put_db("ELEM", assign)
+
+    def materials(self):
+        return self.get_db("MATL")
+
+    def put_materials(self, assign):
+        """Create/update materials: ``{id: {"TYPE": "STEEL"|"CONC"|"USER", "NAME":, ...}}``."""
+        return self.put_db("MATL", assign)
+
+    def sections(self):
+        return self.get_db("SECT")
+
+    def put_sections(self, assign):
+        return self.put_db("SECT", assign)
+
+    def supports(self):
+        """Nodal boundary conditions — ``{"CONS": {...}}``."""
+        return self.get_db("CONS")
+
+    def put_supports(self, assign):
+        """Create/update supports: ``{node_id: {"ITEMS": [{"ID": 1, "CONSTRAINT": "1110000"}]}}``."""
+        return self.put_db("CONS", assign)
+
+    def static_loads(self):
+        """Static load cases — ``{"STLD": {...}}``."""
+        return self.get_db("STLD")
+
+    def put_static_loads(self, assign):
+        return self.put_db("STLD", assign)
+
+    def groups(self):
+        """Structure groups — ``{"GRUP": {...}}``."""
+        return self.get_db("GRUP")
+
+    def load_combinations(self):
+        """General load combinations — ``{"LCOM-GEN": {...}}``."""
+        return self.get_db("LCOM-GEN")
+
+    def units(self):
+        return self.get_db("UNIT")
+
+    def set_units(self, force="KIPS", dist="FT", heat="BTU", temper="F"):
+        """Set the model unit system (defaults: kips / feet)."""
+        return self.put_db("UNIT", {"1": {
+            "FORCE": force, "DIST": dist, "HEAT": heat, "TEMPER": temper,
+        }})
+
+    # ── Document operations ───────────────────────────────────────────────────
+
+    def new(self):
+        """``POST /doc/NEW`` — start a blank model (discards unsaved work)."""
+        return self.request("POST", "/doc/NEW", {})
+
+    def open(self, path):
+        """``POST /doc/OPEN`` — open an .mcb model file on the Civil NX machine."""
+        return self.request("POST", "/doc/OPEN", {"Argument": str(path)})
+
+    def save(self):
+        """``POST /doc/SAVE`` — save the current model."""
+        return self.request("POST", "/doc/SAVE", {})
+
+    def save_as(self, path):
+        """``POST /doc/SAVEAS`` — save the model to a new path."""
+        return self.request("POST", "/doc/SAVEAS", {"Argument": str(path)})
+
+    def analyze(self):
+        """``POST /doc/ANAL`` — run the analysis on the current model."""
+        return self.request("POST", "/doc/ANAL", {})
+
+    def import_file(self, path):
+        """``POST /doc/IMPORT`` — import a file (e.g. .mct) into the model."""
+        return self.request("POST", "/doc/IMPORT", {"Argument": str(path)})
+
+    def export_file(self, path):
+        """``POST /doc/EXPORT`` — export the model to a file path."""
+        return self.request("POST", "/doc/EXPORT", {"Argument": str(path)})
+
+    # ── Results extraction ────────────────────────────────────────────────────
+
+    def result_table(self, table_name, table_type=None, components=None,
+                     node_elems=None, load_case_names=None, parts=None,
+                     unit=None, styles=None):
+        """
+        ``POST /post/TABLE`` — extract an analysis results table.
+
+        Example::
+
+            midas.result_table(
+                "BeamForce", table_type="BEAMFORCE",
+                components=["Elem", "Load", "Moment-y"],
+                node_elems={"KEYS": ["1to20"]},
+                load_case_names=["DL(CB)"],
+            )
+        """
+        argument = {"TABLE_NAME": table_name}
+        if table_type:
+            argument["TABLE_TYPE"] = table_type
+        if unit:
+            argument["UNIT"] = unit
+        if styles:
+            argument["STYLES"] = styles
+        if components:
+            argument["COMPONENTS"] = list(components)
+        if node_elems:
+            argument["NODE_ELEMS"] = node_elems
+        if load_case_names:
+            argument["LOAD_CASE_NAMES"] = list(load_case_names)
+        if parts:
+            argument["PARTS"] = list(parts)
+        return self.request("POST", "/post/TABLE", {"Argument": argument})
+
+    def __repr__(self):
+        return f"<MidasCivil {self.base_url}>"
