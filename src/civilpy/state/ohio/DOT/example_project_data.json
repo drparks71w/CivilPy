@@ -1,0 +1,47 @@
+{
+  "PID": 112664,
+  "ConID": 230339,
+  "District": 6,
+  "FAN": "E220055",
+  "Work Category": "Bridge Preservation",
+  "Project Description": "Steel repairs to bridges UNI-33-2.71, FRA-104-12.48",
+  "Sheet Index": {
+    "Title Sheet": "1-2",
+    "General Notes": "3",
+    "Maintenance of Traffic": "4-8",
+    "General Summary": "9",
+    "Structures 20' Span and Over": "10-18"
+  },
+  "SCDs": {
+    "MT-95.30": "7/19/19",
+    "MT-95.40": "1/17/20",
+    "MT-95.45": "1/17/20",
+    "MT-95.50": "7/21/21",
+    "MT-101.70": "1/17/20",
+    "MT-101.60": "1/17/20",
+    "MT-101.75": "1/17/20",
+    "MT-105.10": "1/17/20",
+    "RM-4.2": "4/17/20",
+    "TC-42.20": "10/18/13",
+    "TC-52.10": "10/18/13",
+    "TC-52.20": "1/15/21",
+    "TC-73.20": "1/17/20"
+  },
+  "Supplemental Specs": {
+    "800": "1/21/22",
+    "849": "1/18/13"
+  },
+  "Special Provisions": {},
+  "Bridge": {
+    "2508923": {
+      "SFN": 2508923,
+      "longitude": 82.931356,
+      "latitude": 39.919528
+    },
+    "8000743": {
+      "SFN": 800743,
+      "longitude": 83.498153,
+      "latitude": 40.268353
+    }
+  }
+}
