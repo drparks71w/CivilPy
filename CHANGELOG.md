@@ -5,6 +5,18 @@ Versions follow [Semantic Versioning](https://semver.org/) (major.minor.patch).
 
 ---
 
+## [0.2.4] - 2026-06-11
+- Added `MidasCivil` class to `civilpy.structural.midas` — object-oriented MIDAS API client
+  covering the full API surface: generic `/db/*` access (`get_db`/`put_db`/`post_db`/`delete_db`),
+  typed table helpers (nodes, elements, materials, sections, supports, static loads, groups,
+  load combinations, units), document operations (`new`/`open`/`save`/`save_as`/`analyze`/
+  `import_file`/`export_file`), and results extraction via `result_table` (`POST /post/TABLE`).
+  Supports custom base URLs, request timeouts, and raises `MidasApiError` instead of printing.
+- Fixed `convert_node_units` inverting the conversion factor (12 in → 144 instead of 1 ft)
+  and crashing when `to_units` is None.
+- Fixed `setup_output_directory` creating the parent directory instead of the `output/` subdirectory.
+- Expanded `tests/structural/test_midas.py` with regression tests and full `MidasCivil` coverage.
+
 ## [0.2.3] - 2026-05-03
 - Bumped version to 0.2.3 for next patch release.
 - Updated `pyproject.toml` and synchronized `uv.lock`.
