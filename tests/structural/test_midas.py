@@ -22,6 +22,8 @@ import tempfile
 import pytest
 from unittest.mock import patch, MagicMock
 
+import requests
+
 import civilpy.structural.midas as midas_module
 from civilpy.structural.midas import (
     get_api_key,
@@ -37,6 +39,8 @@ from civilpy.structural.midas import (
     get_elements_by_material_index,
     setup_output_directory,
     convert_node_units,
+    MidasCivil,
+    MidasApiError,
 )
 
 
@@ -216,3 +220,195 @@ class TestMidasHelpers:
             mock_api.side_effect = [mock_nodes, mock_units_resp, None]
             convert_node_units(to_units="feet", in_place=True)
             assert mock_api.call_args_list[-1].args[0] == "PUT"
+
+
+def _response(data=None, ok=True, status_code=200):
+    mock = MagicMock()
+    mock.ok = ok
+    mock.status_code = status_code
+    payload = {} if data is None else data
+    mock.content = json.dumps(payload).encode()
+    mock.json.return_value = payload
+    mock.text = json.dumps(payload)
+    return mock
+
+
+def _client(**kwargs):
+    kwargs.setdefault("base_url", "http://localhost:5000")
+    kwargs.setdefault("mapi_key", "test_key")
+    return MidasCivil(**kwargs)
+
+
+class TestMidasCivilInit:
+    def test_explicit_credentials_skip_secrets(self):
+        midas = MidasCivil(base_url="http://localhost:5000/", mapi_key="abc")
+        assert midas.base_url == "http://localhost:5000"  # trailing / stripped
+        assert midas.mapi_key == "abc"
+
+    def test_reads_secrets_file(self, tmp_path):
+        secrets = tmp_path / "secrets.json"
+        secrets.write_text(json.dumps({
+            "MIDAS_API_KEY": "from_secrets",
+            "MIDAS_BASE_URL": "http://10.0.0.5:5000",
+        }))
+        midas = MidasCivil(secrets_path=str(secrets))
+        assert midas.mapi_key == "from_secrets"
+        assert midas.base_url == "http://10.0.0.5:5000"
+
+    def test_default_base_url_when_secrets_lack_it(self, tmp_path):
+        secrets = tmp_path / "secrets.json"
+        secrets.write_text(json.dumps({"MIDAS_API_KEY": "k"}))
+        midas = MidasCivil(secrets_path=str(secrets))
+        assert midas.base_url == MidasCivil.DEFAULT_BASE_URL
+
+    def test_missing_key_raises(self, tmp_path):
+        with pytest.raises(MidasApiError, match="key missing"):
+            MidasCivil(secrets_path=str(tmp_path / "nope.json"))
+
+
+class TestMidasCivilRequest:
+    def test_success_sends_headers_and_url(self):
+        midas = _client()
+        with patch("requests.request", return_value=_response({"NODE": {}})) as mock_req:
+            data = midas.request("get", "db/NODE")
+        assert data == {"NODE": {}}
+        args, kwargs = mock_req.call_args
+        assert args == ("GET", "http://localhost:5000/db/NODE")
+        assert kwargs["headers"]["MAPI-Key"] == "test_key"
+        assert kwargs["timeout"] == 30
+
+    def test_http_error_raises(self):
+        midas = _client()
+        resp = _response({"message": "bad"}, ok=False, status_code=404)
+        with patch("requests.request", return_value=resp):
+            with pytest.raises(MidasApiError, match="HTTP 404"):
+                midas.request("GET", "/db/NODE")
+
+    def test_error_payload_raises_even_on_200(self):
+        midas = _client()
+        resp = _response({"error": {"code": 1, "message": "no model"}})
+        with patch("requests.request", return_value=resp):
+            with pytest.raises(MidasApiError, match="rejected") as exc_info:
+                midas.request("PUT", "/db/NODE", {"Assign": {}})
+        assert exc_info.value.response == {"error": {"code": 1, "message": "no model"}}
+
+    def test_unreachable_raises_midas_error(self):
+        midas = _client()
+        with patch("requests.request", side_effect=requests.ConnectionError("refused")):
+            with pytest.raises(MidasApiError, match="Could not reach"):
+                midas.request("GET", "/db/NODE")
+
+    def test_ping_true_false(self):
+        midas = _client()
+        with patch("requests.request", return_value=_response({"UNIT": {}})):
+            assert midas.ping() is True
+        with patch("requests.request", side_effect=requests.ConnectionError("down")):
+            assert midas.ping() is False
+
+
+class TestMidasCivilDb:
+    def setup_method(self):
+        self.midas = _client()
+
+    def test_get_db_uppercases_table(self):
+        with patch("requests.request", return_value=_response({"ELEM": {}})) as mock_req:
+            self.midas.get_db("elem")
+        assert mock_req.call_args.args[1].endswith("/db/ELEM")
+
+    def test_put_db_wraps_assign(self):
+        with patch("requests.request", return_value=_response({})) as mock_req:
+            self.midas.put_db("NODE", {"1": {"X": 0, "Y": 0, "Z": 0}})
+        assert mock_req.call_args.kwargs["json"] == {
+            "Assign": {"1": {"X": 0, "Y": 0, "Z": 0}}
+        }
+
+    def test_delete_db_builds_id_path(self):
+        with patch("requests.request", return_value=_response({})) as mock_req:
+            self.midas.delete_db("NODE", ids=[1, 2, 3])
+        assert mock_req.call_args.args == ("DELETE", "http://localhost:5000/db/NODE/1,2,3")
+
+    def test_delete_db_without_ids(self):
+        with patch("requests.request", return_value=_response({})) as mock_req:
+            self.midas.delete_db("NODE")
+        assert mock_req.call_args.args[1].endswith("/db/NODE")
+
+    def test_typed_getters_hit_expected_tables(self):
+        expected = {
+            "nodes": "NODE", "elements": "ELEM", "materials": "MATL",
+            "sections": "SECT", "supports": "CONS", "static_loads": "STLD",
+            "groups": "GRUP", "load_combinations": "LCOM-GEN", "units": "UNIT",
+        }
+        for method, table in expected.items():
+            with patch("requests.request", return_value=_response({table: {}})) as mock_req:
+                getattr(self.midas, method)()
+            assert mock_req.call_args.args[1].endswith(f"/db/{table}"), method
+
+    def test_set_units_defaults_to_kips_ft(self):
+        with patch("requests.request", return_value=_response({})) as mock_req:
+            self.midas.set_units()
+        body = mock_req.call_args.kwargs["json"]
+        assert body["Assign"]["1"]["FORCE"] == "KIPS"
+        assert body["Assign"]["1"]["DIST"] == "FT"
+
+
+class TestMidasCivilDocAndResults:
+    def setup_method(self):
+        self.midas = _client()
+
+    def test_doc_ops_post_expected_endpoints(self):
+        expected = {
+            "new": ("/doc/NEW", {}),
+            "save": ("/doc/SAVE", {}),
+            "analyze": ("/doc/ANAL", {}),
+        }
+        for method, (endpoint, body) in expected.items():
+            with patch("requests.request", return_value=_response({})) as mock_req:
+                getattr(self.midas, method)()
+            assert mock_req.call_args.args == ("POST", f"http://localhost:5000{endpoint}"), method
+            assert mock_req.call_args.kwargs["json"] == body, method
+
+    def test_doc_ops_with_path_argument(self):
+        expected = {
+            "open": "/doc/OPEN",
+            "save_as": "/doc/SAVEAS",
+            "import_file": "/doc/IMPORT",
+            "export_file": "/doc/EXPORT",
+        }
+        for method, endpoint in expected.items():
+            with patch("requests.request", return_value=_response({})) as mock_req:
+                getattr(self.midas, method)("C:/models/bridge.mcb")
+            assert mock_req.call_args.args[1].endswith(endpoint), method
+            assert mock_req.call_args.kwargs["json"] == {
+                "Argument": "C:/models/bridge.mcb"
+            }, method
+
+    def test_result_table_assembles_argument(self):
+        with patch("requests.request", return_value=_response({})) as mock_req:
+            self.midas.result_table(
+                "BeamForce", table_type="BEAMFORCE",
+                components=["Elem", "Load", "Moment-y"],
+                node_elems={"KEYS": ["1to20"]},
+                load_case_names=["DL(CB)"],
+                parts=["PartI"],
+                unit={"FORCE": "kips"},
+                styles={"FORMAT": "Fixed"},
+            )
+        assert mock_req.call_args.args == ("POST", "http://localhost:5000/post/TABLE")
+        argument = mock_req.call_args.kwargs["json"]["Argument"]
+        assert argument == {
+            "TABLE_NAME": "BeamForce",
+            "TABLE_TYPE": "BEAMFORCE",
+            "UNIT": {"FORCE": "kips"},
+            "STYLES": {"FORMAT": "Fixed"},
+            "COMPONENTS": ["Elem", "Load", "Moment-y"],
+            "NODE_ELEMS": {"KEYS": ["1to20"]},
+            "LOAD_CASE_NAMES": ["DL(CB)"],
+            "PARTS": ["PartI"],
+        }
+
+    def test_result_table_minimal(self):
+        with patch("requests.request", return_value=_response({})) as mock_req:
+            self.midas.result_table("Reaction")
+        assert mock_req.call_args.kwargs["json"] == {
+            "Argument": {"TABLE_NAME": "Reaction"}
+        }
