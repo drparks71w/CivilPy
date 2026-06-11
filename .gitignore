@@ -257,3 +257,4 @@ django/
 /Notebooks/BDM_Markdown_Output/*
 /Notebooks/Extracted_Images/*
 /.claude/settings.local.json
+/.venv/
