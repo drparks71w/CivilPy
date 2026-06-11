@@ -177,39 +177,42 @@ class TestMidasHelpers:
         setup_output_directory(str(tmp_path))
 
     def test_setup_output_directory_new(self, tmp_path):
-        # Directory exists but has no "output" subdirectory; setup_output_directory
-        # calls os.mkdir(output_directory) which would fail if it already exists,
-        # so mock os.mkdir
-        with patch("os.mkdir"):
-            setup_output_directory(str(tmp_path))
+        # Regression: previously mkdir'd the parent (which exists) instead of
+        # the output/ subdirectory, raising FileExistsError on the normal path
+        setup_output_directory(str(tmp_path))
+        assert (tmp_path / "output").is_dir()
 
-    def test_convert_node_units(self):
+    def test_convert_node_units_values(self):
+        # 12 inches converted to feet must become 1.0 (regression: the factor
+        # was previously divided instead of multiplied, producing 144)
         mock_nodes = {
-            "NODE": {"1": {"X": 12.0, "Y": 0.0, "Z": 0.0}}
+            "NODE": {"1": {"X": 12.0, "Y": 24.0, "Z": 0.0}}
         }
         mock_units_resp = {"UNIT": {"1": {"DIST": "inch"}}}
         with patch("civilpy.structural.midas.midas_api") as mock_api:
             mock_api.side_effect = [mock_nodes, mock_units_resp, None]
-            convert_node_units(to_units="feet", in_place=True)
+            result = convert_node_units(to_units="feet", in_place=False)
+        assert result["Assign"]["1"]["X"] == pytest.approx(1.0)
+        assert result["Assign"]["1"]["Y"] == pytest.approx(2.0)
 
-    def test_convert_node_units_to_none(self):
-        # When to_units is None, function prints and then tries to loop over nodes
-        # Use empty NODE dict to avoid unit conversion errors
-        mock_nodes = {"NODE": {}}
+    def test_convert_node_units_to_none_returns_early(self):
+        mock_nodes = {"NODE": {"1": {"X": 12.0}}}
         with patch("civilpy.structural.midas.midas_api", return_value=mock_nodes):
-            convert_node_units(from_units="feet", to_units=None, in_place=False)
+            result = convert_node_units(from_units="feet", to_units=None, in_place=False)
+        assert result is None
 
     def test_convert_node_units_both_provided(self):
-        # Both from_units and to_units provided - skips both if/elif branches
         mock_nodes = {"NODE": {"1": {"X": 12.0}}}
         with patch("civilpy.structural.midas.midas_api") as mock_api:
             mock_api.side_effect = [mock_nodes, None]
             convert_node_units(from_units="inch", to_units="feet", in_place=True)
+            put_body = mock_api.call_args_list[1].args[2]
+            assert put_body["Assign"]["1"]["X"] == pytest.approx(1.0)
 
-    def test_convert_node_units_not_in_place(self):
+    def test_convert_node_units_in_place_pushes_to_midas(self):
         mock_nodes = {"NODE": {"1": {"X": 12.0}}}
         mock_units_resp = {"UNIT": {"1": {"DIST": "inch"}}}
         with patch("civilpy.structural.midas.midas_api") as mock_api:
-            mock_api.side_effect = [mock_nodes, mock_units_resp]
-            result = convert_node_units(to_units="feet", in_place=False)
-            assert result is not None
+            mock_api.side_effect = [mock_nodes, mock_units_resp, None]
+            convert_node_units(to_units="feet", in_place=True)
+            assert mock_api.call_args_list[-1].args[0] == "PUT"
