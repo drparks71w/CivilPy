@@ -1,0 +1,64 @@
+# CivilPy direct dependencies
+# Generated from actual imports in src/civilpy/ - transitive deps installed automatically by pip
+#
+# To regenerate a full pinned lockfile: pip freeze > requirements-lock.txt
+
+# Data / Math
+numpy==2.2.6
+pandas==2.3.2
+sympy==1.14.0
+matplotlib==3.10.6
+plotly==6.3.0
+scipy==1.16.1
+
+# Units
+Pint==0.25.1
+
+# Web / HTTP / scraping
+requests==2.32.4
+beautifulsoup4==4.12.2
+selenium==3.141.0
+folium==0.20.0
+
+# Databases / ORM
+SQLAlchemy==2.0.43
+psycopg==3.2.9
+psycopg-binary==3.2.9
+oracledb==3.4.0
+sshtunnel==0.4.0
+
+# Images / PDF / OCR
+pillow==12.1.1
+PyMuPDF==1.26.4
+tifftools==1.6.1
+pytesseract==0.3.13
+camelot-py==1.0.9
+ezdxf==1.4.3
+
+# Office / data file I/O
+openpyxl==3.1.5
+
+# Notebooks / Jupyter
+nbformat==5.10.4
+nbconvert==7.17.0
+ipywidgets==8.1.7
+ipykernel==6.30.1
+
+# Validation / config
+pydantic==2.11.7
+pydantic_core==2.33.2
+python-dotenv==1.1.1
+
+# UI / display / utilities
+FreeSimpleGUI==5.2.0.post1
+termcolor==3.1.0
+natsort==8.4.0
+rich==14.1.0
+
+# Typing
+typing_extensions==4.14.1
+
+# Testing
+pytest==8.4.1
+pytest-cov==7.0.0
+coverage==7.10.6
