@@ -37,6 +37,10 @@ wired (see `editions.py`).
 - [x] 5.7.3.5 Longitudinal reinforcement — `concrete.rc_longitudinal_reinforcement`
 - [x] 5.7.4 Interface shear transfer — `concrete.rc_interface_shear`
 - [x] 5.7.2.1 Torsion threshold — `concrete.rc_torsion_threshold`
+- [x] 5.6.4.4 Column axial resistance (tied/spiral) — `columns.rc_column_axial_resistance`
+- [x] 5.6.4.2 Column reinforcement limits — `columns.rc_column_reinforcement_limits`
+- [x] 5.6.4.6 Spiral reinforcement — `columns.rc_spiral_reinforcement`
+- [x] 4.5.3.2.2b Moment magnification — `columns.moment_magnification`
 
 ### Prestressed concrete (Chapter 5)
 - [x] 5.6.3.1.1 Strand stress at nominal resistance — `prestressed.ps_strand_stress_at_nominal`
@@ -90,7 +94,7 @@ wired (see `editions.py`).
 - [ ] 4.6.2.2 DFs for other cross-section types (boxes, slabs, T-beams)
 
 ### Other
-- [ ] RC columns: 5.6.4.x reinforcement limits, biaxial flexure
+- [ ] RC columns: 5.6.4.5 biaxial flexure (needs P-M interaction)
 - [ ] Deflections/camber 5.6.3.5.2
 - [ ] Box-culvert variants of Ch. 5 checks
 - [ ] 10th Ed. MASH railing forces (Table A13.2-1 revision) — verify values
