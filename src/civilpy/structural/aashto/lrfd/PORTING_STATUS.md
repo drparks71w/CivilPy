@@ -42,6 +42,8 @@ wired (see `editions.py`).
 - [x] 5.7.3.5 Longitudinal reinforcement — `concrete.rc_longitudinal_reinforcement`
 - [x] 5.7.4 Interface shear transfer — `concrete.rc_interface_shear`
 - [x] 5.7.2.1 Torsion threshold — `concrete.rc_torsion_threshold`
+- [x] 5.6.3.5.2 Effective moment of inertia (Branson) — `concrete.rc_effective_moment_of_inertia`
+- [x] 2.5.2.6.2 Optional deflection criteria — `concrete.deflection_limit`
 - [x] 5.6.4.4 Column axial resistance (tied/spiral) — `columns.rc_column_axial_resistance`
 - [x] 5.6.4.2 Column reinforcement limits — `columns.rc_column_reinforcement_limits`
 - [x] 5.6.4.6 Spiral reinforcement — `columns.rc_spiral_reinforcement`
@@ -99,7 +101,6 @@ wired (see `editions.py`).
 
 ### Other
 - [ ] RC columns: 5.6.4.5 biaxial flexure (needs P-M interaction)
-- [ ] Deflections/camber 5.6.3.5.2
 - [ ] Box-culvert variants of Ch. 5 checks
 - [ ] 10th Ed. MASH railing forces (Table A13.2-1 revision) — verify values
 - [ ] LRFR (MBE) rating-factor wrappers around these checks

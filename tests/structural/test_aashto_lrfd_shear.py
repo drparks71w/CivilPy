@@ -186,3 +186,27 @@ class TestRegistry:
         for num in ("5.7.3.4.2", "5.7.2.5", "5.7.2.6", "5.7.3.5",
                     "5.7.4", "5.7.2.1"):
             assert num in lrfd.ARTICLES
+
+
+class TestDeflection:
+    def test_effective_inertia_uncracked(self):
+        assert lrfd.rc_effective_moment_of_inertia(
+            i_g=10000.0, i_cr=4000.0, m_cr=500.0, m_a=400.0
+        ) == 10000.0
+
+    def test_effective_inertia_cracked(self):
+        # Mcr/Ma = 0.5: Ie = 0.125*10000 + 0.875*4000 = 4750
+        ie = lrfd.rc_effective_moment_of_inertia(
+            i_g=10000.0, i_cr=4000.0, m_cr=500.0, m_a=1000.0
+        )
+        assert ie == pytest.approx(4750.0)
+
+    def test_deflection_limits(self):
+        # 80 ft span in inches: 960/800 = 1.2 in
+        r = lrfd.deflection_limit(span=960.0, deflection=1.0)
+        assert r.capacity == pytest.approx(1.2)
+        assert r.ok
+        ped = lrfd.deflection_limit(span=960.0, pedestrian=True)
+        assert ped.capacity == pytest.approx(0.96)
+        cant = lrfd.deflection_limit(span=120.0, cantilever=True)
+        assert cant.capacity == pytest.approx(0.4)

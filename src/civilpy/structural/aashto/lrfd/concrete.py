@@ -428,6 +428,45 @@ def rc_torsion_threshold(
     )
 
 
+@article("5.6.3.5.2", "Effective Moment of Inertia")
+def rc_effective_moment_of_inertia(
+    i_g: float,
+    i_cr: float,
+    m_cr: float,
+    m_a: float,
+) -> float:
+    """Branson effective moment of inertia for deflections (5.6.3.5.2):
+    Ie = (Mcr/Ma)^3*Ig + (1 - (Mcr/Ma)^3)*Icr, capped at Ig and equal to
+    Ig when the section is uncracked (Ma <= Mcr).  in^4."""
+    if m_a <= m_cr:
+        return i_g
+    ratio = (m_cr / m_a) ** 3
+    return min(ratio * i_g + (1.0 - ratio) * i_cr, i_g)
+
+
+@article("2.5.2.6.2", "Optional Live Load Deflection Criteria")
+def deflection_limit(
+    span: float,
+    deflection: float | None = None,
+    pedestrian: bool = False,
+    cantilever: bool = False,
+) -> CheckResult:
+    """Optional live-load deflection limits (2.5.2.6.2): span/800
+    (vehicular), span/1000 (with pedestrian use); cantilevers span/300 and
+    span/375 respectively.  Same length unit in and out."""
+    if cantilever:
+        divisor = 375.0 if pedestrian else 300.0
+    else:
+        divisor = 1000.0 if pedestrian else 800.0
+    return CheckResult(
+        article="2.5.2.6.2",
+        name="Optional Live Load Deflection Criteria",
+        capacity=span / divisor,
+        demand=deflection,
+        details={"divisor": divisor},
+    )
+
+
 @article("5.7.3.3", "Shear Resistance (Reinforced Concrete)")
 def rc_shear_resistance(
     b_v: float,
