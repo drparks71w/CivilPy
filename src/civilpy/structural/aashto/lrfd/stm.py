@@ -18,8 +18,7 @@
 
 The geometry/force side (truss solution and diagram) lives in
 :mod:`civilpy.structural.strut_and_tie`; these functions check the solved
-member forces.  Note BrR performs no STM checks — like the Section 13
-railing provisions, these have no BrR counterpart to validate against.
+member forces, implemented directly from the specification.
 Units: kip, inch, ksi.  Pass strut forces as magnitudes (positive).
 """
 

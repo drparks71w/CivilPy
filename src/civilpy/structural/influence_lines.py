@@ -1,7 +1,6 @@
 """Influence lines for statically determinate beams (overhangs allowed),
-with axle-train stepping for moving-load maxima — the same concept BrR's
-line-girder engine uses (its ``DoInfluenceOrdinateList``/
-``MomentInfluenceLine`` results), so ordinates can be compared directly.
+with axle-train stepping for moving-load maxima — the classic line-girder
+approach, so ordinates can be compared against any rating software.
 
 Conventions follow :mod:`civilpy.structural.beam_bending`: kips/ft, plots
 accept ``ax=None`` and return the figure.  Unit load is 1 kip downward;
