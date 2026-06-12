@@ -428,6 +428,43 @@ def rc_torsion_threshold(
     )
 
 
+@article("5.10.8.2.1", "Tension Development Length")
+def rebar_development_length(
+    d_b: float,
+    f_y: float = 60.0,
+    f_c: float = 4.0,
+    top_bar: bool = False,
+    epoxy_coated: bool = False,
+    cover_lt_3db: bool = False,
+    lambda_rc: float = 1.0,
+    lam: float = 1.0,
+    available: float | None = None,
+) -> CheckResult:
+    """Tension development length of deformed bars (5.10.8.2.1, current
+    edition): ld = ldb * modifiers, ldb = 2.4*db*fy/sqrt(f'c), >= 12 in.
+
+    Modifiers: 1.3 for top bars (>12 in of fresh concrete below), epoxy
+    coating 1.5 when cover < 3db or clear spacing < 6db else 1.2 (their
+    product with the top-bar factor need not exceed 1.7), confinement
+    reduction ``lambda_rc`` (0.4 <= lambda_rc <= 1.0) from 5.10.8.2.1c.
+    ``capacity`` is the available embedment when given (ok means it
+    exceeds ld); otherwise ld itself."""
+    l_db = 2.4 * d_b * f_y / math.sqrt(f_c)
+    cf = 1.3 if top_bar else 1.0
+    if epoxy_coated:
+        cf_epoxy = 1.5 if cover_lt_3db else 1.2
+        cf = min(cf * cf_epoxy, 1.7)
+    l_d = max(l_db * cf * max(min(lambda_rc, 1.0), 0.4) / lam, 12.0)
+    return CheckResult(
+        article="5.10.8.2.1",
+        name="Tension Development Length",
+        capacity=available if available is not None else l_d,
+        demand=l_d if available is not None else None,
+        details={"ldb": l_db, "modifier": cf, "lambda_rc": lambda_rc,
+                 "ld": l_d},
+    )
+
+
 @article("5.6.3.5.2", "Effective Moment of Inertia")
 def rc_effective_moment_of_inertia(
     i_g: float,

@@ -71,6 +71,7 @@ from civilpy.structural.aashto.lrfd.concrete import (
     INTERFACE_SHEAR_CASES,
     rc_effective_moment_of_inertia,
     deflection_limit,
+    rebar_development_length,
 )
 from civilpy.structural.aashto.lrfd.distribution import (
     DistributionFactor,
@@ -220,6 +221,7 @@ __all__ = [
     "INTERFACE_SHEAR_CASES",
     "rc_effective_moment_of_inertia",
     "deflection_limit",
+    "rebar_development_length",
     "LRFD_EDITIONS",
     "lrfd_edition",
     "TEST_LEVEL_LOADS",
