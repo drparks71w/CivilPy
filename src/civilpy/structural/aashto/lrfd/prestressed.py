@@ -488,6 +488,34 @@ def ps_friction_loss(
     )
 
 
+@article("5.9.3.2.1", "Anchorage Set Loss")
+def ps_anchorage_set_loss(
+    anchor_set: float,
+    friction_gradient: float,
+    x_from_anchor: float = 0.0,
+    e_p: float = E_STRAND,
+) -> CheckResult:
+    """Loss from anchorage set in a post-tensioned tendon (5.9.3.2.1).
+
+    With a linear friction gradient ``friction_gradient`` (ksi of stress
+    loss per inch of tendon), the set ``anchor_set`` (in, typically 0.375)
+    affects a length x = sqrt(Ep*set/gradient); the loss is 2*gradient*x
+    at the anchorage, decreasing linearly to zero at x.  ``capacity``
+    holds the loss at ``x_from_anchor`` (in)."""
+    x_influence = math.sqrt(e_p * anchor_set / friction_gradient)
+    loss_at_anchor = 2.0 * friction_gradient * x_influence
+    loss = max(
+        loss_at_anchor * (1.0 - x_from_anchor / x_influence), 0.0
+    ) if x_influence > 0 else 0.0
+    return CheckResult(
+        article="5.9.3.2.1",
+        name="Anchorage Set Loss",
+        capacity=loss,
+        details={"influence_length": x_influence,
+                 "loss_at_anchor": loss_at_anchor},
+    )
+
+
 @article("5.9.4.3.2", "Pretensioned Strand Development Length")
 def ps_strand_development(
     f_ps: float,

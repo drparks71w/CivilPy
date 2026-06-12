@@ -75,6 +75,8 @@ from civilpy.structural.aashto.lrfd.distribution import (
     skew_correction_shear,
     dynamic_load_allowance,
     effective_flange_width,
+    multiple_presence_factor,
+    lever_rule_exterior,
 )
 from civilpy.structural.aashto.lrfd.timber import (
     TIMBER_PHI,
@@ -85,6 +87,13 @@ from civilpy.structural.aashto.lrfd.timber import (
     beam_stability_cl,
     bearing_factor_cb,
     timber_flexural_resistance,
+)
+from civilpy.structural.aashto.lrfd.appendix_a6 import (
+    st_venant_j,
+    web_plastification_factors,
+    a6_flange_local_buckling,
+    a6_lateral_torsional_buckling,
+    a6_tension_flange_yielding,
 )
 from civilpy.structural.aashto.lrfd.railing import (
     TEST_LEVEL_LOADS,
@@ -112,6 +121,7 @@ from civilpy.structural.aashto.lrfd.prestressed import (
     ps_friction_loss,
     ps_strand_development,
     ps_splitting_resistance,
+    ps_anchorage_set_loss,
 )
 from civilpy.structural.aashto.lrfd.creep_shrinkage import (
     creep_coefficient,
@@ -174,6 +184,14 @@ __all__ = [
     "skew_correction_shear",
     "dynamic_load_allowance",
     "effective_flange_width",
+    "multiple_presence_factor",
+    "lever_rule_exterior",
+    "st_venant_j",
+    "web_plastification_factors",
+    "a6_flange_local_buckling",
+    "a6_lateral_torsional_buckling",
+    "a6_tension_flange_yielding",
+    "ps_anchorage_set_loss",
     "bearing_stiffener_resistance",
     "parapet_yield_line_capacity",
     "parapet_test_level_check",
