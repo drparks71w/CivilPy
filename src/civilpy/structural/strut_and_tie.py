@@ -138,10 +138,11 @@ class StrutAndTieModel:
         except np.linalg.LinAlgError as exc:
             raise ValueError(f"unstable model geometry: {exc}") from exc
 
-        self.forces = {mem: solution[i] for i, mem in enumerate(self.members)}
+        self.forces = {mem: float(solution[i])
+                       for i, mem in enumerate(self.members)}
         self.reactions = {}
         for r, (node, dof) in enumerate(reaction_cols):
-            self.reactions.setdefault(node, [0.0, 0.0])[dof] = (
+            self.reactions.setdefault(node, [0.0, 0.0])[dof] = float(
                 solution[len(self.members) + r]
             )
         return self.forces
