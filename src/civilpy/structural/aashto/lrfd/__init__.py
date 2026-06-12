@@ -47,6 +47,7 @@ from civilpy.structural.aashto.lrfd.steel import (
     bolt_slip_resistance,
     bolt_bearing_resistance,
     BOLT_PRETENSION,
+    bearing_stiffener_resistance,
 )
 from civilpy.structural.aashto.lrfd.concrete import (
     rc_rectangular_flexural_resistance,
@@ -73,6 +74,7 @@ from civilpy.structural.aashto.lrfd.distribution import (
     skew_correction_moment,
     skew_correction_shear,
     dynamic_load_allowance,
+    effective_flange_width,
 )
 from civilpy.structural.aashto.lrfd.timber import (
     TIMBER_PHI,
@@ -171,6 +173,8 @@ __all__ = [
     "skew_correction_moment",
     "skew_correction_shear",
     "dynamic_load_allowance",
+    "effective_flange_width",
+    "bearing_stiffener_resistance",
     "parapet_yield_line_capacity",
     "parapet_test_level_check",
     "deck_overhang_collision_tension",
