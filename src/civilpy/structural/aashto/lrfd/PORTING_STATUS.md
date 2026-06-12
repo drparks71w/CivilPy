@@ -57,6 +57,15 @@ wired (see `editions.py`).
 - [x] 4.6.2.2.2e/.3c Skew corrections — `distribution.skew_correction_*`
 - [x] 3.6.2 Dynamic load allowance — `distribution.dynamic_load_allowance`
 
+### Timber (Chapter 8)
+- [x] 8.4.4.2 CKF, 8.4.4.4 CF, 8.4.4.7 Ci, 8.4.4.9 Clambda — `timber`
+- [x] 8.6.2 Beam stability CL (KbE by grading) — `timber.beam_stability_cl`
+- [x] 8.8.3 Bearing factor Cb — `timber.bearing_factor_cb`
+- [x] 8.6 Flexural resistance — `timber.timber_flexural_resistance`
+- [ ] 8.4.4.3 CM / 8.4.4.6 Cfu / 8.4.4.8 Cd (species/grade table lookups — currently caller inputs)
+- [ ] 8.4.4.5 Cv glulam volume factor
+- [ ] 8.7 column stability Cp, 8.10 compression, tension members
+
 ### Decks and railings
 - [x] A13.3.1 Parapet yield-line resistance — `railing.parapet_yield_line_capacity`
 - [x] A13.4.2 Deck overhang collision tension — `railing.deck_overhang_collision_tension`
@@ -81,7 +90,6 @@ wired (see `editions.py`).
 ### Other
 - [ ] RC columns: 5.6.4.x reinforcement limits, biaxial flexure
 - [ ] Deflections/camber 5.6.3.5.2
-- [ ] Timber Chapter 8 adjustment-factor chain
 - [ ] Box-culvert variants of Ch. 5 checks
 - [ ] 10th Ed. MASH railing forces (Table A13.2-1 revision) — verify values
 - [ ] LRFR (MBE) rating-factor wrappers around these checks
