@@ -137,3 +137,47 @@ def test_timber_member_resistances():
     assert c.phi == pytest.approx(0.90)
     assert c.capacity == pytest.approx(1.5 * 30.25 * cp)
     assert 0.0 < cp < 1.0
+
+
+# ── 5.12.7.3 box culvert slab shear ───────────────────────────────────────
+
+
+def test_box_culvert_slab_shear_hand_check():
+    import math
+    from civilpy.structural.aashto.lrfd.concrete import box_culvert_slab_shear
+    # 12-in design strip, de = 9 in, f'c = 4 ksi, #6 @ 8 -> 0.66 in^2/ft
+    r = box_culvert_slab_shear(b=12.0, d_e=9.0, f_c=4.0, a_s=0.66,
+                               v_u=8.0, m_u=200.0)
+    ratio = min(8.0 * 9.0 / 200.0, 1.0)
+    expected = (0.0676 * math.sqrt(4.0)
+                + 4.6 * 0.66 / (12.0 * 9.0) * ratio) * 12.0 * 9.0
+    assert r.capacity == pytest.approx(expected)
+    assert r.phi == pytest.approx(0.90)
+    assert r.details["applicable"]
+    # the moment ratio never exceeds 1.0
+    high_v = box_culvert_slab_shear(12.0, 9.0, 4.0, 0.66, v_u=50.0,
+                                    m_u=100.0)
+    assert high_v.details["Vu*de/Mu"] == pytest.approx(1.0)
+
+
+def test_box_culvert_slab_shear_cap_and_floors():
+    import math
+    from civilpy.structural.aashto.lrfd.concrete import box_culvert_slab_shear
+    # heavy reinforcement pushes Vc to the 0.126*sqrt(f'c) cap
+    capped = box_culvert_slab_shear(12.0, 9.0, 4.0, a_s=8.0, v_u=50.0,
+                                    m_u=100.0)
+    assert capped.capacity == pytest.approx(
+        0.126 * math.sqrt(4.0) * 12.0 * 9.0)
+    # single-cell floor governs over a lightly reinforced slab
+    light = box_culvert_slab_shear(12.0, 9.0, 4.0, a_s=0.1, v_u=2.0,
+                                   m_u=500.0, single_cell=True,
+                                   monolithic=False)
+    assert light.capacity == pytest.approx(
+        0.0791 * math.sqrt(4.0) * 12.0 * 9.0)
+    mono = box_culvert_slab_shear(12.0, 9.0, 4.0, a_s=0.1, v_u=2.0,
+                                  m_u=500.0, single_cell=True)
+    assert mono.capacity == pytest.approx(
+        0.0948 * math.sqrt(4.0) * 12.0 * 9.0)
+    shallow = box_culvert_slab_shear(12.0, 9.0, 4.0, 0.66, 8.0, 200.0,
+                                     fill_ft=1.0)
+    assert not shallow.details["applicable"]
