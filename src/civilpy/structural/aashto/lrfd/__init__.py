@@ -110,6 +110,13 @@ from civilpy.structural.aashto.lrfd.splices import (
     web_splice_design_forces,
     WebSpliceForces,
 )
+from civilpy.structural.aashto.lrfd.lrfr import (
+    rating_factor,
+    legal_load_factor,
+    posting_load,
+    CONDITION_FACTORS,
+    SYSTEM_FACTORS,
+)
 from civilpy.structural.aashto.lrfd.columns import (
     rc_column_axial_resistance,
     rc_column_reinforcement_limits,
@@ -218,6 +225,11 @@ __all__ = [
     "flange_splice_design_force",
     "web_splice_design_forces",
     "WebSpliceForces",
+    "rating_factor",
+    "legal_load_factor",
+    "posting_load",
+    "CONDITION_FACTORS",
+    "SYSTEM_FACTORS",
     "st_venant_j",
     "web_plastification_factors",
     "a6_flange_local_buckling",
