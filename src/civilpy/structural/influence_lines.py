@@ -116,6 +116,92 @@ class InfluenceLine:
 
         return cls(eta, total, f"Moment at x={section:g}")
 
+    # ── Two-span continuous beams (Müller-Breslau) ───────────────────────
+
+    @staticmethod
+    def _two_span_redundant(spans):
+        """Middle-reaction influence function for a prismatic two-span
+        continuous beam by the force method (the exact Müller-Breslau
+        shape: the deflected shape of the released simple beam scaled by
+        the deflection at B).
+
+        Releasing the middle support leaves a simple beam of length
+        L1 + L2; eta_RB(u) = delta(B, u) / delta(B, B), with the
+        simple-beam deflection formula (EI cancels).
+        """
+        l1, l2 = (float(s) for s in spans)
+        total = l1 + l2
+
+        def deflection_at(v, u):
+            # simple beam 0..total, deflection at v due to unit load at u
+            if v > u:
+                v, u = total - v, total - u
+            b = total - u
+            return b * v * (total**2 - b**2 - v**2) / (6.0 * total)
+
+        d_bb = deflection_at(l1, l1)
+
+        def r_b(u):
+            return deflection_at(l1, u) / d_bb
+
+        return l1, l2, total, r_b
+
+    @classmethod
+    def two_span_reaction(cls, spans, support: str = "B"):
+        """IL for a reaction of a two-span continuous beam with supports
+        A-B-C and (possibly unequal) ``spans`` = (L1, L2).  The middle
+        reaction's IL is the Müller-Breslau deflected shape of the
+        beam with support B released."""
+        l1, l2, total, r_b = cls._two_span_redundant(spans)
+
+        def eta(u):
+            if support.upper() == "B":
+                return r_b(u)
+            r_a = ((total - u) - r_b(u) * l2) / total
+            if support.upper() == "A":
+                return r_a
+            return 1.0 - r_a - r_b(u)
+
+        return cls(eta, total,
+                   f"Reaction {support.upper()} (2-span {l1:g}+{l2:g})")
+
+    @classmethod
+    def two_span_shear(cls, spans, section: float):
+        """IL for shear at ``section`` (ft from A) of a two-span
+        continuous beam, left-segment sign convention."""
+        l1, l2, total, r_b = cls._two_span_redundant(spans)
+        c = float(section)
+
+        def eta(u):
+            r_a = ((total - u) - r_b(u) * l2) / total
+            v = r_a
+            if l1 < c:
+                v += r_b(u)
+            if u < c:
+                v -= 1.0
+            return v
+
+        return cls(eta, total, f"Shear at x={section:g} (2-span)")
+
+    @classmethod
+    def two_span_moment(cls, spans, section: float):
+        """IL for bending moment at ``section`` (ft from A) of a
+        two-span continuous beam.  ``section = L1`` gives the classic
+        negative-moment IL over the middle support."""
+        l1, l2, total, r_b = cls._two_span_redundant(spans)
+        c = float(section)
+
+        def eta(u):
+            r_a = ((total - u) - r_b(u) * l2) / total
+            m = r_a * c
+            if c > l1:
+                m += r_b(u) * (c - l1)
+            if u < c:
+                m -= c - u
+            return m
+
+        return cls(eta, total, f"Moment at x={section:g} (2-span)")
+
     # ── Load effects ──────────────────────────────────────────────────────
 
     def ordinates(self, n: int = 1001):
