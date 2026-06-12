@@ -239,3 +239,69 @@ class TestConstructibility:
         )
         assert "yielding" not in r.details
         assert r.details["governing"] == "buckling"
+
+
+class TestShearConnectors:
+    def test_stud_strength(self):
+        # 7/8" stud, f'c=4, Ec=3640: Asc=0.6013
+        # 0.5*0.6013*sqrt(4*3640)=36.3 > Asc*60=36.1 -> Fu governs
+        r = lrfd.shear_connector_strength(d_stud=0.875, f_c=4.0, e_c=3640.0)
+        a_sc = math.pi * 0.875**2 / 4.0
+        assert r.capacity == pytest.approx(
+            min(0.5 * a_sc * math.sqrt(4.0 * 3640.0), a_sc * 60.0)
+        )
+
+    def test_required_count(self):
+        r = lrfd.shear_connector_strength(
+            d_stud=0.875, f_c=4.0, e_c=3640.0, nominal_force=1500.0
+        )
+        assert r.details["n_required"] == pytest.approx(
+            1500.0 / (0.85 * r.capacity)
+        )
+
+    def test_fatigue_pitch_finite_life(self):
+        # N = 2e6: alpha = 34.5 - 4.28*6.301 = 7.53
+        r = lrfd.shear_connector_fatigue_pitch(
+            d_stud=0.875, n_per_row=3, shear_flow=1.2, n_cycles=2.0e6
+        )
+        alpha = 34.5 - 4.28 * math.log10(2.0e6)
+        assert r.details["Zr"] == pytest.approx(alpha * 0.875**2)
+        assert r.capacity == pytest.approx(3.0 * alpha * 0.875**2 / 1.2)
+
+    def test_fatigue_infinite_life_floor(self):
+        inf = lrfd.shear_connector_fatigue_pitch(
+            d_stud=0.875, n_per_row=3, shear_flow=1.2
+        )
+        assert inf.details["Zr"] == pytest.approx(5.5 * 0.875**2 / 2.0)
+
+
+class TestBlockShear:
+    def test_rupture_governs(self):
+        # Avg=6, Avn=4.5, Atn=1.5, Fy=50, Fu=65, Ubs=1
+        # rupture path: 0.58*65*4.5+65*1.5 = 169.65+97.5 = 267.2
+        # yield path: 0.58*50*6+97.5 = 174+97.5 = 271.5 -> rupture governs
+        r = lrfd.block_shear_resistance(
+            a_vg=6.0, a_vn=4.5, a_tn=1.5, f_y=50.0, f_u=65.0
+        )
+        assert r.capacity == pytest.approx(0.58 * 65.0 * 4.5 + 65.0 * 1.5)
+        assert r.phi == 0.80
+
+    def test_punched_holes_reduction(self):
+        drilled = lrfd.block_shear_resistance(6.0, 4.5, 1.5, 50.0, 65.0)
+        punched = lrfd.block_shear_resistance(6.0, 4.5, 1.5, 50.0, 65.0,
+                                              punched_holes=True)
+        assert punched.capacity == pytest.approx(0.9 * drilled.capacity)
+
+
+class TestFilletWeld:
+    def test_resistance_per_inch(self):
+        # 5/16" weld, E70: 0.6*0.8*70*0.707*0.3125 = 7.42 kip/in
+        r = lrfd.fillet_weld_resistance(leg_size=0.3125)
+        assert r.details["per_inch"] == pytest.approx(
+            0.6 * 0.8 * 70.0 * 0.707 * 0.3125
+        )
+
+    def test_length_scales(self):
+        one = lrfd.fillet_weld_resistance(0.3125, length=1.0)
+        ten = lrfd.fillet_weld_resistance(0.3125, length=10.0)
+        assert ten.capacity == pytest.approx(10.0 * one.capacity)

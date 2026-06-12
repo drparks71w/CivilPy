@@ -26,6 +26,9 @@ wired (see `editions.py`).
 - [x] A6.4 Tension flange yielding — `appendix_a6.a6_tension_flange_yielding`
 - [x] 6.10.1.9.1 Web bend-buckling Fcrw — `steel.web_bend_buckling`
 - [x] 6.10.3.2.1 Constructibility compression flange — `steel.constructibility_compression_flange`
+- [x] 6.10.10.4 / 6.10.10.1.2 Shear connectors (strength + fatigue pitch) — `steel.shear_connector_*`
+- [x] 6.13.4 Block shear rupture — `steel.block_shear_resistance`
+- [x] 6.13.3.2.4 Fillet weld shear — `steel.fillet_weld_resistance`
 
 ### Reinforced concrete (Chapter 5)
 - [x] 5.6.3.2 Rectangular flexural resistance — `concrete.rc_rectangular_flexural_resistance`
@@ -89,7 +92,7 @@ wired (see `editions.py`).
 
 ### Steel
 - [ ] Appendix B6 (moment redistribution)
-- [ ] 6.13 splices (flange/web), block shear 6.13.4, fillet welds 6.13.3
+- [ ] 6.13.6.1 flange/web splice design forces
 
 ### Analysis / loads
 - [ ] 4.6.2.2 DFs for other cross-section types (boxes, slabs, T-beams)
