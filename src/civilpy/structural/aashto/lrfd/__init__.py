@@ -112,6 +112,13 @@ from civilpy.structural.aashto.lrfd.splices import (
     web_splice_design_forces,
     WebSpliceForces,
 )
+from civilpy.structural.aashto.lrfd.stm import (
+    stm_tie_resistance,
+    stm_node_resistance,
+    stm_crack_control_reinforcement,
+    NODE_EFFICIENCY,
+)
+from civilpy.structural.aashto.lrfd.plots import plot_pm_interaction
 from civilpy.structural.aashto.lrfd.lrfr import (
     rating_factor,
     legal_load_factor,
@@ -205,6 +212,11 @@ __all__ = [
     "rc_pm_interaction_diagram",
     "rc_pm_capacity_check",
     "rc_biaxial_check",
+    "stm_tie_resistance",
+    "stm_node_resistance",
+    "stm_crack_control_reinforcement",
+    "NODE_EFFICIENCY",
+    "plot_pm_interaction",
     "INTERFACE_SHEAR_CASES",
     "rc_effective_moment_of_inertia",
     "deflection_limit",
