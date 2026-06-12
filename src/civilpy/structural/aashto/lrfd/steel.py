@@ -500,6 +500,119 @@ def bolt_bearing_resistance(
     )
 
 
+@article("6.10.10.4", "Shear Connector Strength Limit State")
+def shear_connector_strength(
+    d_stud: float,
+    f_c: float,
+    e_c: float,
+    nominal_force: float | None = None,
+    f_u_stud: float = 60.0,
+) -> CheckResult:
+    """Nominal resistance of one stud shear connector (6.10.10.4.3-1):
+    Qn = 0.5*Asc*sqrt(f'c*Ec) <= Asc*Fu, phi_sc = 0.85.
+
+    Pass the interface force ``nominal_force`` P (6.10.10.4.2 — the lesser
+    of the deck crushing and steel yielding forces, kip) to get the
+    required connector count in ``details``."""
+    a_sc = math.pi * d_stud**2 / 4.0
+    q_n = min(0.5 * a_sc * math.sqrt(f_c * e_c), a_sc * f_u_stud)
+    details = {"Asc": a_sc, "Qn": q_n}
+    if nominal_force is not None:
+        details["n_required"] = nominal_force / (0.85 * q_n)
+    return CheckResult(
+        article="6.10.10.4",
+        name="Shear Connector Strength Limit State",
+        capacity=q_n,
+        phi=0.85,
+        details=details,
+    )
+
+
+@article("6.10.10.1.2", "Shear Connector Fatigue Pitch")
+def shear_connector_fatigue_pitch(
+    d_stud: float,
+    n_per_row: int,
+    shear_flow: float,
+    n_cycles: float | None = None,
+    pitch: float | None = None,
+) -> CheckResult:
+    """Required stud pitch for fatigue (6.10.10.1.2): p <= n*Zr/Vsr, where
+    the fatigue resistance of one stud is Zr = alpha*d^2 with
+    alpha = 34.5 - 4.28*log10(N) (Fatigue II), or Zr = 5.5*d^2/2 for
+    infinite life (Fatigue I, ``n_cycles`` omitted).
+
+    ``shear_flow`` is the fatigue shear flow Vsr = Vf*Q/I (kip/in).
+    ``capacity`` is the maximum permitted pitch (in); pass the actual
+    ``pitch`` as demand — note larger-is-worse, so ok means pitch <= max."""
+    if n_cycles is None:
+        z_r = 5.5 * d_stud**2 / 2.0
+    else:
+        alpha = 34.5 - 4.28 * math.log10(n_cycles)
+        z_r = max(alpha * d_stud**2, 5.5 * d_stud**2 / 2.0)
+    p_max = n_per_row * z_r / shear_flow
+    return CheckResult(
+        article="6.10.10.1.2",
+        name="Shear Connector Fatigue Pitch",
+        capacity=p_max,
+        demand=pitch,
+        details={"Zr": z_r, "shear_flow": shear_flow},
+    )
+
+
+@article("6.13.4", "Block Shear Rupture Resistance")
+def block_shear_resistance(
+    a_vg: float,
+    a_vn: float,
+    a_tn: float,
+    f_y: float,
+    f_u: float,
+    p_u: float | None = None,
+    u_bs: float = 1.0,
+    punched_holes: bool = False,
+) -> CheckResult:
+    """Block shear rupture (6.13.4-1):
+    Rn = Rp*(0.58*Fu*Avn + Ubs*Fu*Atn), not to exceed
+    Rp*(0.58*Fy*Avg + Ubs*Fu*Atn); phi_bs = 0.80.
+
+    ``u_bs`` = 1.0 for uniform tension stress, 0.5 for nonuniform;
+    Rp = 0.9 for punched holes, 1.0 drilled."""
+    r_p = 0.9 if punched_holes else 1.0
+    r_n = r_p * min(
+        0.58 * f_u * a_vn + u_bs * f_u * a_tn,
+        0.58 * f_y * a_vg + u_bs * f_u * a_tn,
+    )
+    return CheckResult(
+        article="6.13.4",
+        name="Block Shear Rupture Resistance",
+        capacity=r_n,
+        demand=p_u,
+        phi=0.80,
+        details={"Rp": r_p, "Ubs": u_bs},
+    )
+
+
+@article("6.13.3.2.4", "Fillet Weld Shear Resistance")
+def fillet_weld_resistance(
+    leg_size: float,
+    f_exx: float = 70.0,
+    length: float = 1.0,
+    v_u: float | None = None,
+) -> CheckResult:
+    """Factored shear resistance of a fillet weld on its effective throat
+    (6.13.3.2.4b): Rr = 0.6*phi_e2*Fexx with phi_e2 = 0.80, applied to the
+    throat 0.707*leg.  ``capacity`` holds the factored resistance for the
+    given ``length`` of weld (kip), so ``phi`` is 1.0 on the result."""
+    throat = 0.707 * leg_size
+    r_r = 0.6 * 0.80 * f_exx * throat * length
+    return CheckResult(
+        article="6.13.3.2.4",
+        name="Fillet Weld Shear Resistance",
+        capacity=r_r,
+        demand=v_u,
+        details={"throat": throat, "per_inch": 0.6 * 0.80 * f_exx * throat},
+    )
+
+
 @article("6.10.1.9.1", "Web Bend-Buckling Resistance")
 def web_bend_buckling(
     d_web: float,

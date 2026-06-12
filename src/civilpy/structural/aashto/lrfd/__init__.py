@@ -50,6 +50,10 @@ from civilpy.structural.aashto.lrfd.steel import (
     bearing_stiffener_resistance,
     web_bend_buckling,
     constructibility_compression_flange,
+    shear_connector_strength,
+    shear_connector_fatigue_pitch,
+    block_shear_resistance,
+    fillet_weld_resistance,
 )
 from civilpy.structural.aashto.lrfd.concrete import (
     rc_rectangular_flexural_resistance,
@@ -207,6 +211,10 @@ __all__ = [
     "bearing_stiffener_resistance",
     "web_bend_buckling",
     "constructibility_compression_flange",
+    "shear_connector_strength",
+    "shear_connector_fatigue_pitch",
+    "block_shear_resistance",
+    "fillet_weld_resistance",
     "parapet_yield_line_capacity",
     "parapet_test_level_check",
     "deck_overhang_collision_tension",
