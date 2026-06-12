@@ -22,6 +22,7 @@ its 8th/9th/10th Edition spec engines.  Units: kip, inch, ksi.
 """
 
 import math
+from dataclasses import dataclass
 
 from civilpy.structural.aashto.lrfd.core import CheckResult, article
 
@@ -201,6 +202,229 @@ def rc_crack_control_z_factor(
         capacity=f_sa,
         demand=f_ss,
         details={"z": z, "A": a_bar},
+    )
+
+
+@dataclass
+class MCFTParams:
+    """beta/theta from the 5.7.3.4.2 general procedure, ready to feed
+    :func:`rc_shear_resistance`."""
+
+    beta: float
+    theta_deg: float
+    eps_s: float
+    s_xe: float | None = None
+
+
+@article("5.7.3.4.2", "Shear Resistance Parameters — General (MCFT) Procedure")
+def rc_mcft_beta_theta(
+    m_u: float,
+    v_u: float,
+    d_v: float,
+    e_s_a_s: float,
+    n_u: float = 0.0,
+    v_p: float = 0.0,
+    a_ps: float = 0.0,
+    f_po: float = 0.0,
+    e_p_a_ps: float = 0.0,
+    has_min_transverse_reinf: bool = True,
+    s_x: float | None = None,
+    a_g_agg: float = 0.75,
+    e_c_a_ct: float = 0.0,
+) -> MCFTParams:
+    """Longitudinal strain, beta, and theta per the general (MCFT-based)
+    procedure (5.7.3.4.2).
+
+    ``e_s_a_s`` and ``e_p_a_ps`` are the stiffness products Es*As and
+    Ep*Aps (kip) on the flexural tension side; ``f_po`` is normally
+    0.7*fpu for bonded strand.  With minimum transverse reinforcement,
+    beta = 4.8/(1 + 750*eps_s); without it the crack-spacing penalty
+    51/(39 + sxe) applies, where ``s_x`` (in) and the max aggregate size
+    ``a_g_agg`` (in) set sxe.  When eps_s comes out negative (section
+    uncracked), the concrete stiffness ``e_c_a_ct`` = Ec*Act may be added
+    to the denominator; eps_s is bounded to [-0.40e-3, 6.0e-3].
+    """
+    demand = abs(m_u) / d_v + 0.5 * n_u + abs(v_u - v_p) - a_ps * f_po
+    eps_s = demand / (e_s_a_s + e_p_a_ps)
+    if eps_s < 0.0:
+        eps_s = demand / (e_s_a_s + e_p_a_ps + e_c_a_ct)
+    eps_s = min(max(eps_s, -0.40e-3), 6.0e-3)
+
+    beta = 4.8 / (1.0 + 750.0 * eps_s)
+    s_xe = None
+    if not has_min_transverse_reinf:
+        if s_x is None:
+            raise ValueError(
+                "s_x (crack spacing parameter) is required when the section "
+                "lacks minimum transverse reinforcement"
+            )
+        s_xe = min(max(s_x * 1.38 / (a_g_agg + 0.63), 12.0), 80.0)
+        beta *= 51.0 / (39.0 + s_xe)
+    theta = 29.0 + 3500.0 * eps_s
+    return MCFTParams(beta=beta, theta_deg=theta, eps_s=eps_s, s_xe=s_xe)
+
+
+@article("5.7.2.5", "Minimum Transverse Reinforcement")
+def rc_min_transverse_reinforcement(
+    b_v: float,
+    s: float,
+    f_c: float,
+    f_y: float = 60.0,
+    a_v: float | None = None,
+    lam: float = 1.0,
+) -> CheckResult:
+    """Minimum transverse reinforcement where shear reinforcement is
+    required (5.7.2.5-1): Av >= 0.0316*lam*sqrt(f'c)*bv*s/fy.
+
+    ``capacity`` is the provided ``a_v`` (in^2) and ``demand`` the required
+    minimum, so ratio >= 1 passes."""
+    required = 0.0316 * lam * math.sqrt(f_c) * b_v * s / f_y
+    return CheckResult(
+        article="5.7.2.5",
+        name="Minimum Transverse Reinforcement",
+        capacity=a_v if a_v is not None else required,
+        demand=required if a_v is not None else None,
+        details={"Av_min": required},
+    )
+
+
+@article("5.7.2.6", "Maximum Spacing of Transverse Reinforcement")
+def rc_max_stirrup_spacing(
+    v_u: float,
+    b_v: float,
+    d_v: float,
+    f_c: float,
+    s: float | None = None,
+    v_p: float = 0.0,
+    phi_v: float = 0.9,
+) -> CheckResult:
+    """Maximum stirrup spacing (5.7.2.6): with the shear stress
+    vu = |Vu - phi*Vp|/(phi*bv*dv), smax = min(0.8*dv, 24in) when
+    vu < 0.125*f'c, else min(0.4*dv, 12in).  ``capacity`` is smax and
+    ``demand`` the actual spacing ``s``."""
+    v_stress = abs(v_u - phi_v * v_p) / (phi_v * b_v * d_v)
+    if v_stress < 0.125 * f_c:
+        s_max = min(0.8 * d_v, 24.0)
+    else:
+        s_max = min(0.4 * d_v, 12.0)
+    return CheckResult(
+        article="5.7.2.6",
+        name="Maximum Spacing of Transverse Reinforcement",
+        capacity=s_max,
+        demand=s,
+        details={"vu_stress": v_stress, "high_shear": v_stress >= 0.125 * f_c},
+    )
+
+
+@article("5.7.3.5", "Longitudinal Reinforcement")
+def rc_longitudinal_reinforcement(
+    m_u: float,
+    v_u: float,
+    d_v: float,
+    theta_deg: float,
+    a_s_f_y: float = 0.0,
+    a_ps_f_ps: float = 0.0,
+    n_u: float = 0.0,
+    v_s: float = 0.0,
+    v_p: float = 0.0,
+    phi_f: float = 0.9,
+    phi_v: float = 0.9,
+    phi_c: float = 0.75,
+) -> CheckResult:
+    """Tension demand on longitudinal reinforcement from combined moment,
+    axial, and shear (5.7.3.5-1):
+
+    Aps*fps + As*fy >= |Mu|/(dv*phi_f) + 0.5*Nu/phi_c
+                       + (|Vu/phi_v - Vp| - 0.5*Vs)*cot(theta)
+
+    ``v_s`` is capped at Vu/phi_v per the article.  ``capacity`` is the
+    tension the reinforcement can develop (pass the products As*fy and
+    Aps*fps), ``demand`` the required tension."""
+    v_s_used = min(v_s, v_u / phi_v)
+    cot = 1.0 / math.tan(math.radians(theta_deg))
+    required = (
+        abs(m_u) / (d_v * phi_f)
+        + 0.5 * n_u / phi_c
+        + (abs(v_u / phi_v - v_p) - 0.5 * v_s_used) * cot
+    )
+    return CheckResult(
+        article="5.7.3.5",
+        name="Longitudinal Reinforcement",
+        capacity=a_s_f_y + a_ps_f_ps,
+        demand=required,
+        details={"Vs_used": v_s_used, "cot_theta": cot},
+    )
+
+
+# Cohesion/friction cases of 5.7.4.4 (c ksi, mu, K1, K2 ksi) — normal-weight
+# values; the lightweight K2 reductions are noted per case.
+INTERFACE_SHEAR_CASES = {
+    "monolithic": (0.40, 1.4, 0.25, 1.5),
+    "roughened": (0.28, 1.0, 0.3, 1.8),       # CIP slab on roughened girder
+    "not_roughened": (0.075, 0.6, 0.2, 0.8),  # clean, not roughened
+    "steel": (0.025, 0.7, 0.2, 0.8),          # concrete on clean steel
+}
+
+
+@article("5.7.4", "Interface Shear Transfer")
+def rc_interface_shear(
+    a_cv: float,
+    f_c: float,
+    case: str = "roughened",
+    v_ui: float | None = None,
+    a_vf: float = 0.0,
+    f_y: float = 60.0,
+    p_c: float = 0.0,
+) -> CheckResult:
+    """Interface (horizontal) shear resistance (5.7.4.3-3):
+    Vni = c*Acv + mu*(Avf*fy + Pc), capped at min(K1*f'c, K2)*Acv.
+
+    ``case`` selects the 5.7.4.4 cohesion/friction set (see
+    ``INTERFACE_SHEAR_CASES``); ``a_cv`` is the interface area (in^2),
+    ``a_vf`` the reinforcement crossing it (in^2), ``p_c`` permanent net
+    compressive force (kip); ``v_ui`` the factored interface shear demand
+    (kip) checked against phi_v = 0.9 times Vni.  ``details`` includes the
+    5.7.4.2 minimum Avf."""
+    c, mu, k1, k2 = INTERFACE_SHEAR_CASES[case]
+    v_ni = c * a_cv + mu * (a_vf * f_y + p_c)
+    upper = min(k1 * f_c, k2) * a_cv
+    return CheckResult(
+        article="5.7.4",
+        name="Interface Shear Transfer",
+        capacity=min(v_ni, upper),
+        demand=v_ui,
+        phi=0.9,
+        details={"c": c, "mu": mu, "upper_limit": upper,
+                 "Avf_min": 0.05 * a_cv / f_y, "case": case},
+    )
+
+
+@article("5.7.2.1", "Torsion Threshold")
+def rc_torsion_threshold(
+    a_cp: float,
+    p_c: float,
+    f_c: float,
+    t_u: float | None = None,
+    f_pc: float = 0.0,
+    lam: float = 1.0,
+    phi_t: float = 0.9,
+) -> CheckResult:
+    """Whether torsion must be considered (5.7.2.1): Tu > 0.25*phi*Tcr with
+    Tcr = 0.126*lam*sqrt(f'c)*(Acp^2/pc)*sqrt(1 + fpc/(0.126*lam*sqrt(f'c)))
+    for solid sections.
+
+    ``a_cp`` is the area enclosed by the outside perimeter (in^2), ``p_c``
+    that perimeter (in), ``f_pc`` the prestress at the centroid (ksi).
+    ``capacity`` is the 0.25*phi*Tcr threshold (kip-in); ``ok`` True means
+    torsion may be neglected."""
+    sqrt_term = 0.126 * lam * math.sqrt(f_c)
+    t_cr = sqrt_term * a_cp**2 / p_c * math.sqrt(1.0 + f_pc / sqrt_term)
+    return CheckResult(
+        article="5.7.2.1",
+        name="Torsion Threshold",
+        capacity=0.25 * phi_t * t_cr,
+        demand=t_u,
+        details={"Tcr": t_cr},
     )
 
 
