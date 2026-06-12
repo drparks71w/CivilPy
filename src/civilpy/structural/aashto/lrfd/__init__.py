@@ -87,6 +87,11 @@ from civilpy.structural.aashto.lrfd.distribution import (
     lever_rule_exterior,
     slab_equivalent_strip,
     moment_df_interior_box,
+    moment_df_interior_multicell,
+    shear_df_interior_multicell,
+    moment_df_interior_spread_box,
+    shear_df_interior_spread_box,
+    shear_df_interior_box,
 )
 from civilpy.structural.aashto.lrfd.timber import (
     TIMBER_PHI,
@@ -99,6 +104,11 @@ from civilpy.structural.aashto.lrfd.timber import (
     timber_flexural_resistance,
     volume_factor_cv,
     column_stability_cp,
+    wet_service_cm,
+    flat_use_cfu,
+    deck_factor_cd,
+    timber_tension_resistance,
+    timber_compression_resistance,
 )
 from civilpy.structural.aashto.lrfd.appendix_a6 import (
     st_venant_j,
@@ -106,6 +116,13 @@ from civilpy.structural.aashto.lrfd.appendix_a6 import (
     a6_flange_local_buckling,
     a6_lateral_torsional_buckling,
     a6_tension_flange_yielding,
+)
+from civilpy.structural.aashto.lrfd.appendix_b6 import (
+    b6_web_proportions,
+    b6_flange_proportions,
+    b6_bracing_limit,
+    b6_effective_plastic_moment,
+    b6_redistribution_moment,
 )
 from civilpy.structural.aashto.lrfd.splices import (
     flange_splice_design_force,
@@ -122,9 +139,12 @@ from civilpy.structural.aashto.lrfd.plots import plot_pm_interaction
 from civilpy.structural.aashto.lrfd.lrfr import (
     rating_factor,
     legal_load_factor,
+    permit_load_factor,
     posting_load,
     CONDITION_FACTORS,
     SYSTEM_FACTORS,
+    PERMIT_ROUTINE_FACTORS,
+    PERMIT_SPECIAL_FACTORS,
 )
 from civilpy.structural.aashto.lrfd.columns import (
     rc_column_axial_resistance,

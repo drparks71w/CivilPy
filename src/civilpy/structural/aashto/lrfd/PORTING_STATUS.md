@@ -78,6 +78,10 @@ wired (see `editions.py`).
 - [x] 3.6.1.1.2 Multiple presence + lever-rule exterior DF — `distribution.multiple_presence_factor`, `lever_rule_exterior`
 - [x] 4.6.2.3 Slab equivalent strip widths (incl. skew) — `distribution.slab_equivalent_strip`
 - [x] 4.6.2.2.2b type (g) box-beam moment DFs — `distribution.moment_df_interior_box`
+- [x] 4.6.2.2.3a type (g) box-beam shear DFs — `distribution.shear_df_interior_box`
+- [x] 4.6.2.2.2b/.3a type (d) multicell box DFs — `distribution.*_df_interior_multicell`
+- [x] 4.6.2.2.2b/.3a spread box beam DFs — `distribution.*_df_interior_spread_box`
+- (T-beams, type (e), share the type a/e/k I-girder formulas above)
 - [x] 6.10.11.2.3 Bearing stiffener bearing resistance — `steel.bearing_stiffener_resistance`
 
 ### Timber (Chapter 8)
@@ -87,20 +91,28 @@ wired (see `editions.py`).
 - [x] 8.6 Flexural resistance — `timber.timber_flexural_resistance`
 - [x] 8.4.4.5 Cv glulam volume factor — `timber.volume_factor_cv`
 - [x] 8.7 Column stability Cp — `timber.column_stability_cp`
-- [ ] 8.4.4.3 CM / 8.4.4.6 Cfu / 8.4.4.8 Cd (species/grade table lookups — currently caller inputs)
-- [ ] 8.7/8.10 compression & tension member resistances (Cp done)
+- [x] 8.4.4.3 Wet service CM (sawn + glulam, footnote waivers) — `timber.wet_service_cm`
+- [x] 8.4.4.6 Flat use Cfu (sawn table + glulam (12/d)^(1/9)) — `timber.flat_use_cfu`
+- [x] 8.4.4.8 Deck factor Cd — `timber.deck_factor_cd`
+- [x] 8.8.2 Tension members — `timber.timber_tension_resistance`
+- [x] 8.7 Compression members (Pr = phi*Fc*Ag*Cp) — `timber.timber_compression_resistance`
 
 ### LRFR (MBE Section 6A)
 - [x] 6A.4.2.1 General rating equation (condition/system factors, 0.85 floor) — `lrfr.rating_factor`
 - [x] 6A.4.4.2.3a Legal load factor by ADTT — `lrfr.legal_load_factor`
 - [x] 6A.8.3 Posting load — `lrfr.posting_load`
-- [ ] Permit load factors (6A.4.5.4.2a table)
+- [x] 6A.4.5.4.2a Permit load factors (routine GVW/AL bands + special crossings, ADTT interpolation, agency overrides) — `lrfr.permit_load_factor`
 
 ### Strut-and-tie (5.8.2 — implemented from spec)
 - [x] 5.8.2.4 Tie resistance — `stm.stm_tie_resistance`
 - [x] 5.8.2.5 Node/strut crushing (nu table, confinement) — `stm.stm_node_resistance`
 - [x] 5.8.2.6 Crack-control reinforcement ratio — `stm.stm_crack_control_reinforcement`
 - (truss solver + diagram: `civilpy.structural.strut_and_tie`)
+
+### Appendix B6 (steel moment redistribution)
+- [x] B6.2.1 / B6.2.2 / B6.2.4 scope checks — `appendix_b6.b6_web_proportions`, `b6_flange_proportions`, `b6_bracing_limit`
+- [x] B6.5 Effective plastic moment (enhanced B6.5.1 + ordinary B6.5.2) — `appendix_b6.b6_effective_plastic_moment`
+- [x] B6.3.3.1 / B6.4.2.1 Redistribution moments (0.2|Me| cap) — `appendix_b6.b6_redistribution_moment`
 
 ### Decks and railings
 - [x] A13.3.1 Parapet yield-line resistance — `railing.parapet_yield_line_capacity`
@@ -109,12 +121,6 @@ wired (see `editions.py`).
 
 ## To do (rough priority order)
 
-
-### Steel
-- [ ] Appendix B6 (moment redistribution)
-
-### Analysis / loads
-- [ ] 4.6.2.2 DFs for remaining cross-section types (T-beams, spread boxes, box shear)
 
 ### Other
 - [ ] Box-culvert variants of Ch. 5 checks

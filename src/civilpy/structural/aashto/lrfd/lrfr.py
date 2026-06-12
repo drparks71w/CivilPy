@@ -126,3 +126,73 @@ def posting_load(rf: float, vehicle_weight_tons: float) -> float:
     if rf < 0.3:
         return 0.0
     return vehicle_weight_tons * (rf - 0.3) / 0.7
+
+
+# Permit load factors (Table 6A.4.5.4.2a-1, 2013 revision and later):
+# routine/annual permits mixed with traffic are keyed by one-direction
+# ADTT row and GVW/AL band (kips/ft) — (<2, 2 to <3, >=3); special or
+# limited-crossing permits are keyed by trip/escort condition.  Like the
+# condition/system factors above, agencies may override any value.
+PERMIT_ROUTINE_FACTORS = {
+    5000: (1.40, 1.35, 1.30),
+    1000: (1.35, 1.25, 1.20),
+    100: (1.30, 1.20, 1.15),
+}
+
+PERMIT_SPECIAL_FACTORS = {
+    "single_trip_escorted": 1.10,
+    "single_trip_mixed": 1.20,
+    "multiple_trip_mixed": 1.40,
+}
+
+
+@article("6A.4.5.4.2a", "Permit Live Load Factor")
+def permit_load_factor(
+    permit_type: str = "routine",
+    adtt: float | None = None,
+    gvw_kips: float | None = None,
+    axle_length_ft: float | None = None,
+    gvw_over_al: float | None = None,
+    factors: dict | None = None,
+) -> float:
+    """Live load factor for permit ratings (Table 6A.4.5.4.2a-1).
+
+    ``permit_type`` is ``"routine"`` (annual, mixed with traffic, two or
+    more lanes) or one of the special/limited-crossing types:
+    ``"single_trip_escorted"``, ``"single_trip_mixed"``,
+    ``"multiple_trip_mixed"`` (fewer than 100 crossings).
+
+    Routine permits need the one-direction ``adtt`` and the permit
+    weight intensity GVW/AL — pass ``gvw_over_al`` directly (kips/ft)
+    or ``gvw_kips`` with ``axle_length_ft`` (distance between the
+    extreme axles).  Factors interpolate linearly on ADTT between 100
+    and 5000 within each GVW/AL band; ADTT above 5000 (or unknown) uses
+    the top row.  ``factors`` overrides the published table for agency
+    customizations (same shapes as ``PERMIT_ROUTINE_FACTORS`` /
+    ``PERMIT_SPECIAL_FACTORS``).
+    """
+    if permit_type != "routine":
+        table = factors or PERMIT_SPECIAL_FACTORS
+        if permit_type not in table:
+            raise ValueError(f"unknown permit type {permit_type!r}; "
+                             f"expected 'routine' or one of {sorted(table)}")
+        return table[permit_type]
+
+    if gvw_over_al is None:
+        if gvw_kips is None or axle_length_ft is None:
+            raise ValueError("routine permits need gvw_over_al, or "
+                             "gvw_kips with axle_length_ft")
+        gvw_over_al = gvw_kips / axle_length_ft
+    band = 0 if gvw_over_al < 2.0 else (1 if gvw_over_al < 3.0 else 2)
+
+    table = factors or PERMIT_ROUTINE_FACTORS
+    rows = sorted(table)                       # [100, 1000, 5000]
+    if adtt is None or adtt >= rows[-1]:
+        return table[rows[-1]][band]
+    if adtt <= rows[0]:
+        return table[rows[0]][band]
+    for lo, hi in zip(rows, rows[1:]):
+        if lo <= adtt <= hi:
+            f_lo, f_hi = table[lo][band], table[hi][band]
+            return f_lo + (f_hi - f_lo) * (adtt - lo) / (hi - lo)
+    raise AssertionError("unreachable")

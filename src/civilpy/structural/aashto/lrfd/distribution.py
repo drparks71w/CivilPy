@@ -246,6 +246,152 @@ def moment_df_interior_box(
     )
 
 
+@article("4.6.2.2.2b-d", "Distribution of Live Load Moment, Multicell Box")
+def moment_df_interior_multicell(
+    s_ft: float,
+    l_ft: float,
+    n_cells: int,
+) -> DistributionFactor:
+    """Moment DF for an interior web of a cast-in-place multicell box
+    (Table 4.6.2.2.2b-1, cross-section type d):
+
+    one lane:  (1.75 + S/3.6) * (1/L)^0.35 * (1/Nc)^0.45
+    multi:     (13/Nc)^0.3 * (S/5.8) * (1/L)^0.25
+
+    ``s_ft`` is the web spacing; ``n_cells`` the number of cells (use 8
+    in the formula when Nc > 8, per the table note)."""
+    n_c = min(n_cells, 8)
+    one = (1.75 + s_ft / 3.6) * (1.0 / l_ft) ** 0.35 * (1.0 / n_c) ** 0.45
+    multi = (13.0 / n_c) ** 0.3 * (s_ft / 5.8) * (1.0 / l_ft) ** 0.25
+    return DistributionFactor(
+        one_lane=one,
+        multi_lane=multi,
+        applicability={
+            "spacing": 7.0 <= s_ft <= 13.0,
+            "span": 60.0 <= l_ft <= 240.0,
+            "n_cells": n_cells >= 3,
+        },
+    )
+
+
+@article("4.6.2.2.3a-d", "Distribution of Live Load Shear, Multicell Box")
+def shear_df_interior_multicell(
+    s_ft: float,
+    l_ft: float,
+    d_in: float,
+) -> DistributionFactor:
+    """Shear DF for an interior web of a cast-in-place multicell box
+    (Table 4.6.2.2.3a-1, type d):
+
+    one lane:  (S/9.5)^0.6 * (d/12L)^0.1
+    multi:     (S/7.3)^0.9 * (d/12L)^0.1
+
+    ``d_in`` is the section depth (in)."""
+    depth = d_in / (12.0 * l_ft)
+    one = (s_ft / 9.5) ** 0.6 * depth**0.1
+    multi = (s_ft / 7.3) ** 0.9 * depth**0.1
+    return DistributionFactor(
+        one_lane=one,
+        multi_lane=multi,
+        applicability={
+            "spacing": 6.0 <= s_ft <= 13.0,
+            "span": 20.0 <= l_ft <= 240.0,
+            "depth": 35.0 <= d_in <= 110.0,
+        },
+    )
+
+
+@article("4.6.2.2.2b-spread",
+         "Distribution of Live Load Moment, Spread Box Beams")
+def moment_df_interior_spread_box(
+    s_ft: float,
+    l_ft: float,
+    d_in: float,
+    n_beams: int = 4,
+) -> DistributionFactor:
+    """Moment DF for interior precast spread box beams (Table
+    4.6.2.2.2b-1):
+
+    one lane:  (S/3.0)^0.35 * (S*d/(12*L^2))^0.25
+    multi:     (S/6.3)^0.6 * (S*d/(12*L^2))^0.125
+
+    ``d_in`` is the beam depth (in).  Beyond S = 18 ft the table sends
+    you to the lever rule (``applicable`` goes False)."""
+    term = s_ft * d_in / (12.0 * l_ft**2)
+    one = (s_ft / 3.0) ** 0.35 * term**0.25
+    multi = (s_ft / 6.3) ** 0.6 * term**0.125
+    return DistributionFactor(
+        one_lane=one,
+        multi_lane=multi,
+        applicability={
+            "spacing": 6.0 <= s_ft <= 18.0,
+            "span": 20.0 <= l_ft <= 140.0,
+            "depth": 18.0 <= d_in <= 65.0,
+            "n_beams": n_beams >= 3,
+        },
+    )
+
+
+@article("4.6.2.2.3a-spread",
+         "Distribution of Live Load Shear, Spread Box Beams")
+def shear_df_interior_spread_box(
+    s_ft: float,
+    l_ft: float,
+    d_in: float,
+    n_beams: int = 4,
+) -> DistributionFactor:
+    """Shear DF for interior precast spread box beams (Table
+    4.6.2.2.3a-1):
+
+    one lane:  (S/10)^0.6 * (d/12L)^0.1
+    multi:     (S/7.4)^0.8 * (d/12L)^0.1
+    """
+    depth = d_in / (12.0 * l_ft)
+    one = (s_ft / 10.0) ** 0.6 * depth**0.1
+    multi = (s_ft / 7.4) ** 0.8 * depth**0.1
+    return DistributionFactor(
+        one_lane=one,
+        multi_lane=multi,
+        applicability={
+            "spacing": 6.0 <= s_ft <= 18.0,
+            "span": 20.0 <= l_ft <= 140.0,
+            "depth": 18.0 <= d_in <= 65.0,
+            "n_beams": n_beams >= 3,
+        },
+    )
+
+
+@article("4.6.2.2.3a-g", "Distribution of Live Load Shear, Box Beams")
+def shear_df_interior_box(
+    b_in: float,
+    l_ft: float,
+    i_beam: float,
+    j_beam: float,
+) -> DistributionFactor:
+    """Shear DF for interior precast box beams used in multibeam decks
+    (Table 4.6.2.2.3a-1, cross-section type g):
+
+    one lane:  (b/130L)^0.15 * (I/J)^0.05
+    multi:     (b/156)^0.4 * (b/12L)^0.1 * (I/J)^0.05 * (b/48), b/48 >= 1
+
+    ``b_in`` is the beam width (in); the b/48 term never reduces the
+    multi-lane factor."""
+    stiffness = (i_beam / j_beam) ** 0.05
+    one = (b_in / (130.0 * l_ft)) ** 0.15 * stiffness
+    multi = (
+        (b_in / 156.0) ** 0.4 * (b_in / (12.0 * l_ft)) ** 0.1 * stiffness
+        * max(b_in / 48.0, 1.0)
+    )
+    return DistributionFactor(
+        one_lane=one,
+        multi_lane=multi,
+        applicability={
+            "width": 35.0 <= b_in <= 60.0,
+            "span": 20.0 <= l_ft <= 120.0,
+        },
+    )
+
+
 @article("3.6.1.1.2", "Multiple Presence Factors")
 def multiple_presence_factor(n_lanes: int) -> float:
     """m (Table 3.6.1.1.2-1): 1.20 / 1.00 / 0.85 / 0.65 for 1/2/3/>3 loaded
