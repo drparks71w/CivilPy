@@ -25,7 +25,7 @@ where C = phi_c * phi_s * phi * Rn at strength limit states (with
 phi_c*phi_s >= 0.85) or the allowable stress fR at service limit states.
 
 Factors default to the published MBE values but every one is overridable —
-agencies (and BrR's own factor library) routinely customize them.
+agencies routinely customize them.
 Consistent force/moment units in = same units out; RF is dimensionless.
 """
 

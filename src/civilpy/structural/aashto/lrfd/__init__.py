@@ -18,10 +18,9 @@
 
 Each check is a pure function of primitive inputs (kip, inch, ksi) so members
 can be "designed" by looping candidate sizes through the checks without any
-external software.  The same articles can be verified in AASHTOWare BrR; the
-article numbering here mirrors the spec-check classes in BrR's
-``aashto.brdr.analyticaltools.spec`` engine so results can be compared
-check-for-check.
+external software.  Article numbering follows the current specification,
+so results can be compared check-for-check against commercial rating
+software or hand calculations.
 
 >>> from civilpy.structural.aashto import lrfd
 >>> lrfd.ARTICLES["6.10.8.2.2"]  # doctest: +ELLIPSIS

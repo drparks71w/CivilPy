@@ -17,8 +17,7 @@
 """AASHTO LRFD Chapter 6 — steel I-girder design checks.
 
 Articles follow the 9th/10th Edition numbering (unchanged since the 5th
-Edition for these checks, per the edition-inheritance chains in BrR's spec
-engine).  Units: kip, inch, ksi.
+Edition for these checks).  Units: kip, inch, ksi.
 """
 
 import math
