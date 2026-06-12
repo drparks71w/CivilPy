@@ -96,6 +96,12 @@ wired (see `editions.py`).
 - [x] 6A.8.3 Posting load — `lrfr.posting_load`
 - [ ] Permit load factors (6A.4.5.4.2a table)
 
+### Strut-and-tie (5.8.2 — no BrR counterpart, from spec)
+- [x] 5.8.2.4 Tie resistance — `stm.stm_tie_resistance`
+- [x] 5.8.2.5 Node/strut crushing (nu table, confinement) — `stm.stm_node_resistance`
+- [x] 5.8.2.6 Crack-control reinforcement ratio — `stm.stm_crack_control_reinforcement`
+- (truss solver + diagram: `civilpy.structural.strut_and_tie`)
+
 ### Decks and railings
 - [x] A13.3.1 Parapet yield-line resistance — `railing.parapet_yield_line_capacity`
 - [x] A13.4.2 Deck overhang collision tension — `railing.deck_overhang_collision_tension`
