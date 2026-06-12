@@ -35,8 +35,8 @@ class CheckResult:
 
     ``capacity`` and ``demand`` are in the article's governing unit (stress,
     moment, or force); ``details`` carries the intermediate values an
-    engineer would show in hand calcs (and that BrR prints in its spec-check
-    detail output), keyed by the symbol used in the spec.
+    engineer would show in hand calcs, keyed by the symbol used in the
+    spec.
     """
 
     article: str

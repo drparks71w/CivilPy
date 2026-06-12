@@ -17,8 +17,7 @@
 """AASHTO LRFD Chapter 5 — reinforced concrete design checks.
 
 Article numbers follow the 8th Edition reorganization (5.6.3.2 flexure,
-5.6.3.3 minimum reinforcement, 5.7.3.3 shear), the numbering BrR uses for
-its 8th/9th/10th Edition spec engines.  Units: kip, inch, ksi.
+5.6.3.3 minimum reinforcement, 5.7.3.3 shear).  Units: kip, inch, ksi.
 """
 
 import math

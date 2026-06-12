@@ -18,10 +18,8 @@
 checks.
 
 Yield-line analysis of concrete parapets (A13.3.1) and the deck-overhang
-force effects it generates (A13.4.2).  Note BrR performs no Section 13
-checks — these are implemented from the specification and have no BrR
-counterpart to validate against; validate against hand calcs or agency
-design aids.
+force effects it generates (A13.4.2), implemented directly from the
+specification; validate against hand calcs or agency design aids.
 
 Units: the yield-line equations are dimensionally consistent — use any one
 length unit throughout.  Customary usage (and the test-level table below)
