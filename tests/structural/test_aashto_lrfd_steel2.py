@@ -201,3 +201,41 @@ class TestRegistry:
                     "6.6.1.2.5", "6.8.2.1", "6.9.4.1.1", "6.13.2.7",
                     "6.13.2.8", "6.13.2.9"):
             assert num in lrfd.ARTICLES
+
+
+class TestConstructibility:
+    def test_web_bend_buckling(self):
+        # D=48, tw=0.5, Dc=24: k = 9/0.25 = 36
+        # Fcrw = 0.9*29000*36/(96^2) = 101.9 -> capped at Rh*Fyc = 50
+        r = lrfd.web_bend_buckling(d_web=48.0, t_w=0.5, d_c=24.0,
+                                   f_yc=50.0, f_yw=50.0)
+        assert r.details["k"] == pytest.approx(36.0)
+        assert r.capacity == pytest.approx(50.0)
+
+    def test_web_bend_buckling_slender_governs(self):
+        # D=96, tw=0.4375, Dc=58: k = 9/(58/96)^2 = 24.66
+        # Fcrw = 0.9*29000*24.66/(219.4)^2 = 13.4 < 50
+        r = lrfd.web_bend_buckling(d_web=96.0, t_w=0.4375, d_c=58.0,
+                                   f_yc=50.0, f_yw=50.0)
+        k = 9.0 / (58.0 / 96.0) ** 2
+        assert r.capacity == pytest.approx(
+            0.9 * 29000.0 * k / (96.0 / 0.4375) ** 2
+        )
+        assert r.capacity < 50.0
+
+    def test_constructibility_governing_case(self):
+        # fbu = 30, fl = 9, Fnc = 35, Fcrw = 31:
+        # yielding: 50 vs 39 (1.28); buckling: 35 vs 33 (1.06);
+        # web: 31 vs 30 (1.03 governs)
+        r = lrfd.constructibility_compression_flange(
+            f_bu=30.0, f_l=9.0, f_yc=50.0, f_nc=35.0, f_crw=31.0
+        )
+        assert r.details["governing"] == "web_bend_buckling"
+        assert r.ok
+
+    def test_slender_web_skips_yielding(self):
+        r = lrfd.constructibility_compression_flange(
+            f_bu=30.0, f_l=9.0, f_yc=50.0, f_nc=35.0, slender_web=True
+        )
+        assert "yielding" not in r.details
+        assert r.details["governing"] == "buckling"

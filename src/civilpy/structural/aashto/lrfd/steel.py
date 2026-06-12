@@ -500,6 +500,74 @@ def bolt_bearing_resistance(
     )
 
 
+@article("6.10.1.9.1", "Web Bend-Buckling Resistance")
+def web_bend_buckling(
+    d_web: float,
+    t_w: float,
+    d_c: float,
+    f_yc: float,
+    f_yw: float,
+    r_h: float = 1.0,
+) -> CheckResult:
+    """Nominal web bend-buckling resistance (6.10.1.9.1-1):
+    Fcrw = 0.9*E*k/(D/tw)^2 with k = 9/(Dc/D)^2, capped at
+    min(Rh*Fyc, Fyw/0.7).  ``capacity`` holds Fcrw (ksi)."""
+    k = 9.0 / (d_c / d_web) ** 2
+    f_crw = min(
+        0.9 * E_STEEL * k / (d_web / t_w) ** 2,
+        r_h * f_yc,
+        f_yw / 0.7,
+    )
+    return CheckResult(
+        article="6.10.1.9.1",
+        name="Web Bend-Buckling Resistance",
+        capacity=f_crw,
+        details={"k": k, "D/tw": d_web / t_w},
+    )
+
+
+@article("6.10.3.2.1", "Constructibility — Discretely Braced Compression Flange")
+def constructibility_compression_flange(
+    f_bu: float,
+    f_l: float,
+    f_yc: float,
+    f_nc: float,
+    f_crw: float | None = None,
+    r_h: float = 1.0,
+    slender_web: bool = False,
+) -> CheckResult:
+    """Constructibility checks on a discretely braced compression flange
+    during deck placement (6.10.3.2.1): flange yielding
+    fbu + fl <= phi*Rh*Fyc (skipped for slender webs), flange buckling
+    fbu + fl/3 <= phi*Fnc, and web bend-buckling fbu <= phi*Fcrw.
+
+    ``f_bu``/``f_l`` are the factored vertical-bending and lateral-bending
+    flange stresses under the steel-plus-wet-concrete condition; ``f_nc``
+    from the 6.10.8.2 functions and ``f_crw`` from
+    :func:`web_bend_buckling`.  ``capacity``/``demand`` carry the governing
+    case; all three appear in ``details``."""
+    cases = {}
+    if not slender_web:
+        cases["yielding"] = (PHI_F * r_h * f_yc, f_bu + f_l)
+    cases["buckling"] = (PHI_F * f_nc, f_bu + f_l / 3.0)
+    if f_crw is not None:
+        cases["web_bend_buckling"] = (PHI_F * f_crw, f_bu)
+    governing = min(
+        cases, key=lambda c: cases[c][0] / cases[c][1] if cases[c][1] else 1e9
+    )
+    cap, dem = cases[governing]
+    return CheckResult(
+        article="6.10.3.2.1",
+        name="Constructibility — Discretely Braced Compression Flange",
+        capacity=cap,
+        demand=dem,
+        phi=1.0,  # phi folded into each case above
+        details={**{k: {"capacity": v[0], "demand": v[1]}
+                    for k, v in cases.items()},
+                 "governing": governing},
+    )
+
+
 @article("6.10.11.2.3", "Bearing Stiffener Bearing Resistance")
 def bearing_stiffener_resistance(
     a_pn: float,

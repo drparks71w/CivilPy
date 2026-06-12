@@ -24,6 +24,8 @@ wired (see `editions.py`).
 - [x] A6.2 Web plastification Rpc/Rpt — `appendix_a6.web_plastification_factors`
 - [x] A6.3.2 / A6.3.3 FLB & LTB in moment format (+ St. Venant J helper) — `appendix_a6`
 - [x] A6.4 Tension flange yielding — `appendix_a6.a6_tension_flange_yielding`
+- [x] 6.10.1.9.1 Web bend-buckling Fcrw — `steel.web_bend_buckling`
+- [x] 6.10.3.2.1 Constructibility compression flange — `steel.constructibility_compression_flange`
 
 ### Reinforced concrete (Chapter 5)
 - [x] 5.6.3.2 Rectangular flexural resistance — `concrete.rc_rectangular_flexural_resistance`
@@ -86,7 +88,6 @@ wired (see `editions.py`).
 
 
 ### Steel
-- [ ] 6.10.3 Constructibility
 - [ ] Appendix B6 (moment redistribution)
 - [ ] 6.13 splices (flange/web), block shear 6.13.4, fillet welds 6.13.3
 
