@@ -217,6 +217,19 @@ def test_plots_return_figures():
         matplotlib.pyplot.close(fig)
 
 
+def test_plot_3d_draws_every_exported_element():
+    b = six_panel_pratt()
+    b.set_deck(Deck(width_ft=20.0))
+    b.add_lane(LaneLine("EB", offset_ft=-5.0))
+    fig = b.plot_3d()
+    ax = fig.axes[0]
+    n_elems = len(b.midas_payloads()["ELEM"])
+    # one 3-D line per element, plus deck outline and one lane line
+    assert len(ax.lines) == n_elems + 2
+    assert ax.name == "3d"
+    matplotlib.pyplot.close(fig)
+
+
 # ── MIDAS export ───────────────────────────────────────────────────────────
 
 
