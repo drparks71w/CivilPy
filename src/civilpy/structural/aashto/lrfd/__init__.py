@@ -85,6 +85,8 @@ from civilpy.structural.aashto.lrfd.distribution import (
     effective_flange_width,
     multiple_presence_factor,
     lever_rule_exterior,
+    slab_equivalent_strip,
+    moment_df_interior_box,
 )
 from civilpy.structural.aashto.lrfd.timber import (
     TIMBER_PHI,
@@ -102,6 +104,11 @@ from civilpy.structural.aashto.lrfd.appendix_a6 import (
     a6_flange_local_buckling,
     a6_lateral_torsional_buckling,
     a6_tension_flange_yielding,
+)
+from civilpy.structural.aashto.lrfd.splices import (
+    flange_splice_design_force,
+    web_splice_design_forces,
+    WebSpliceForces,
 )
 from civilpy.structural.aashto.lrfd.columns import (
     rc_column_axial_resistance,
@@ -206,6 +213,11 @@ __all__ = [
     "effective_flange_width",
     "multiple_presence_factor",
     "lever_rule_exterior",
+    "slab_equivalent_strip",
+    "moment_df_interior_box",
+    "flange_splice_design_force",
+    "web_splice_design_forces",
+    "WebSpliceForces",
     "st_venant_j",
     "web_plastification_factors",
     "a6_flange_local_buckling",

@@ -29,6 +29,7 @@ wired (see `editions.py`).
 - [x] 6.10.10.4 / 6.10.10.1.2 Shear connectors (strength + fatigue pitch) — `steel.shear_connector_*`
 - [x] 6.13.4 Block shear rupture — `steel.block_shear_resistance`
 - [x] 6.13.3.2.4 Fillet weld shear — `steel.fillet_weld_resistance`
+- [x] 6.13.6.1.3b/c Flange & web splice design forces (8E method) — `splices`
 
 ### Reinforced concrete (Chapter 5)
 - [x] 5.6.3.2 Rectangular flexural resistance — `concrete.rc_rectangular_flexural_resistance`
@@ -73,6 +74,8 @@ wired (see `editions.py`).
 - [x] 3.6.2 Dynamic load allowance — `distribution.dynamic_load_allowance`
 - [x] 4.6.2.6 Effective flange width (design_year: pre-2008 three-way min) — `distribution.effective_flange_width`
 - [x] 3.6.1.1.2 Multiple presence + lever-rule exterior DF — `distribution.multiple_presence_factor`, `lever_rule_exterior`
+- [x] 4.6.2.3 Slab equivalent strip widths (incl. skew) — `distribution.slab_equivalent_strip`
+- [x] 4.6.2.2.2b type (g) box-beam moment DFs — `distribution.moment_df_interior_box`
 - [x] 6.10.11.2.3 Bearing stiffener bearing resistance — `steel.bearing_stiffener_resistance`
 
 ### Timber (Chapter 8)
@@ -94,10 +97,9 @@ wired (see `editions.py`).
 
 ### Steel
 - [ ] Appendix B6 (moment redistribution)
-- [ ] 6.13.6.1 flange/web splice design forces
 
 ### Analysis / loads
-- [ ] 4.6.2.2 DFs for other cross-section types (boxes, slabs, T-beams)
+- [ ] 4.6.2.2 DFs for remaining cross-section types (T-beams, spread boxes, box shear)
 
 ### Other
 - [ ] RC columns: 5.6.4.5 biaxial flexure (needs P-M interaction)
