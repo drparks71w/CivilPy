@@ -74,6 +74,16 @@ from civilpy.structural.aashto.lrfd.distribution import (
     skew_correction_shear,
     dynamic_load_allowance,
 )
+from civilpy.structural.aashto.lrfd.timber import (
+    TIMBER_PHI,
+    format_conversion_ckf,
+    size_factor_cf,
+    incising_factor_ci,
+    time_effect_clambda,
+    beam_stability_cl,
+    bearing_factor_cb,
+    timber_flexural_resistance,
+)
 from civilpy.structural.aashto.lrfd.railing import (
     TEST_LEVEL_LOADS,
     TestLevelLoad,
@@ -144,6 +154,14 @@ __all__ = [
     "lrfd_edition",
     "TEST_LEVEL_LOADS",
     "TestLevelLoad",
+    "TIMBER_PHI",
+    "format_conversion_ckf",
+    "size_factor_cf",
+    "incising_factor_ci",
+    "time_effect_clambda",
+    "beam_stability_cl",
+    "bearing_factor_cb",
+    "timber_flexural_resistance",
     "DistributionFactor",
     "longitudinal_stiffness_kg",
     "moment_df_interior",
