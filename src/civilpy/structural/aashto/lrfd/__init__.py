@@ -71,6 +71,7 @@ from civilpy.structural.aashto.lrfd.concrete import (
     rc_effective_moment_of_inertia,
     deflection_limit,
     rebar_development_length,
+    box_culvert_slab_shear,
 )
 from civilpy.structural.aashto.lrfd.distribution import (
     DistributionFactor,

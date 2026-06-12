@@ -543,3 +543,57 @@ def rc_shear_resistance(
             "theta_deg": theta_deg,
         },
     )
+
+
+@article("5.12.7.3", "Shear in Slabs of Box Culverts")
+def box_culvert_slab_shear(
+    b: float,
+    d_e: float,
+    f_c: float,
+    a_s: float,
+    v_u: float,
+    m_u: float,
+    fill_ft: float = 2.0,
+    single_cell: bool = False,
+    monolithic: bool = True,
+    lam: float = 1.0,
+) -> CheckResult:
+    """Concrete shear resistance of box-culvert slabs under 2.0 ft or
+    more of fill (5.12.7.3; numbered 5.14.5.3 before the 8th Edition):
+
+        Vc = (0.0676*lam*sqrt(f'c) + 4.6*(As/(b*de))*(Vu*de/Mu))*b*de
+
+    with Vu*de/Mu taken <= 1.0 (5.12.7.3-1), capped at
+    0.126*lam*sqrt(f'c)*b*de (5.12.7.3-2).  Slabs of single-cell boxes
+    need not take Vc less than 0.0948*lam*sqrt(f'c)*b*de when
+    monolithic with the walls, or 0.0791*lam*sqrt(f'c)*b*de when
+    simply supported.
+
+    ``a_s`` is the area of flexural reinforcement in the design width
+    ``b`` (in^2, in); ``v_u``/``m_u`` the concurrent factored shear and
+    moment (kip, kip-in); ``lam`` the lightweight-concrete factor.
+    Slabs under less than 2.0 ft of fill are outside this article —
+    use :func:`rc_shear_resistance` (``details["applicable"]`` flags
+    it).  phi_v = 0.90.
+    """
+    moment_ratio = min(v_u * d_e / abs(m_u), 1.0) if m_u else 1.0
+    sqrt_fc = lam * math.sqrt(f_c)
+    v_c = (0.0676 * sqrt_fc + 4.6 * a_s / (b * d_e) * moment_ratio) * b * d_e
+    v_c = min(v_c, 0.126 * sqrt_fc * b * d_e)
+    floor = None
+    if single_cell:
+        floor = (0.0948 if monolithic else 0.0791) * sqrt_fc * b * d_e
+        v_c = max(v_c, min(floor, 0.126 * sqrt_fc * b * d_e))
+    return CheckResult(
+        article="5.12.7.3",
+        name="Shear in Slabs of Box Culverts",
+        capacity=v_c,
+        demand=v_u,
+        phi=0.90,
+        details={
+            "Vu*de/Mu": moment_ratio,
+            "cap": 0.126 * sqrt_fc * b * d_e,
+            "single_cell_floor": floor,
+            "applicable": fill_ft >= 2.0,
+        },
+    )

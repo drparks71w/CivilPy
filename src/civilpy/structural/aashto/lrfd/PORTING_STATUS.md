@@ -123,5 +123,6 @@ wired (see `editions.py`).
 
 
 ### Other
-- [ ] Box-culvert variants of Ch. 5 checks
+- [x] 5.12.7.3 Box-culvert slab shear (>=2 ft fill, single-cell floors) — `concrete.box_culvert_slab_shear`
+- [ ] Box-culvert live load through fill (3.6.1.2.6) and remaining culvert-specific variants (others reuse the general Ch. 5 checks)
 - [ ] 10th Ed. MASH railing forces (Table A13.2-1 revision) — verify values
