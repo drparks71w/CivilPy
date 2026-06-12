@@ -68,6 +68,108 @@ class RectangularChannel:
         v = q / (self.b * y)
         return v / math.sqrt(G * y)
 
+    def friction_slope(self, q: float, y: float) -> float:
+        """Sf from Manning's equation at depth ``y`` — the slope that
+        would make ``y`` the normal depth for ``q``."""
+        a = self.b * y
+        r = a / (self.b + 2.0 * y)
+        return (q * self.n / (1.486 * a * r ** (2.0 / 3.0))) ** 2
+
+    def classify_profile(self, q: float, y: float) -> str:
+        """Gradually-varied-flow profile class (M1, M2, S3, ...) for a
+        flow depth ``y``: slope letter from normal vs. critical depth,
+        zone number from where ``y`` sits relative to both."""
+        yc = self.critical_depth(q)
+        if self.s <= 0.0:
+            letter, yn = ("H" if self.s == 0.0 else "A"), math.inf
+        else:
+            yn = self.normal_depth(q)
+            if abs(yn - yc) / yc < 1e-3:
+                letter = "C"
+            elif yn > yc:
+                letter = "M"
+            else:
+                letter = "S"
+        upper, lower = max(yn, yc), min(yn, yc)
+        if y > upper:
+            zone = 1
+        elif y > lower:
+            zone = 2
+        else:
+            zone = 3
+        if letter in ("H", "A") and zone == 1:
+            zone = 2        # no zone 1 without a normal depth
+        return f"{letter}{zone}"
+
+    def gvf_profile(self, q: float, y_control: float, length: float,
+                    n_steps: int = 400, upstream: bool | None = None):
+        """Gradually-varied water-surface profile from a control depth,
+        integrating dy/dx = (S0 - Sf)/(1 - Fr^2) with RK4.
+
+        ``y_control`` is the known depth (e.g. pool elevation behind a
+        dam for M1, the brink for M2); integration marches ``length`` ft
+        upstream for subcritical controls and downstream for
+        supercritical (override with ``upstream``).  Returns ``(x, y)``
+        arrays with x positive downstream of the control (so an
+        upstream march has negative stations) — integration stops early
+        if the depth reaches critical, where GVF theory breaks down.
+        """
+        if upstream is None:
+            upstream = self.froude(q, y_control) < 1.0
+        yc = self.critical_depth(q)
+        dx = length / n_steps * (-1.0 if upstream else 1.0)
+
+        def dydx(y):
+            fr2 = self.froude(q, y) ** 2
+            return (self.s - self.friction_slope(q, y)) / (1.0 - fr2)
+
+        xs, ys = [0.0], [float(y_control)]
+        for _ in range(n_steps):
+            y0 = ys[-1]
+            k1 = dydx(y0)
+            k2 = dydx(y0 + dx / 2.0 * k1)
+            k3 = dydx(y0 + dx / 2.0 * k2)
+            k4 = dydx(y0 + dx * k3)
+            y1 = y0 + dx / 6.0 * (k1 + 2 * k2 + 2 * k3 + k4)
+            if y1 <= 0 or abs(y1 - yc) / yc < 5e-3:
+                break
+            xs.append(xs[-1] + dx)
+            ys.append(y1)
+        return np.array(xs), np.array(ys)
+
+    def plot_gvf_profile(self, q: float, y_control: float, length: float,
+                         ax=None, n_steps: int = 400,
+                         upstream: bool | None = None):
+        """Water-surface profile sketch: channel bottom on its slope,
+        the GVF surface, normal and critical depth lines, the energy
+        grade line, and the profile classification (M1, S2, ...).
+        Returns the figure."""
+        x, y = self.gvf_profile(q, y_control, length, n_steps, upstream)
+        if ax is None:
+            ax = plt.figure(figsize=(9, 5)).add_subplot(1, 1, 1)
+        z_bot = -self.s * x
+        ws = z_bot + y
+        v = q / (self.b * y)
+        egl = ws + v**2 / (2.0 * G)
+        ax.plot(x, z_bot, "k-", lw=2.0, label="channel bottom")
+        ax.plot(x, ws, "b-", lw=1.8, label="water surface")
+        ax.plot(x, egl, "r--", lw=1.2, label="EGL")
+        yc = self.critical_depth(q)
+        ax.plot(x, z_bot + yc, "g:", lw=1.2, label=f"$y_c$ = {yc:.2f} ft")
+        if self.s > 0:
+            yn = self.normal_depth(q)
+            ax.plot(x, z_bot + yn, "m-.", lw=1.2,
+                    label=f"$y_n$ = {yn:.2f} ft")
+        ax.fill_between(x, z_bot, ws, color="b", alpha=0.12)
+        label = self.classify_profile(q, y_control)
+        ax.set_title(f"GVF Profile — {label}, q = {q:g} cfs, "
+                     f"S$_0$ = {self.s:g}")
+        ax.set_xlabel("Station (ft, + downstream of control)")
+        ax.set_ylabel("Elevation (ft)")
+        ax.legend(loc="best", fontsize=9)
+        ax.grid(True, alpha=0.3)
+        return ax.get_figure()
+
     def alternate_depths(self, q: float, energy: float,
                          tol: float = 1e-8) -> tuple[float, float]:
         """The sub- and supercritical depths sharing the given specific
