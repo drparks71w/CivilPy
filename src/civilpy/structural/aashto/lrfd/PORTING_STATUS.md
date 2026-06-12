@@ -87,6 +87,12 @@ wired (see `editions.py`).
 - [ ] 8.4.4.5 Cv glulam volume factor
 - [ ] 8.7 column stability Cp, 8.10 compression, tension members
 
+### LRFR (MBE Section 6A)
+- [x] 6A.4.2.1 General rating equation (condition/system factors, 0.85 floor) — `lrfr.rating_factor`
+- [x] 6A.4.4.2.3a Legal load factor by ADTT — `lrfr.legal_load_factor`
+- [x] 6A.8.3 Posting load — `lrfr.posting_load`
+- [ ] Permit load factors (6A.4.5.4.2a table)
+
 ### Decks and railings
 - [x] A13.3.1 Parapet yield-line resistance — `railing.parapet_yield_line_capacity`
 - [x] A13.4.2 Deck overhang collision tension — `railing.deck_overhang_collision_tension`
@@ -105,4 +111,3 @@ wired (see `editions.py`).
 - [ ] RC columns: 5.6.4.5 biaxial flexure (needs P-M interaction)
 - [ ] Box-culvert variants of Ch. 5 checks
 - [ ] 10th Ed. MASH railing forces (Table A13.2-1 revision) — verify values
-- [ ] LRFR (MBE) rating-factor wrappers around these checks
