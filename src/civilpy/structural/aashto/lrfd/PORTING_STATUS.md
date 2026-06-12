@@ -56,6 +56,8 @@ wired (see `editions.py`).
 - [x] 4.6.2.2.2d/.3b Exterior DFs via e-factor — `distribution.moment_df_exterior`, `shear_df_exterior`
 - [x] 4.6.2.2.2e/.3c Skew corrections — `distribution.skew_correction_*`
 - [x] 3.6.2 Dynamic load allowance — `distribution.dynamic_load_allowance`
+- [x] 4.6.2.6 Effective flange width (design_year: pre-2008 three-way min) — `distribution.effective_flange_width`
+- [x] 6.10.11.2.3 Bearing stiffener bearing resistance — `steel.bearing_stiffener_resistance`
 
 ### Timber (Chapter 8)
 - [x] 8.4.4.2 CKF, 8.4.4.4 CF, 8.4.4.7 Ci, 8.4.4.9 Clambda — `timber`
@@ -77,14 +79,12 @@ wired (see `editions.py`).
 - [ ] 5.9.3.2.1 Anchorage set
 
 ### Steel
-- [ ] 6.10.11.2 Bearing stiffeners
 - [ ] 6.10.3 Constructibility
 - [ ] Appendix A6 (compact-web negative flexure), B6 (moment redistribution)
 - [ ] 6.13 splices (flange/web), block shear 6.13.4, fillet welds 6.13.3
 
 ### Analysis / loads
 - [ ] 4.6.2.2 DFs for other cross-section types (boxes, slabs, T-beams); lever-rule helper
-- [ ] 4.6.2.6 Effective flange width (edition delta: 2008 change)
 - [ ] 3.6.1.1.2 Multiple presence factors (standalone)
 
 ### Other

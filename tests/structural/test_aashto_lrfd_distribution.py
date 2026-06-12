@@ -127,3 +127,29 @@ class TestDesignLoop:
         gov = [d.governing for d in dfs.values()]
         assert gov == sorted(gov)  # wider spacing -> more load per girder
         assert all(d.applicable for d in dfs.values())
+
+
+class TestEffectiveFlangeWidth:
+    def test_current_is_spacing(self):
+        assert lrfd.effective_flange_width(s_ft=9.0) == pytest.approx(108.0)
+
+    def test_pre_2008_lesser_of_three(self):
+        # L=60 ft, ts=8, tw=0.5, bf=16: L/4=180, 12*8+8=104, S=108 -> 104
+        w = lrfd.effective_flange_width(
+            s_ft=9.0, span_ft=60.0, t_s=8.0, t_w=0.5, b_f=16.0,
+            design_year=2005,
+        )
+        assert w == pytest.approx(104.0)
+
+    def test_pre_2008_requires_inputs(self):
+        with pytest.raises(ValueError):
+            lrfd.effective_flange_width(s_ft=9.0, design_year=2005)
+
+
+class TestBearingStiffener:
+    def test_resistance(self):
+        # two 6x0.5 stiffeners clipped 1.5": Apn = 2*(6-1.5)*0.5 = 4.5
+        r = lrfd.bearing_stiffener_resistance(a_pn=4.5, f_ys=50.0, r_u=250.0)
+        assert r.capacity == pytest.approx(1.4 * 4.5 * 50.0)
+        assert r.phi == 1.0
+        assert r.ok

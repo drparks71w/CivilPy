@@ -500,6 +500,31 @@ def bolt_bearing_resistance(
     )
 
 
+@article("6.10.11.2.3", "Bearing Stiffener Bearing Resistance")
+def bearing_stiffener_resistance(
+    a_pn: float,
+    f_ys: float,
+    r_u: float | None = None,
+) -> CheckResult:
+    """Bearing resistance of fitted bearing-stiffener ends
+    (6.10.11.2.3-1): Rn = 1.4*Apn*Fys with phi_b = 1.0.
+
+    ``a_pn`` is the stiffener area in contact with the flange after the
+    clip for the web-to-flange weld (in^2).  The companion axial check of
+    the stiffener-plus-web effective column (6.10.11.2.4) composes with
+    :func:`compression_member_resistance` using KL = 0.75*D and the
+    effective-section properties."""
+    r_n = 1.4 * a_pn * f_ys
+    return CheckResult(
+        article="6.10.11.2.3",
+        name="Bearing Stiffener Bearing Resistance",
+        capacity=r_n,
+        demand=r_u,
+        phi=1.0,
+        details={"Apn": a_pn},
+    )
+
+
 @article("6.10.9", "Web Shear Resistance")
 def web_shear_resistance(
     d_web: float,
