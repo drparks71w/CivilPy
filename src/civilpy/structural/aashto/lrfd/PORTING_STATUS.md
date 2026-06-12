@@ -117,12 +117,11 @@ wired (see `editions.py`).
 ### Decks and railings
 - [x] A13.3.1 Parapet yield-line resistance — `railing.parapet_yield_line_capacity`
 - [x] A13.4.2 Deck overhang collision tension — `railing.deck_overhang_collision_tension`
-- [x] Table A13.2-1 test-level forces (NCHRP 350 era, 1st–9th Ed.) — `railing.TEST_LEVEL_LOADS`
+- [x] Table A13.2-1 test-level forces (verified unchanged 1st–10th Ed.; 10th Ed. min rail height H added) — `railing.TEST_LEVEL_LOADS`
 
 ## To do (rough priority order)
 
 
 ### Other
 - [x] 5.12.7.3 Box-culvert slab shear (>=2 ft fill, single-cell floors) — `concrete.box_culvert_slab_shear`
-- [ ] Box-culvert live load through fill (3.6.1.2.6) and remaining culvert-specific variants (others reuse the general Ch. 5 checks)
-- [ ] 10th Ed. MASH railing forces (Table A13.2-1 revision) — verify values
+- [ ] Box-culvert soil-structure interaction → delegate to `cande-wrapper` (CANDE) instead of a standalone 3.6.1.2.6 port; integration lives outside this checklist
