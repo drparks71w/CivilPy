@@ -33,7 +33,10 @@ Year       Article (current num.)  Change
                                    max-spacing method (use
                                    ``rc_crack_control_z_factor`` for
                                    pre-2005 designs)
+2008       4.6.2.6                 effective flange width became simply S
 2012       5.6.3.3                 1.2*Mcr replaced by gamma_1*gamma_3
+2015       5.4.2.3                 ktd time-development factor revised
+2015       6.9.4.1.1               phi_c for steel columns 0.90 -> 0.95
 2016       5.9.2.3.1a              transfer compression 0.60 -> 0.65 f'ci
 ========== ======================= ====================================
 """
