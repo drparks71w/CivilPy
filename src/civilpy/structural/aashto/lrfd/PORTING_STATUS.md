@@ -13,6 +13,14 @@ wired (see `editions.py`).
 - [x] 6.10.8.2.3 Lateral torsional buckling — `steel.lateral_torsional_buckling_resistance`
 - [x] 6.10.8.1.2 Tension flange — `steel.tension_flange_resistance`
 - [x] 6.10.9 Web shear incl. tension field — `steel.web_shear_resistance`
+- [x] 6.10.1.10.1 Hybrid factor Rh — `steel.hybrid_factor`
+- [x] 6.10.1.10.2 Web load-shedding Rb — `steel.web_load_shedding_factor`
+- [x] 6.10.7.1.2 Compact composite positive flexure (+6.10.7.3 ductility flag) — `steel.compact_composite_positive_flexure`
+- [x] 6.10.2 Proportion limits — `steel.proportion_limits`
+- [x] 6.6.1.2.5 Load-induced fatigue (categories A–E') — `steel.fatigue_resistance`
+- [x] 6.8.2.1 Tension members yield/rupture — `steel.tension_member_resistance`
+- [x] 6.9.4.1.1 Column buckling (design_year: pre-2015 phi_c=0.90) — `steel.compression_member_resistance`
+- [x] 6.13.2.7/.8/.9 Bolt shear/slip/bearing — `steel.bolt_*_resistance`
 
 ### Reinforced concrete (Chapter 5)
 - [x] 5.6.3.2 Rectangular flexural resistance — `concrete.rc_rectangular_flexural_resistance`
@@ -54,17 +62,10 @@ wired (see `editions.py`).
 - [ ] 5.9.3.2.1 Anchorage set
 
 ### Steel
-- [ ] 6.10.1.10.1 Hybrid factor Rh
-- [ ] 6.10.1.10.2 Web load-shedding factor Rb
-- [ ] 6.10.7 Compact composite positive flexure + ductility
-- [ ] 6.10.2 Proportion limits
-- [ ] 6.6.1.2 Load-induced fatigue (detail categories)
-- [ ] 6.8.2 Tension members (yield/rupture)
-- [ ] 6.9.4 Compression members (column buckling)
-- [ ] 6.13.2 Bolted connections (shear/bearing/slip)
 - [ ] 6.10.11.2 Bearing stiffeners
 - [ ] 6.10.3 Constructibility
 - [ ] Appendix A6 (compact-web negative flexure), B6 (moment redistribution)
+- [ ] 6.13 splices (flange/web), block shear 6.13.4, fillet welds 6.13.3
 
 ### Analysis / loads
 - [ ] 4.6.2.2 Live-load distribution factors (common girder types)
