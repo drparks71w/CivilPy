@@ -183,6 +183,32 @@ def skew_correction_shear(
     )
 
 
+@article("4.6.2.6", "Effective Flange Width")
+def effective_flange_width(
+    s_ft: float,
+    span_ft: float | None = None,
+    t_s: float | None = None,
+    t_w: float | None = None,
+    b_f: float | None = None,
+    design_year: int | None = None,
+) -> float:
+    """Effective deck width acting with an interior girder (4.6.2.6.1), in
+    inches.
+
+    Since the 2008 interim revisions this is simply the girder spacing.
+    Earlier designs used the lesser of L/4, 12*ts + max(tw, bf/2), and S —
+    pass ``design_year`` (with ``span_ft``, ``t_s``, ``t_w``, ``b_f``) for
+    those."""
+    if design_year is not None and design_year < 2008:
+        if None in (span_ft, t_s, t_w, b_f):
+            raise ValueError(
+                "pre-2008 effective width needs span_ft, t_s, t_w, and b_f"
+            )
+        return min(span_ft * 12.0 / 4.0, 12.0 * t_s + max(t_w, b_f / 2.0),
+                   s_ft * 12.0)
+    return s_ft * 12.0
+
+
 @article("3.6.2", "Dynamic Load Allowance")
 def dynamic_load_allowance(component: str = "general",
                            fatigue: bool = False) -> float:
