@@ -74,6 +74,9 @@ validation = [
     "pydantic_core>=2.0",
     "python-dotenv>=1.0",
 ]
+cande = [
+    "cande-wrapper>=0.1",
+]
 test = [
     "pytest>=7.0",
     "pytest-cov>=4.0",
