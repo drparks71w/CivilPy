@@ -83,9 +83,10 @@ wired (see `editions.py`).
 - [x] 8.6.2 Beam stability CL (KbE by grading) — `timber.beam_stability_cl`
 - [x] 8.8.3 Bearing factor Cb — `timber.bearing_factor_cb`
 - [x] 8.6 Flexural resistance — `timber.timber_flexural_resistance`
+- [x] 8.4.4.5 Cv glulam volume factor — `timber.volume_factor_cv`
+- [x] 8.7 Column stability Cp — `timber.column_stability_cp`
 - [ ] 8.4.4.3 CM / 8.4.4.6 Cfu / 8.4.4.8 Cd (species/grade table lookups — currently caller inputs)
-- [ ] 8.4.4.5 Cv glulam volume factor
-- [ ] 8.7 column stability Cp, 8.10 compression, tension members
+- [ ] 8.7/8.10 compression & tension member resistances (Cp done)
 
 ### LRFR (MBE Section 6A)
 - [x] 6A.4.2.1 General rating equation (condition/system factors, 0.85 floor) — `lrfr.rating_factor`

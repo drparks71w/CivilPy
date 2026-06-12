@@ -112,3 +112,48 @@ class TestRegistry:
         for num in ("8.4.4.2", "8.4.4.4", "8.4.4.7", "8.4.4.9",
                     "8.6.2", "8.8.3", "8.6"):
             assert num in lrfd.ARTICLES
+
+
+class TestVolumeFactor:
+    def test_small_member_is_one(self):
+        assert lrfd.volume_factor_cv(d=10.0, b=5.0, l_ft=20.0) == 1.0
+
+    def test_large_glulam_reduces(self):
+        cv = lrfd.volume_factor_cv(d=36.0, b=8.75, l_ft=60.0)
+        expected = ((12.0 / 36.0) * (5.125 / 8.75) * (21.0 / 60.0)) ** 0.10
+        assert cv == pytest.approx(expected)
+        assert cv < 1.0
+
+    def test_southern_pine_exponent(self):
+        other = lrfd.volume_factor_cv(d=36.0, b=8.75, l_ft=60.0)
+        sp = lrfd.volume_factor_cv(d=36.0, b=8.75, l_ft=60.0,
+                                   southern_pine=True)
+        assert sp > other  # smaller exponent, milder reduction
+
+
+class TestColumnStability:
+    def test_cp_formula(self):
+        # 8x8 post, Le=96: Le/d = 12, FcE = 0.76*1300/144 = 6.861
+        # Fco' = 1.0: B = 6.861
+        r = lrfd.column_stability_cp(f_co_adj=1.0, e_adj=1300.0,
+                                     l_e=96.0, d=8.0)
+        b = 0.76 * 1300.0 / 144.0
+        expected = (1 + b) / 1.6 - math.sqrt(((1 + b) / 1.6) ** 2 - b / 0.8)
+        assert r.capacity == pytest.approx(expected)
+        assert 0.9 < r.capacity < 1.0  # stocky column
+
+    def test_slender_column_low_cp(self):
+        stocky = lrfd.column_stability_cp(1.0, 1300.0, l_e=96.0, d=8.0)
+        slender = lrfd.column_stability_cp(1.0, 1300.0, l_e=288.0, d=8.0)
+        assert slender.capacity < stocky.capacity
+        assert slender.details["slenderness_ok"]
+
+    def test_over_slender_flagged(self):
+        r = lrfd.column_stability_cp(1.0, 1300.0, l_e=440.0, d=8.0)
+        assert not r.details["slenderness_ok"]
+        assert not r.ok
+
+    def test_glulam_c_higher_cp(self):
+        sawn = lrfd.column_stability_cp(1.0, 1300.0, 192.0, 8.0, c=0.8)
+        glulam = lrfd.column_stability_cp(1.0, 1300.0, 192.0, 8.0, c=0.9)
+        assert glulam.capacity > sawn.capacity

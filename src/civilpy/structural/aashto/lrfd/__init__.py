@@ -97,6 +97,8 @@ from civilpy.structural.aashto.lrfd.timber import (
     beam_stability_cl,
     bearing_factor_cb,
     timber_flexural_resistance,
+    volume_factor_cv,
+    column_stability_cp,
 )
 from civilpy.structural.aashto.lrfd.appendix_a6 import (
     st_venant_j,
@@ -208,6 +210,8 @@ __all__ = [
     "beam_stability_cl",
     "bearing_factor_cb",
     "timber_flexural_resistance",
+    "volume_factor_cv",
+    "column_stability_cp",
     "DistributionFactor",
     "longitudinal_stiffness_kg",
     "moment_df_interior",
