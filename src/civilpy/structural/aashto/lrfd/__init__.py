@@ -69,6 +69,8 @@ from civilpy.structural.aashto.lrfd.concrete import (
     rc_interface_shear,
     rc_torsion_threshold,
     INTERFACE_SHEAR_CASES,
+    rc_effective_moment_of_inertia,
+    deflection_limit,
 )
 from civilpy.structural.aashto.lrfd.distribution import (
     DistributionFactor,
@@ -178,6 +180,8 @@ __all__ = [
     "rc_spiral_reinforcement",
     "moment_magnification",
     "INTERFACE_SHEAR_CASES",
+    "rc_effective_moment_of_inertia",
+    "deflection_limit",
     "LRFD_EDITIONS",
     "lrfd_edition",
     "TEST_LEVEL_LOADS",
