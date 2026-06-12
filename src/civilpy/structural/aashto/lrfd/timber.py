@@ -191,3 +191,135 @@ def timber_flexural_resistance(
         phi=TIMBER_PHI["flexure"],
         details={"CL": c_l},
     )
+
+
+# Wet service factors CM (Tables 8.4.4.3-1 and 8.4.4.3-2), keyed by
+# property.  Sawn lumber flexure rises to 1.0 when Fbo*CF <= 1.15 ksi
+# and compression to 1.0 when Fco*CF <= 0.75 ksi (table footnotes) —
+# handled in wet_service_cm.
+_CM_SAWN = {"flexure": 0.85, "tension": 1.0, "shear": 0.97,
+            "bearing": 0.67, "compression": 0.80, "modulus": 0.90}
+_CM_GLULAM = {"flexure": 0.80, "tension": 0.80, "shear": 0.875,
+              "bearing": 0.53, "compression": 0.73, "modulus": 0.833}
+
+
+@article("8.4.4.3", "Wet Service Factor CM")
+def wet_service_cm(
+    prop: str,
+    glulam: bool = False,
+    wet: bool = True,
+    f_o_cf: float | None = None,
+) -> float:
+    """Wet service factor CM (8.4.4.3) for a reference design value:
+    ``prop`` is one of flexure / tension / shear / bearing /
+    compression / modulus.  Dry use (sawn lumber <= 19% moisture,
+    glulam < 16%) returns 1.0.
+
+    For sawn lumber pass ``f_o_cf`` = Fbo*CF (flexure) or Fco*CF
+    (compression) in ksi to apply the table footnotes that waive the
+    reduction for low reference values."""
+    if not wet:
+        return 1.0
+    table = _CM_GLULAM if glulam else _CM_SAWN
+    if prop not in table:
+        raise ValueError(f"prop must be one of {sorted(table)}")
+    if not glulam and f_o_cf is not None:
+        if prop == "flexure" and f_o_cf <= 1.15:
+            return 1.0
+        if prop == "compression" and f_o_cf <= 0.75:
+            return 1.0
+    return table[prop]
+
+
+# Flat use factor for sawn dimension lumber (Table 8.4.4.6-1):
+# {nominal width: (Cfu for 2-3 in thick, Cfu for 4 in thick)}
+_CFU_SAWN = {
+    2: (1.00, None), 3: (1.00, None), 4: (1.10, 1.00), 5: (1.10, 1.05),
+    6: (1.15, 1.05), 8: (1.15, 1.05), 10: (1.20, 1.10),
+}
+
+
+@article("8.4.4.6", "Flat Use Factor Cfu")
+def flat_use_cfu(
+    width_nominal: float,
+    thickness_nominal: float = 2.0,
+    glulam: bool = False,
+) -> float:
+    """Flat-use factor for bending about the weak axis (8.4.4.6).
+
+    Sawn dimension lumber uses Table 8.4.4.6-1 (nominal dimensions,
+    widths above 10 in take the 10-in row).  Glulam loaded parallel to
+    the wide laminations uses (12/d)^(1/9) with d the actual dimension
+    parallel to the wide face (in), 1.0 at 12 in and wider."""
+    if glulam:
+        return (12.0 / width_nominal) ** (1.0 / 9.0) \
+            if width_nominal < 12.0 else 1.0
+    width = min(10.0, width_nominal)
+    rows = [w for w in _CFU_SAWN if w <= width]
+    if not rows:
+        return 1.0
+    two_three, four = _CFU_SAWN[max(rows)]
+    if thickness_nominal >= 4.0:
+        return four if four is not None else 1.0
+    return two_three
+
+
+@article("8.4.4.8", "Deck Factor Cd")
+def deck_factor_cd(
+    deck_type: str,
+    thickness_nominal: float = 4.0,
+) -> float:
+    """Deck factor on Fbo (Table 8.4.4.8-1): 1.15 for stressed-wood,
+    spike-laminated, and nail-laminated decks built from 2- to 4-in
+    (nominal) thick lumber; 1.0 for plank decks and everything else."""
+    laminated = deck_type.lower().replace("-", "_").replace(" ", "_") in (
+        "stressed_wood", "spike_laminated", "nail_laminated")
+    if laminated and 2.0 <= thickness_nominal <= 4.0:
+        return 1.15
+    return 1.0
+
+
+@article("8.8.2", "Timber Tension Resistance")
+def timber_tension_resistance(
+    f_t_adj: float,
+    a_n: float,
+    p_u: float | None = None,
+) -> CheckResult:
+    """Tension parallel to grain (8.8.2): Pn = Ft_adj * An on the net
+    section, Pr = phi * Pn with phi = 0.80.
+
+    ``f_t_adj`` is the adjusted tension strength (ksi, including
+    CKF/CM/CF/Ci/Clambda), ``a_n`` the net area (in^2)."""
+    p_n = f_t_adj * a_n
+    return CheckResult(
+        article="8.8.2",
+        name="Timber Tension Resistance",
+        capacity=p_n,
+        demand=p_u,
+        phi=TIMBER_PHI["tension"],
+        details={},
+    )
+
+
+@article("8.7-Pr", "Timber Compression Resistance")
+def timber_compression_resistance(
+    f_c_adj: float,
+    a_g: float,
+    c_p: float = 1.0,
+    p_u: float | None = None,
+) -> CheckResult:
+    """Compression parallel to grain (8.7): Pn = Fc_adj * Ag * Cp,
+    Pr = phi * Pn with phi = 0.90.
+
+    ``f_c_adj`` is the adjusted compression strength (ksi) *without*
+    Cp; pass the column stability factor from
+    :func:`column_stability_cp` (1.0 for fully braced members)."""
+    p_n = f_c_adj * a_g * c_p
+    return CheckResult(
+        article="8.7",
+        name="Timber Compression Resistance",
+        capacity=p_n,
+        demand=p_u,
+        phi=TIMBER_PHI["compression"],
+        details={"Cp": c_p},
+    )
