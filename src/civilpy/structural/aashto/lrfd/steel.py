@@ -160,6 +160,346 @@ def tension_flange_resistance(
     )
 
 
+@article("6.10.1.10.1", "Hybrid Factor Rh")
+def hybrid_factor(
+    d_n: float,
+    t_w: float,
+    a_fn: float,
+    f_yw: float,
+    f_n: float,
+) -> CheckResult:
+    """Hybrid factor Rh (6.10.1.10.1-1) accounting for early web yielding
+    when the web is a lower grade than the flanges:
+    Rh = (12 + beta*(3*rho - rho^3)) / (12 + 2*beta), rho = min(Fyw/fn, 1),
+    beta = 2*Dn*tw/Afn.
+
+    ``d_n`` is the distance from the elastic NA to the inside of the
+    controlling flange (in), ``a_fn`` that flange's area (in^2), ``f_n``
+    its yield (or buckling) stress.  Homogeneous girders get Rh = 1.0.
+    ``capacity`` holds Rh."""
+    rho = min(f_yw / f_n, 1.0)
+    beta = 2.0 * d_n * t_w / a_fn
+    r_h = (12.0 + beta * (3.0 * rho - rho**3)) / (12.0 + 2.0 * beta)
+    return CheckResult(
+        article="6.10.1.10.1",
+        name="Hybrid Factor Rh",
+        capacity=r_h,
+        details={"rho": rho, "beta": beta},
+    )
+
+
+@article("6.10.1.10.2", "Web Load-Shedding Factor Rb")
+def web_load_shedding_factor(
+    d_c: float,
+    t_w: float,
+    b_fc: float,
+    t_fc: float,
+    f_yc: float,
+) -> CheckResult:
+    """Web load-shedding factor Rb (6.10.1.10.2): 1.0 for compact and
+    noncompact webs (2*Dc/tw <= lambda_rw = 5.7*sqrt(E/Fyc)); slender webs
+    shed stress to the compression flange per -3:
+    Rb = 1 - awc/(1200 + 300*awc) * (2*Dc/tw - lambda_rw) <= 1.0.
+    ``capacity`` holds Rb."""
+    lam_rw = 5.7 * math.sqrt(E_STEEL / f_yc)
+    slenderness = 2.0 * d_c / t_w
+    a_wc = 2.0 * d_c * t_w / (b_fc * t_fc)
+    if slenderness <= lam_rw:
+        r_b = 1.0
+    else:
+        r_b = min(
+            1.0 - a_wc / (1200.0 + 300.0 * a_wc) * (slenderness - lam_rw), 1.0
+        )
+    return CheckResult(
+        article="6.10.1.10.2",
+        name="Web Load-Shedding Factor Rb",
+        capacity=r_b,
+        details={"lambda_rw": lam_rw, "2Dc/tw": slenderness, "awc": a_wc,
+                 "slender_web": slenderness > lam_rw},
+    )
+
+
+@article("6.10.7.1.2", "Compact Composite Sections in Positive Flexure")
+def compact_composite_positive_flexure(
+    m_p: float,
+    d_p: float,
+    d_t: float,
+    m_u: float | None = None,
+    m_y: float | None = None,
+    r_h: float = 1.0,
+    continuous_span: bool = False,
+) -> CheckResult:
+    """Nominal flexural resistance of a compact composite section in
+    positive flexure (6.10.7.1.2): Mn = Mp when Dp <= 0.1*Dt, else the
+    penalty Mn = Mp*(1.07 - 0.7*Dp/Dt); continuous spans not meeting the
+    B6 conditions cap Mn at 1.3*Rh*My.
+
+    ``m_p`` is the plastic moment (kip-in, from a D6.1 PNA analysis),
+    ``d_p`` the depth from the top of slab to the PNA, ``d_t`` the total
+    composite depth.  The 6.10.7.3 ductility limit Dp <= 0.42*Dt is
+    reported in details."""
+    if d_p <= 0.1 * d_t:
+        m_n = m_p
+    else:
+        m_n = m_p * (1.07 - 0.7 * d_p / d_t)
+    capped = False
+    if continuous_span and m_y is not None:
+        cap = 1.3 * r_h * m_y
+        capped = m_n > cap
+        m_n = min(m_n, cap)
+    return CheckResult(
+        article="6.10.7.1.2",
+        name="Compact Composite Sections in Positive Flexure",
+        capacity=m_n,
+        demand=m_u,
+        phi=PHI_F,
+        details={"Dp/Dt": d_p / d_t, "ductility_ok": d_p <= 0.42 * d_t,
+                 "capped_13RhMy": capped},
+    )
+
+
+@article("6.10.2", "Cross-Section Proportion Limits")
+def proportion_limits(
+    d_web: float,
+    t_w: float,
+    b_fc: float,
+    t_fc: float,
+    b_ft: float,
+    t_ft: float,
+    i_yc: float | None = None,
+    i_yt: float | None = None,
+) -> CheckResult:
+    """I-girder proportion limits (6.10.2): web D/tw <= 150 (without
+    longitudinal stiffeners); each flange bf/2tf <= 12, bf >= D/6,
+    tf >= 1.1*tw; and 0.1 <= Iyc/Iyt <= 10 when flange inertias are given.
+
+    Pass/fail only — ``capacity`` is 1.0/0.0 against a ``demand`` of 1.0 so
+    ``ok`` reflects all limits; per-limit booleans are in ``details``."""
+    checks = {
+        "web_slenderness": d_web / t_w <= 150.0,
+        "comp_flange_slenderness": b_fc / (2.0 * t_fc) <= 12.0,
+        "tens_flange_slenderness": b_ft / (2.0 * t_ft) <= 12.0,
+        "comp_flange_width": b_fc >= d_web / 6.0,
+        "tens_flange_width": b_ft >= d_web / 6.0,
+        "comp_flange_thickness": t_fc >= 1.1 * t_w,
+        "tens_flange_thickness": t_ft >= 1.1 * t_w,
+    }
+    if i_yc is not None and i_yt is not None:
+        checks["flange_inertia_ratio"] = 0.1 <= i_yc / i_yt <= 10.0
+    all_ok = all(checks.values())
+    return CheckResult(
+        article="6.10.2",
+        name="Cross-Section Proportion Limits",
+        capacity=1.0 if all_ok else 0.0,
+        demand=1.0,
+        details=checks,
+    )
+
+
+# Table 6.6.1.2.5-1 (detail category constant A, x10^8 ksi^3) and
+# Table 6.6.1.2.5-3 (constant-amplitude fatigue thresholds, ksi)
+FATIGUE_DETAIL_CATEGORIES = {
+    "A": (250.0e8, 24.0),
+    "B": (120.0e8, 16.0),
+    "B'": (61.0e8, 12.0),
+    "C": (44.0e8, 10.0),
+    "C'": (44.0e8, 12.0),
+    "D": (22.0e8, 7.0),
+    "E": (11.0e8, 4.5),
+    "E'": (3.9e8, 2.6),
+}
+
+
+@article("6.6.1.2.5", "Load-Induced Fatigue Resistance")
+def fatigue_resistance(
+    category: str,
+    delta_f: float | None = None,
+    fatigue_i: bool = True,
+    adtt_sl: float = 1000.0,
+    n_cycles_per_truck: float = 1.0,
+    design_life_years: float = 75.0,
+) -> CheckResult:
+    """Nominal fatigue resistance (6.6.1.2.5): Fatigue I (infinite life)
+    uses the constant-amplitude threshold (delta_F)TH; Fatigue II (finite
+    life) uses (A/N)^(1/3) with N = 365 * years * n * ADTT_SL.
+
+    ``category`` is the Table 6.6.1.2.3-1 detail category (A through E');
+    ``delta_f`` the live-load stress range demand (ksi)."""
+    a_const, threshold = FATIGUE_DETAIL_CATEGORIES[category]
+    n = 365.0 * design_life_years * n_cycles_per_truck * adtt_sl
+    if fatigue_i:
+        resistance = threshold
+    else:
+        resistance = (a_const / n) ** (1.0 / 3.0)
+    return CheckResult(
+        article="6.6.1.2.5",
+        name="Load-Induced Fatigue Resistance",
+        capacity=resistance,
+        demand=delta_f,
+        details={"category": category, "N": n, "A": a_const,
+                 "threshold": threshold,
+                 "limit_state": "Fatigue I" if fatigue_i else "Fatigue II"},
+    )
+
+
+@article("6.8.2.1", "Tension Member Resistance")
+def tension_member_resistance(
+    a_g: float,
+    f_y: float,
+    a_n: float | None = None,
+    f_u: float | None = None,
+    u_shear_lag: float = 1.0,
+    p_u: float | None = None,
+) -> CheckResult:
+    """Factored tensile resistance (6.8.2.1): lesser of yielding on the
+    gross section (phi_y = 0.95) and rupture on the net section
+    (phi_u = 0.80, with shear-lag factor U).  ``capacity`` holds the
+    governing *factored* resistance (phi already applied — ``phi`` on the
+    result is 1.0 to avoid double-counting)."""
+    yield_r = 0.95 * f_y * a_g
+    cases = {"yield": yield_r}
+    if a_n is not None and f_u is not None:
+        cases["rupture"] = 0.80 * f_u * a_n * u_shear_lag
+    governing = min(cases, key=cases.get)
+    return CheckResult(
+        article="6.8.2.1",
+        name="Tension Member Resistance",
+        capacity=cases[governing],
+        demand=p_u,
+        details={**cases, "governing": governing},
+    )
+
+
+@article("6.9.4.1.1", "Compression Member Nominal Resistance")
+def compression_member_resistance(
+    a_g: float,
+    f_y: float,
+    kl_over_r: float,
+    p_u: float | None = None,
+    q_slender: float = 1.0,
+    design_year: int | None = None,
+) -> CheckResult:
+    """Axial compressive resistance of a non-slender-element column
+    (6.9.4.1.1): Pe = pi^2*E/(KL/r)^2 * Ag; Po = Q*Fy*Ag;
+    Pn = 0.658^(Po/Pe)*Po when Pe >= 0.44*Po, else 0.877*Pe.
+
+    ``q_slender`` is the slender-element reduction (6.9.4.2; 1.0 for
+    nonslender plates).  phi_c is 0.95 (0.90 for designs before the 2015
+    interim — pass ``design_year``)."""
+    p_o = q_slender * f_y * a_g
+    p_e = math.pi**2 * E_STEEL / kl_over_r**2 * a_g
+    if p_e >= 0.44 * p_o:
+        p_n = 0.658 ** (p_o / p_e) * p_o
+        mode = "inelastic"
+    else:
+        p_n = 0.877 * p_e
+        mode = "elastic"
+    phi_c = 0.90 if design_year is not None and design_year < 2015 else 0.95
+    return CheckResult(
+        article="6.9.4.1.1",
+        name="Compression Member Nominal Resistance",
+        capacity=p_n,
+        demand=p_u,
+        phi=phi_c,
+        details={"Pe": p_e, "Po": p_o, "mode": mode, "KL/r": kl_over_r},
+    )
+
+
+# Table 6.13.2.8-2 minimum bolt pretension Pt (kip)
+BOLT_PRETENSION = {
+    ("A325", 0.625): 19.0, ("A325", 0.75): 28.0, ("A325", 0.875): 39.0,
+    ("A325", 1.0): 51.0, ("A325", 1.125): 56.0, ("A325", 1.25): 71.0,
+    ("A490", 0.625): 24.0, ("A490", 0.75): 35.0, ("A490", 0.875): 49.0,
+    ("A490", 1.0): 64.0, ("A490", 1.125): 80.0, ("A490", 1.25): 102.0,
+}
+
+# Kh (hole size) and Ks (surface class) factors of 6.13.2.8
+SLIP_HOLE_FACTORS = {"standard": 1.0, "oversize": 0.85,
+                     "long_slot_perp": 0.70, "long_slot_par": 0.60}
+SLIP_SURFACE_FACTORS = {"A": 0.33, "B": 0.50, "C": 0.33}
+
+
+@article("6.13.2.7", "Bolt Shear Resistance")
+def bolt_shear_resistance(
+    d_bolt: float,
+    f_ub: float,
+    n_planes: int = 1,
+    threads_excluded: bool = True,
+    v_u: float | None = None,
+    long_joint: bool = False,
+) -> CheckResult:
+    """Shear resistance of a high-strength bolt (6.13.2.7):
+    Rn = 0.48*Ab*Fub*Ns with threads excluded from the shear plane, 0.38
+    with threads included; joints longer than 38 in between extreme bolts
+    take a 0.83 reduction.  phi_s = 0.80."""
+    a_b = math.pi * d_bolt**2 / 4.0
+    factor = 0.48 if threads_excluded else 0.38
+    r_n = factor * a_b * f_ub * n_planes
+    if long_joint:
+        r_n *= 0.83
+    return CheckResult(
+        article="6.13.2.7",
+        name="Bolt Shear Resistance",
+        capacity=r_n,
+        demand=v_u,
+        phi=0.80,
+        details={"Ab": a_b, "factor": factor, "Ns": n_planes},
+    )
+
+
+@article("6.13.2.8", "Bolt Slip Resistance")
+def bolt_slip_resistance(
+    bolt_grade: str,
+    d_bolt: float,
+    n_planes: int = 1,
+    hole_type: str = "standard",
+    surface_class: str = "B",
+    v_serv: float | None = None,
+) -> CheckResult:
+    """Slip resistance of one bolt in a slip-critical connection
+    (6.13.2.8-1): Rn = Kh*Ks*Ns*Pt, checked under Service II (phi = 1.0).
+    Pretension Pt from Table 6.13.2.8-2."""
+    p_t = BOLT_PRETENSION[(bolt_grade, d_bolt)]
+    k_h = SLIP_HOLE_FACTORS[hole_type]
+    k_s = SLIP_SURFACE_FACTORS[surface_class]
+    r_n = k_h * k_s * n_planes * p_t
+    return CheckResult(
+        article="6.13.2.8",
+        name="Bolt Slip Resistance",
+        capacity=r_n,
+        demand=v_serv,
+        details={"Pt": p_t, "Kh": k_h, "Ks": k_s, "Ns": n_planes},
+    )
+
+
+@article("6.13.2.9", "Bearing Resistance at Bolt Holes")
+def bolt_bearing_resistance(
+    d_bolt: float,
+    t_ply: float,
+    f_u_ply: float,
+    clear_distance: float,
+    v_u: float | None = None,
+) -> CheckResult:
+    """Bearing on connected material at a bolt hole (6.13.2.9):
+    Rn = 2.4*d*t*Fu when the clear distance to the next hole or end is at
+    least 2.0*d, else Rn = 1.2*Lc*t*Fu.  phi_bb = 0.80."""
+    if clear_distance >= 2.0 * d_bolt:
+        r_n = 2.4 * d_bolt * t_ply * f_u_ply
+        deformation_governed = True
+    else:
+        r_n = 1.2 * clear_distance * t_ply * f_u_ply
+        deformation_governed = False
+    return CheckResult(
+        article="6.13.2.9",
+        name="Bearing Resistance at Bolt Holes",
+        capacity=r_n,
+        demand=v_u,
+        phi=0.80,
+        details={"clear_distance": clear_distance,
+                 "full_bearing": deformation_governed},
+    )
+
+
 @article("6.10.9", "Web Shear Resistance")
 def web_shear_resistance(
     d_web: float,
