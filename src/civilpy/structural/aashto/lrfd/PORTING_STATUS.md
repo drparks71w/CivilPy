@@ -124,4 +124,4 @@ wired (see `editions.py`).
 
 ### Other
 - [x] 5.12.7.3 Box-culvert slab shear (>=2 ft fill, single-cell floors) — `concrete.box_culvert_slab_shear`
-- [ ] Box-culvert soil-structure interaction → delegate to `cande-wrapper` (CANDE) instead of a standalone 3.6.1.2.6 port; integration lives outside this checklist
+- [x] Box-culvert soil-structure interaction → `civilpy.structural.cande.BoxCulvertModel` builds and runs CANDE Level-2 box models via the `cande-wrapper` package (replaces a standalone 3.6.1.2.6 port; CANDE handles load through fill directly)
