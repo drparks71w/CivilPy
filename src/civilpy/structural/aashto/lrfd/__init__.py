@@ -95,6 +95,12 @@ from civilpy.structural.aashto.lrfd.appendix_a6 import (
     a6_lateral_torsional_buckling,
     a6_tension_flange_yielding,
 )
+from civilpy.structural.aashto.lrfd.columns import (
+    rc_column_axial_resistance,
+    rc_column_reinforcement_limits,
+    rc_spiral_reinforcement,
+    moment_magnification,
+)
 from civilpy.structural.aashto.lrfd.railing import (
     TEST_LEVEL_LOADS,
     TestLevelLoad,
@@ -161,6 +167,10 @@ __all__ = [
     "rc_longitudinal_reinforcement",
     "rc_interface_shear",
     "rc_torsion_threshold",
+    "rc_column_axial_resistance",
+    "rc_column_reinforcement_limits",
+    "rc_spiral_reinforcement",
+    "moment_magnification",
     "INTERFACE_SHEAR_CASES",
     "LRFD_EDITIONS",
     "lrfd_edition",
