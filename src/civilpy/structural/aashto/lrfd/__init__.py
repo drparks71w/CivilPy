@@ -124,6 +124,11 @@ from civilpy.structural.aashto.lrfd.columns import (
     rc_column_reinforcement_limits,
     rc_spiral_reinforcement,
     moment_magnification,
+    RebarLayer,
+    PMPoint,
+    rc_pm_interaction_diagram,
+    rc_pm_capacity_check,
+    rc_biaxial_check,
 )
 from civilpy.structural.aashto.lrfd.railing import (
     TEST_LEVEL_LOADS,
@@ -195,6 +200,11 @@ __all__ = [
     "rc_column_reinforcement_limits",
     "rc_spiral_reinforcement",
     "moment_magnification",
+    "RebarLayer",
+    "PMPoint",
+    "rc_pm_interaction_diagram",
+    "rc_pm_capacity_check",
+    "rc_biaxial_check",
     "INTERFACE_SHEAR_CASES",
     "rc_effective_moment_of_inertia",
     "deflection_limit",

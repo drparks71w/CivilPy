@@ -49,6 +49,8 @@ wired (see `editions.py`).
 - [x] 5.6.4.2 Column reinforcement limits — `columns.rc_column_reinforcement_limits`
 - [x] 5.6.4.6 Spiral reinforcement — `columns.rc_spiral_reinforcement`
 - [x] 4.5.3.2.2b Moment magnification — `columns.moment_magnification`
+- [x] 5.6.4.5 P-M interaction (strain compatibility, rect + circular) — `columns.rc_pm_interaction_diagram`, `rc_pm_capacity_check`
+- [x] 5.6.4.5 Biaxial flexure (moment-contour + Bresler reciprocal) — `columns.rc_biaxial_check`
 
 ### Prestressed concrete (Chapter 5)
 - [x] 5.6.3.1.1 Strand stress at nominal resistance — `prestressed.ps_strand_stress_at_nominal`
@@ -109,6 +111,5 @@ wired (see `editions.py`).
 - [ ] 4.6.2.2 DFs for remaining cross-section types (T-beams, spread boxes, box shear)
 
 ### Other
-- [ ] RC columns: 5.6.4.5 biaxial flexure (needs P-M interaction)
 - [ ] Box-culvert variants of Ch. 5 checks
 - [ ] 10th Ed. MASH railing forces (Table A13.2-1 revision) — verify values
