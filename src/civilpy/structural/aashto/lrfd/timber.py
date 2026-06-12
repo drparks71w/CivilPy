@@ -110,6 +110,56 @@ def beam_stability_cl(
     )
 
 
+@article("8.4.4.5", "Volume Factor Cv for Glulam")
+def volume_factor_cv(
+    d: float,
+    b: float,
+    l_ft: float,
+    southern_pine: bool = False,
+) -> float:
+    """Cv for glued-laminated timber in flexure (8.4.4.5):
+    [(12/d)*(5.125/b)*(21/L)]^a <= 1.0, a = 0.05 for Southern Pine and
+    0.10 for all other species.  ``d``/``b`` in inches, ``l_ft`` in ft.
+    Cv and CL are not applied simultaneously — use the smaller."""
+    a = 0.05 if southern_pine else 0.10
+    return min(
+        ((12.0 / d) * (5.125 / b) * (21.0 / l_ft)) ** a, 1.0
+    )
+
+
+@article("8.7", "Column Stability Factor Cp")
+def column_stability_cp(
+    f_co_adj: float,
+    e_adj: float,
+    l_e: float,
+    d: float,
+    c: float = 0.8,
+    k_ce: float = 0.76,
+) -> CheckResult:
+    """Column stability factor for wood compression members (8.7):
+    Cp = (1+B)/(2c) - sqrt(((1+B)/(2c))^2 - B/c), with B = FcE/Fco' and
+    FcE = KcE*E'/(Le/d)^2.
+
+    ``f_co_adj`` is the adjusted compression strength with all factors
+    except Cp (ksi); ``c`` = 0.8 sawn lumber, 0.85 round poles, 0.9
+    glulam; the Euler coefficient ``k_ce`` defaults to the visually graded
+    value.  Slenderness Le/d may not exceed 50.  ``capacity`` holds Cp."""
+    slenderness = l_e / d
+    f_ce = k_ce * e_adj / slenderness**2
+    b = f_ce / f_co_adj
+    c_p = (1.0 + b) / (2.0 * c) - math.sqrt(
+        ((1.0 + b) / (2.0 * c)) ** 2 - b / c
+    )
+    return CheckResult(
+        article="8.7",
+        name="Column Stability Factor Cp",
+        capacity=c_p,
+        demand=None if slenderness <= 50.0 else 1.0,
+        details={"FcE": f_ce, "B": b, "Le/d": slenderness,
+                 "slenderness_ok": slenderness <= 50.0},
+    )
+
+
 @article("8.8.3", "Bearing Adjustment Factor Cb")
 def bearing_factor_cb(l_b: float, near_end: bool = False) -> float:
     """Cb (8.8.3): (lb + 0.375)/lb for bearings less than 6 in long and
