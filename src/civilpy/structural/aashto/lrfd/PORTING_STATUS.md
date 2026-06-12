@@ -20,6 +20,12 @@ wired (see `editions.py`).
 - [x] 5.7.3.3 Shear resistance (simplified β/θ) — `concrete.rc_shear_resistance`
 - [x] 5.6.7 Crack control, spacing method — `concrete.rc_crack_control_spacing`
 - [x] 5.6.7 pre-2005 z-factor method — `concrete.rc_crack_control_z_factor`
+- [x] 5.7.3.4.2 MCFT general β/θ — `concrete.rc_mcft_beta_theta` (feeds `rc_shear_resistance`)
+- [x] 5.7.2.5 Min transverse reinforcement — `concrete.rc_min_transverse_reinforcement`
+- [x] 5.7.2.6 Max stirrup spacing — `concrete.rc_max_stirrup_spacing`
+- [x] 5.7.3.5 Longitudinal reinforcement — `concrete.rc_longitudinal_reinforcement`
+- [x] 5.7.4 Interface shear transfer — `concrete.rc_interface_shear`
+- [x] 5.7.2.1 Torsion threshold — `concrete.rc_torsion_threshold`
 
 ### Prestressed concrete (Chapter 5)
 - [x] 5.6.3.1.1 Strand stress at nominal resistance — `prestressed.ps_strand_stress_at_nominal`
@@ -46,14 +52,6 @@ wired (see `editions.py`).
 
 ### Prestressed — refined losses & details
 - [ ] 5.9.3.2.1 Anchorage set
-
-### Concrete shear suite
-- [ ] 5.7.3.4.2 MCFT general β/θ procedure
-- [ ] 5.7.2.5 Minimum transverse reinforcement
-- [ ] 5.7.2.6 Maximum stirrup spacing
-- [ ] 5.7.3.5 Longitudinal reinforcement check
-- [ ] 5.7.4 Interface shear transfer
-- [ ] 5.7.2.1 Torsion threshold/resistance
 
 ### Steel
 - [ ] 6.10.1.10.1 Hybrid factor Rh
