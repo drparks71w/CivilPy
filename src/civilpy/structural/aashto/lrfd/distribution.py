@@ -183,6 +183,35 @@ def skew_correction_shear(
     )
 
 
+@article("3.6.1.1.2", "Multiple Presence Factors")
+def multiple_presence_factor(n_lanes: int) -> float:
+    """m (Table 3.6.1.1.2-1): 1.20 / 1.00 / 0.85 / 0.65 for 1/2/3/>3 loaded
+    lanes.  Already embedded in the 4.6.2.2 DF equations — apply only with
+    the lever rule or refined analysis."""
+    return {1: 1.20, 2: 1.00, 3: 0.85}.get(n_lanes, 0.65)
+
+
+def lever_rule_exterior(
+    s_ft: float,
+    d_e_ft: float,
+    apply_multiple_presence: bool = True,
+) -> float:
+    """One-lane exterior-girder DF by the lever rule (C4.6.2.2.1): deck
+    assumed hinged at the first interior girder, one truck with wheel
+    lines 6 ft apart, the nearer one 2 ft from the barrier face.  Wheels
+    landing inboard of the interior girder contribute nothing.
+
+    Returns lanes/girder including the 1.2 single-lane multiple presence
+    unless ``apply_multiple_presence`` is False."""
+    # Wheel positions measured from the exterior girder, outboard negative
+    x1 = -d_e_ft + 2.0
+    x2 = x1 + 6.0
+    g = (max(s_ft - x1, 0.0) + max(s_ft - x2, 0.0)) / (2.0 * s_ft)
+    if apply_multiple_presence:
+        g *= multiple_presence_factor(1)
+    return g
+
+
 @article("4.6.2.6", "Effective Flange Width")
 def effective_flange_width(
     s_ft: float,
