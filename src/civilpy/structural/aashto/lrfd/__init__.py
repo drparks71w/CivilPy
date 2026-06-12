@@ -59,6 +59,21 @@ from civilpy.structural.aashto.lrfd.prestressed import (
     ps_service_tension_check,
     ps_elastic_shortening_loss,
     ps_approximate_longterm_loss,
+    ps_section_age_adjustment,
+    ps_refined_loss_shrinkage_girder,
+    ps_refined_loss_creep_girder,
+    ps_refined_loss_relaxation,
+    ps_refined_loss_shrinkage_deck_stage,
+    ps_refined_loss_creep_deck_stage,
+    ps_deck_shrinkage_gain,
+    ps_friction_loss,
+    ps_strand_development,
+    ps_splitting_resistance,
+)
+from civilpy.structural.aashto.lrfd.creep_shrinkage import (
+    creep_coefficient,
+    shrinkage_strain,
+    factor_time_development,
 )
 
 __all__ = [
@@ -89,4 +104,17 @@ __all__ = [
     "ps_service_tension_check",
     "ps_elastic_shortening_loss",
     "ps_approximate_longterm_loss",
+    "ps_section_age_adjustment",
+    "ps_refined_loss_shrinkage_girder",
+    "ps_refined_loss_creep_girder",
+    "ps_refined_loss_relaxation",
+    "ps_refined_loss_shrinkage_deck_stage",
+    "ps_refined_loss_creep_deck_stage",
+    "ps_deck_shrinkage_gain",
+    "ps_friction_loss",
+    "ps_strand_development",
+    "ps_splitting_resistance",
+    "creep_coefficient",
+    "shrinkage_strain",
+    "factor_time_development",
 ]

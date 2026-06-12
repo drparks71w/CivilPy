@@ -30,6 +30,12 @@ wired (see `editions.py`).
 - [x] 5.9.2.3.2b Service tension limit — `prestressed.ps_service_tension_check`
 - [x] 5.9.3.2.3a Elastic shortening loss — `prestressed.ps_elastic_shortening_loss`
 - [x] 5.9.3.3 Approximate time-dependent losses — `prestressed.ps_approximate_longterm_loss`
+- [x] 5.4.2.3.2 / 5.4.2.3.3 Creep & shrinkage models (design_year: pre-2015 ktd) — `creep_shrinkage`
+- [x] 5.9.3.4.2a–c Refined losses, transfer→deck — `prestressed.ps_refined_loss_*`
+- [x] 5.9.3.4.3a/b/d Refined losses, deck→final + deck-shrinkage gain — `prestressed.ps_refined_loss_*_deck_stage`, `ps_deck_shrinkage_gain`
+- [x] 5.9.3.2.2 Friction loss (PT) — `prestressed.ps_friction_loss`
+- [x] 5.9.4.3.2 Strand development length — `prestressed.ps_strand_development`
+- [x] 5.9.4.4.1 Splitting resistance — `prestressed.ps_splitting_resistance`
 
 ### Decks and railings
 - [x] A13.3.1 Parapet yield-line resistance — `railing.parapet_yield_line_capacity`
@@ -39,14 +45,7 @@ wired (see `editions.py`).
 ## To do (rough priority order)
 
 ### Prestressed — refined losses & details
-- [ ] 5.4.2.3.2 Creep coefficient
-- [ ] 5.4.2.3.3 Shrinkage strain
-- [ ] 5.9.3.4.2a–c Losses, transfer→deck (shrinkage/creep/relaxation)
-- [ ] 5.9.3.4.3a–d Losses, deck→final incl. deck-shrinkage gain
-- [ ] 5.9.3.2.2 Friction loss (post-tensioning)
 - [ ] 5.9.3.2.1 Anchorage set
-- [ ] 5.9.4.3.2 Bonded strand development/transfer length
-- [ ] 5.9.4.4.1 Splitting resistance at ends
 
 ### Concrete shear suite
 - [ ] 5.7.3.4.2 MCFT general β/θ procedure

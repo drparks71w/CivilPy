@@ -292,6 +292,250 @@ def ps_elastic_shortening_loss(
     )
 
 
+def ps_section_age_adjustment(
+    a_ps: float,
+    a_g: float,
+    i_g: float,
+    e_pg: float,
+    psi_final: float,
+    e_ci: float,
+    e_p: float = E_STRAND,
+) -> float:
+    """Transformed-section/age-adjusted coefficient Kid (5.9.3.4.2a-2) — or
+    Kdf with composite-section properties (5.9.3.4.3a-2).
+
+    ``e_pg`` is the strand eccentricity from the section centroid (in),
+    ``psi_final`` the creep coefficient psi(tf, ti), ``e_ci`` the concrete
+    modulus at transfer (ksi).
+    """
+    return 1.0 / (
+        1.0
+        + e_p / e_ci
+        * a_ps / a_g
+        * (1.0 + a_g * e_pg**2 / i_g)
+        * (1.0 + 0.7 * psi_final)
+    )
+
+
+@article("5.9.3.4.2a", "Refined Loss — Girder Shrinkage, Transfer to Deck")
+def ps_refined_loss_shrinkage_girder(
+    eps_bid: float,
+    k_id: float,
+    e_p: float = E_STRAND,
+) -> CheckResult:
+    """Prestress loss from girder shrinkage between transfer and deck
+    placement (5.9.3.4.2a-1): eps_bid * Ep * Kid.
+
+    ``eps_bid`` is the girder shrinkage strain over that interval (from
+    :func:`~civilpy.structural.aashto.lrfd.creep_shrinkage.shrinkage_strain`),
+    ``k_id`` from :func:`ps_section_age_adjustment`.  ``capacity`` holds the
+    loss (ksi).
+    """
+    loss = eps_bid * e_p * k_id
+    return CheckResult(
+        article="5.9.3.4.2a",
+        name="Refined Loss — Girder Shrinkage, Transfer to Deck",
+        capacity=loss,
+        details={"eps_bid": eps_bid, "Kid": k_id},
+    )
+
+
+@article("5.9.3.4.2b", "Refined Loss — Girder Creep, Transfer to Deck")
+def ps_refined_loss_creep_girder(
+    f_cgp: float,
+    psi_td_ti: float,
+    k_id: float,
+    e_ci: float,
+    e_p: float = E_STRAND,
+) -> CheckResult:
+    """Prestress loss from girder creep between transfer and deck placement
+    (5.9.3.4.2b-1): (Ep/Eci) * fcgp * psi(td, ti) * Kid."""
+    loss = e_p / e_ci * f_cgp * psi_td_ti * k_id
+    return CheckResult(
+        article="5.9.3.4.2b",
+        name="Refined Loss — Girder Creep, Transfer to Deck",
+        capacity=loss,
+        details={"f_cgp": f_cgp, "psi_td_ti": psi_td_ti, "Kid": k_id},
+    )
+
+
+@article("5.9.3.4.2c", "Refined Loss — Strand Relaxation")
+def ps_refined_loss_relaxation(
+    f_pt: float,
+    f_py: float,
+    k_l: float = 30.0,
+) -> CheckResult:
+    """Strand relaxation loss per stage (5.9.3.4.2c-1):
+    (fpt/KL) * (fpt/fpy - 0.55), taken as zero if fpt/fpy < 0.55.
+
+    ``f_pt`` is the strand stress immediately after transfer (ksi);
+    ``k_l`` = 30 for low-relaxation strand, 7 for stress-relieved.  The same
+    value applies again for the deck-to-final stage (5.9.3.4.3c).
+    """
+    loss = max(f_pt / k_l * (f_pt / f_py - 0.55), 0.0)
+    return CheckResult(
+        article="5.9.3.4.2c",
+        name="Refined Loss — Strand Relaxation",
+        capacity=loss,
+        details={"f_pt": f_pt, "f_py": f_py, "KL": k_l},
+    )
+
+
+@article("5.9.3.4.3a", "Refined Loss — Girder Shrinkage, Deck to Final")
+def ps_refined_loss_shrinkage_deck_stage(
+    eps_bdf: float,
+    k_df: float,
+    e_p: float = E_STRAND,
+) -> CheckResult:
+    """Prestress loss from girder shrinkage between deck placement and
+    final time (5.9.3.4.3a-1): eps_bdf * Ep * Kdf, with Kdf computed on
+    the composite section."""
+    loss = eps_bdf * e_p * k_df
+    return CheckResult(
+        article="5.9.3.4.3a",
+        name="Refined Loss — Girder Shrinkage, Deck to Final",
+        capacity=loss,
+        details={"eps_bdf": eps_bdf, "Kdf": k_df},
+    )
+
+
+@article("5.9.3.4.3b", "Refined Loss — Girder Creep, Deck to Final")
+def ps_refined_loss_creep_deck_stage(
+    f_cgp: float,
+    psi_tf_ti: float,
+    psi_td_ti: float,
+    psi_tf_td: float,
+    delta_f_cd: float,
+    k_df: float,
+    e_ci: float,
+    e_c: float,
+    e_p: float = E_STRAND,
+) -> CheckResult:
+    """Prestress loss from girder creep between deck placement and final
+    time (5.9.3.4.3b-1):
+
+    (Ep/Eci)*fcgp*(psi(tf,ti) - psi(td,ti))*Kdf
+        + (Ep/Ec)*delta_fcd*psi(tf,td)*Kdf,  taken >= 0.
+
+    ``delta_f_cd`` is the change in concrete stress at the strand centroid
+    from deck weight and superimposed loads (ksi, negative when it relieves
+    compression).
+    """
+    loss = (
+        e_p / e_ci * f_cgp * (psi_tf_ti - psi_td_ti) * k_df
+        + e_p / e_c * delta_f_cd * psi_tf_td * k_df
+    )
+    loss = max(loss, 0.0)
+    return CheckResult(
+        article="5.9.3.4.3b",
+        name="Refined Loss — Girder Creep, Deck to Final",
+        capacity=loss,
+        details={"psi_tf_ti": psi_tf_ti, "psi_td_ti": psi_td_ti,
+                 "psi_tf_td": psi_tf_td, "delta_f_cd": delta_f_cd,
+                 "Kdf": k_df},
+    )
+
+
+@article("5.9.3.4.3d", "Prestress Gain — Deck Shrinkage")
+def ps_deck_shrinkage_gain(
+    delta_f_cdf: float,
+    k_df: float,
+    psi_tf_td: float,
+    e_c: float,
+    e_p: float = E_STRAND,
+) -> CheckResult:
+    """Prestress *gain* from deck shrinkage (5.9.3.4.3d-1):
+    (Ep/Ec) * delta_fcdf * Kdf * (1 + 0.7*psi(tf, td)).
+
+    ``delta_f_cdf`` is the change in concrete stress at the strand centroid
+    caused by deck shrinkage (ksi, compressive positive — the deck shrinks,
+    cambering the girder and compressing the bottom flange).  ``capacity``
+    holds the gain; subtract it from the total loss.
+    """
+    gain = e_p / e_c * delta_f_cdf * k_df * (1.0 + 0.7 * psi_tf_td)
+    return CheckResult(
+        article="5.9.3.4.3d",
+        name="Prestress Gain — Deck Shrinkage",
+        capacity=gain,
+        details={"delta_f_cdf": delta_f_cdf, "Kdf": k_df,
+                 "psi_tf_td": psi_tf_td},
+    )
+
+
+@article("5.9.3.2.2", "Friction Loss (Post-Tensioning)")
+def ps_friction_loss(
+    f_pj: float,
+    x: float,
+    alpha: float,
+    mu: float = 0.25,
+    k: float = 0.0002,
+) -> CheckResult:
+    """Friction loss in a post-tensioned tendon (5.9.3.2.2b-1):
+    fpj * (1 - e^(-(K*x + mu*alpha))).
+
+    ``x`` is the tendon length from the jacking end (ft), ``alpha`` the sum
+    of angular changes (radians), ``mu`` the curvature friction coefficient
+    and ``k`` the wobble coefficient (per ft) — defaults are typical of
+    strand in rigid galvanized ducts; use the duct manufacturer's values
+    when known.
+    """
+    loss = f_pj * (1.0 - math.exp(-(k * x + mu * alpha)))
+    return CheckResult(
+        article="5.9.3.2.2",
+        name="Friction Loss (Post-Tensioning)",
+        capacity=loss,
+        details={"mu": mu, "K": k, "x": x, "alpha": alpha},
+    )
+
+
+@article("5.9.4.3.2", "Pretensioned Strand Development Length")
+def ps_strand_development(
+    f_ps: float,
+    f_pe: float,
+    d_b: float,
+    kappa: float = 1.6,
+    embedment: float | None = None,
+) -> CheckResult:
+    """Development length of bonded pretensioned strand (5.9.4.3.2-1):
+    ld >= kappa * (fps - 2/3*fpe) * db, with transfer length 60*db.
+
+    ``kappa`` = 1.6 for members deeper than 24 in, 1.0 otherwise.
+    ``capacity`` holds the required ld (in); pass the available
+    ``embedment`` as the demand side — note this check is inverted
+    (embedment must *exceed* ld), so ``ok`` is computed accordingly.
+    """
+    l_d = kappa * (f_ps - 2.0 / 3.0 * f_pe) * d_b
+    result = CheckResult(
+        article="5.9.4.3.2",
+        name="Pretensioned Strand Development Length",
+        capacity=embedment if embedment is not None else l_d,
+        demand=l_d if embedment is not None else None,
+        details={"ld_required": l_d, "transfer_length": 60.0 * d_b,
+                 "kappa": kappa},
+    )
+    return result
+
+
+@article("5.9.4.4.1", "Splitting Resistance at Member Ends")
+def ps_splitting_resistance(
+    a_s_end: float,
+    p_r_demand: float | None = None,
+    f_s: float = 20.0,
+) -> CheckResult:
+    """Splitting (bursting) resistance at pretensioned member ends
+    (5.9.4.4.1-1): Pr = fs * As, where As is the reinforcement within h/4
+    of the end and fs is limited to 20 ksi.  Pr must resist at least 4% of
+    the total prestress force at transfer — pass 0.04*Ppt as the demand."""
+    p_r = min(f_s, 20.0) * a_s_end
+    return CheckResult(
+        article="5.9.4.4.1",
+        name="Splitting Resistance at Member Ends",
+        capacity=p_r,
+        demand=p_r_demand,
+        details={"fs": min(f_s, 20.0), "As_end": a_s_end},
+    )
+
+
 @article("5.9.3.3", "Approximate Estimate of Time-Dependent Losses")
 def ps_approximate_longterm_loss(
     f_pi: float,
