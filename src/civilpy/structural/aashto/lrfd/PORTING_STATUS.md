@@ -21,6 +21,9 @@ wired (see `editions.py`).
 - [x] 6.8.2.1 Tension members yield/rupture — `steel.tension_member_resistance`
 - [x] 6.9.4.1.1 Column buckling (design_year: pre-2015 phi_c=0.90) — `steel.compression_member_resistance`
 - [x] 6.13.2.7/.8/.9 Bolt shear/slip/bearing — `steel.bolt_*_resistance`
+- [x] A6.2 Web plastification Rpc/Rpt — `appendix_a6.web_plastification_factors`
+- [x] A6.3.2 / A6.3.3 FLB & LTB in moment format (+ St. Venant J helper) — `appendix_a6`
+- [x] A6.4 Tension flange yielding — `appendix_a6.a6_tension_flange_yielding`
 
 ### Reinforced concrete (Chapter 5)
 - [x] 5.6.3.2 Rectangular flexural resistance — `concrete.rc_rectangular_flexural_resistance`
@@ -50,6 +53,7 @@ wired (see `editions.py`).
 - [x] 5.9.3.2.2 Friction loss (PT) — `prestressed.ps_friction_loss`
 - [x] 5.9.4.3.2 Strand development length — `prestressed.ps_strand_development`
 - [x] 5.9.4.4.1 Splitting resistance — `prestressed.ps_splitting_resistance`
+- [x] 5.9.3.2.1 Anchorage set loss — `prestressed.ps_anchorage_set_loss`
 
 ### Analysis / loads (done)
 - [x] 4.6.2.2.2b/.3a Interior moment & shear DFs (I-girders, type a/e/k) — `distribution.moment_df_interior`, `shear_df_interior`
@@ -57,6 +61,7 @@ wired (see `editions.py`).
 - [x] 4.6.2.2.2e/.3c Skew corrections — `distribution.skew_correction_*`
 - [x] 3.6.2 Dynamic load allowance — `distribution.dynamic_load_allowance`
 - [x] 4.6.2.6 Effective flange width (design_year: pre-2008 three-way min) — `distribution.effective_flange_width`
+- [x] 3.6.1.1.2 Multiple presence + lever-rule exterior DF — `distribution.multiple_presence_factor`, `lever_rule_exterior`
 - [x] 6.10.11.2.3 Bearing stiffener bearing resistance — `steel.bearing_stiffener_resistance`
 
 ### Timber (Chapter 8)
@@ -75,17 +80,14 @@ wired (see `editions.py`).
 
 ## To do (rough priority order)
 
-### Prestressed — refined losses & details
-- [ ] 5.9.3.2.1 Anchorage set
 
 ### Steel
 - [ ] 6.10.3 Constructibility
-- [ ] Appendix A6 (compact-web negative flexure), B6 (moment redistribution)
+- [ ] Appendix B6 (moment redistribution)
 - [ ] 6.13 splices (flange/web), block shear 6.13.4, fillet welds 6.13.3
 
 ### Analysis / loads
-- [ ] 4.6.2.2 DFs for other cross-section types (boxes, slabs, T-beams); lever-rule helper
-- [ ] 3.6.1.1.2 Multiple presence factors (standalone)
+- [ ] 4.6.2.2 DFs for other cross-section types (boxes, slabs, T-beams)
 
 ### Other
 - [ ] RC columns: 5.6.4.x reinforcement limits, biaxial flexure
