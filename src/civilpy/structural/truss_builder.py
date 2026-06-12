@@ -708,7 +708,9 @@ class TrussBridge:
         "Top Chord": "tab:blue", "Bottom Chord": "tab:red",
         "End Post": "tab:purple", "Vertical": "tab:green",
         "Hanger": "tab:olive", "Diagonal": "tab:orange",
-        "Counter": "tab:brown",
+        "Counter": "tab:brown", "Floorbeam": "tab:cyan",
+        "Stringer": "tab:pink", "Strut": "tab:gray",
+        "Lateral Brace": "gold",
     }
 
     def plot_elevation(self, ax=None):
@@ -783,6 +785,61 @@ class TrussBridge:
         ax.set_ylabel("Elevation (ft)")
         ax.set_title("Cross Section at Floorbeam")
         ax.grid(True, alpha=0.25)
+        return ax.get_figure()
+
+    def plot_3d(self, ax=None, show_lanes: bool = True,
+                elev: float = 22.0, azim: float = -60.0):
+        """Isometric wireframe of the complete 3-D model, drawn from the
+        same node/element tables :meth:`midas_payloads` exports — so the
+        picture is exactly what a ``to_midas()`` call will build: both
+        truss planes, floorbeams (split at stringer crossings),
+        stringers, struts, and any laterals, colored by component type,
+        with lane lines and the deck outline overlaid.  Returns the
+        figure."""
+        payloads = self.midas_payloads()
+        nodes = {int(i): (n["X"], n["Y"], n["Z"])
+                 for i, n in payloads["NODE"].items()}
+        role_of = {eid: g["NAME"] for g in payloads["GRUP"].values()
+                   for eid in g["E_LIST"]}
+
+        if ax is None:
+            ax = plt.figure(figsize=(11, 7)).add_subplot(projection="3d")
+        seen = set()
+        for eid_str, elem in payloads["ELEM"].items():
+            role = role_of.get(int(eid_str), "Member")
+            (xa, ya, za), (xb, yb, zb) = (nodes[n] for n in elem["NODE"])
+            ax.plot([xa, xb], [ya, yb], [za, zb],
+                    color=self._ROLE_COLORS.get(role, "k"),
+                    lw=2.0 if role in ("Top Chord", "Bottom Chord",
+                                       "End Post") else 1.2,
+                    label=role if role not in seen else None)
+            seen.add(role)
+
+        z_deck = 0.0 if self.deck_level == "bottom" else None
+        if self.deck is not None and z_deck is not None:
+            lo, hi = self.deck.edges_ft
+            xs = [0.0, self.span_ft, self.span_ft, 0.0, 0.0]
+            ys = [lo, lo, hi, hi, lo]
+            ax.plot(xs, ys, [z_deck + 0.5] * 5, color="0.6", ls="--",
+                    lw=1.0, label="Deck edge")
+        if show_lanes and z_deck is not None:
+            for lane in self.lanes:
+                ax.plot([0.0, self.span_ft], [lane.offset_ft] * 2,
+                        [z_deck + 0.5] * 2, color="tab:red", ls=":",
+                        lw=1.8, label=f"Lane {lane.name}")
+
+        heights = [h for h in self.heights if h]
+        h_max = max(heights) if heights else 10.0
+        ax.set_box_aspect((self.span_ft,
+                           max(self.width_ft * 2.0, self.span_ft / 4.0),
+                           max(h_max * 1.5, self.span_ft / 6.0)))
+        ax.set_xlabel("Station (ft)")
+        ax.set_ylabel("Transverse (ft)")
+        ax.set_zlabel("Elevation (ft)")
+        ax.view_init(elev=elev, azim=azim)
+        ax.set_title(f"3-D Model — {self.span_ft:g} ft span, "
+                     f"{len(payloads['ELEM'])} elements as exported")
+        ax.legend(loc="upper left", fontsize=8, ncols=2)
         return ax.get_figure()
 
     # ── MIDAS Civil NX export ──────────────────────────────────────────
