@@ -51,6 +51,12 @@ wired (see `editions.py`).
 - [x] 5.9.4.3.2 Strand development length — `prestressed.ps_strand_development`
 - [x] 5.9.4.4.1 Splitting resistance — `prestressed.ps_splitting_resistance`
 
+### Analysis / loads (done)
+- [x] 4.6.2.2.2b/.3a Interior moment & shear DFs (I-girders, type a/e/k) — `distribution.moment_df_interior`, `shear_df_interior`
+- [x] 4.6.2.2.2d/.3b Exterior DFs via e-factor — `distribution.moment_df_exterior`, `shear_df_exterior`
+- [x] 4.6.2.2.2e/.3c Skew corrections — `distribution.skew_correction_*`
+- [x] 3.6.2 Dynamic load allowance — `distribution.dynamic_load_allowance`
+
 ### Decks and railings
 - [x] A13.3.1 Parapet yield-line resistance — `railing.parapet_yield_line_capacity`
 - [x] A13.4.2 Deck overhang collision tension — `railing.deck_overhang_collision_tension`
@@ -68,9 +74,9 @@ wired (see `editions.py`).
 - [ ] 6.13 splices (flange/web), block shear 6.13.4, fillet welds 6.13.3
 
 ### Analysis / loads
-- [ ] 4.6.2.2 Live-load distribution factors (common girder types)
+- [ ] 4.6.2.2 DFs for other cross-section types (boxes, slabs, T-beams); lever-rule helper
 - [ ] 4.6.2.6 Effective flange width (edition delta: 2008 change)
-- [ ] 3.6.2 Dynamic load allowance, multiple presence
+- [ ] 3.6.1.1.2 Multiple presence factors (standalone)
 
 ### Other
 - [ ] RC columns: 5.6.4.x reinforcement limits, biaxial flexure

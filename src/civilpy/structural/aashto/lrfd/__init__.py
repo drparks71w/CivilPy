@@ -63,6 +63,17 @@ from civilpy.structural.aashto.lrfd.concrete import (
     rc_torsion_threshold,
     INTERFACE_SHEAR_CASES,
 )
+from civilpy.structural.aashto.lrfd.distribution import (
+    DistributionFactor,
+    longitudinal_stiffness_kg,
+    moment_df_interior,
+    shear_df_interior,
+    moment_df_exterior,
+    shear_df_exterior,
+    skew_correction_moment,
+    skew_correction_shear,
+    dynamic_load_allowance,
+)
 from civilpy.structural.aashto.lrfd.railing import (
     TEST_LEVEL_LOADS,
     TestLevelLoad,
@@ -133,6 +144,15 @@ __all__ = [
     "lrfd_edition",
     "TEST_LEVEL_LOADS",
     "TestLevelLoad",
+    "DistributionFactor",
+    "longitudinal_stiffness_kg",
+    "moment_df_interior",
+    "shear_df_interior",
+    "moment_df_exterior",
+    "shear_df_exterior",
+    "skew_correction_moment",
+    "skew_correction_shear",
+    "dynamic_load_allowance",
     "parapet_yield_line_capacity",
     "parapet_test_level_check",
     "deck_overhang_collision_tension",
