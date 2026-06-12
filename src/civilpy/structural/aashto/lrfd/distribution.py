@@ -183,6 +183,69 @@ def skew_correction_shear(
     )
 
 
+@article("4.6.2.3", "Equivalent Strip Widths for Slab Bridges")
+def slab_equivalent_strip(
+    span_ft: float,
+    width_ft: float,
+    n_lanes: int,
+    multi_lane: bool = True,
+    skew_deg: float = 0.0,
+) -> float:
+    """Equivalent strip width E (in) carrying one wheel line of live load
+    in a cast-in-place slab bridge (4.6.2.3):
+
+    one lane:  E = 10.0 + 5.0*sqrt(L1*W1),  W1 capped at 30 ft
+    multi:     E = 84.0 + 1.44*sqrt(L1*W1) <= 12.0*W/NL, W1 capped at 60 ft
+
+    with L1 = min(span, 60 ft).  Skewed bridges may reduce the force
+    effects by r = 1.05 - 0.25*tan(theta) <= 1.00 — the reduction is
+    applied to E here (wider strip = lower demand per ft)."""
+    l_1 = min(span_ft, 60.0)
+    if multi_lane:
+        w_1 = min(width_ft, 60.0)
+        e = min(84.0 + 1.44 * math.sqrt(l_1 * w_1),
+                12.0 * width_ft / n_lanes)
+    else:
+        w_1 = min(width_ft, 30.0)
+        e = 10.0 + 5.0 * math.sqrt(l_1 * w_1)
+    r = min(1.05 - 0.25 * math.tan(math.radians(skew_deg)), 1.0)
+    return e / r
+
+
+@article("4.6.2.2.2b-g", "Distribution of Live Load Moment, Box Beams")
+def moment_df_interior_box(
+    b_in: float,
+    l_ft: float,
+    i_beam: float,
+    j_beam: float,
+    n_beams: int,
+) -> DistributionFactor:
+    """Moment DF for interior precast box beams used in multibeam decks
+    (Table 4.6.2.2.2b-1, cross-section type g):
+
+    one lane:  k*(b/33.3L)^0.5 * (I/J)^0.25
+    multi:     k*(b/305)^0.6 * (b/12L)^0.2 * (I/J)^0.06
+    k = 2.5*(Nb)^-0.2 >= 1.5
+
+    ``b_in`` is the beam width (in), ``i_beam``/``j_beam`` the moment of
+    inertia and St. Venant constant (in^4)."""
+    k = max(2.5 * n_beams**-0.2, 1.5)
+    one = k * (b_in / (33.3 * l_ft)) ** 0.5 * (i_beam / j_beam) ** 0.25
+    multi = (
+        k * (b_in / 305.0) ** 0.6 * (b_in / (12.0 * l_ft)) ** 0.2
+        * (i_beam / j_beam) ** 0.06
+    )
+    return DistributionFactor(
+        one_lane=one,
+        multi_lane=multi,
+        applicability={
+            "width": 35.0 <= b_in <= 60.0,
+            "span": 20.0 <= l_ft <= 120.0,
+            "n_beams": 5 <= n_beams <= 20,
+        },
+    )
+
+
 @article("3.6.1.1.2", "Multiple Presence Factors")
 def multiple_presence_factor(n_lanes: int) -> float:
     """m (Table 3.6.1.1.2-1): 1.20 / 1.00 / 0.85 / 0.65 for 1/2/3/>3 loaded
