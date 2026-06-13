@@ -91,6 +91,9 @@ from civilpy.structural.odot.box_beam import (
     bearing_pad,
     diaphragm_count,
     diaphragm_end_offset,
+    BEVELED_LOAD_PLATE,
+    BeveledLoadPlate,
+    load_plate_bevel,
 )
 from civilpy.structural.odot.rocker_bolster import (
     MAX_MOVEMENT,
@@ -102,7 +105,12 @@ from civilpy.structural.odot.rocker_bolster import (
 from civilpy.structural.odot.headwall import (
     HEADWALLS_BY_DIAMETER,
     HEADWALLS_CIRCULAR,
+    HEADWALLS_CONCRETE_BY_DIAMETER,
+    HEADWALLS_CONCRETE_CIRCULAR,
+    HEADWALLS_CONCRETE_ELLIPTICAL,
+    EllipticalHeadwall,
     Headwall,
+    elliptical_headwall_for_rise,
     headwall_for_diameter,
 )
 from civilpy.structural.odot.box_beam_design import (
@@ -150,6 +158,9 @@ __all__ = [
     "bearing_pad",
     "diaphragm_count",
     "diaphragm_end_offset",
+    "BeveledLoadPlate",
+    "BEVELED_LOAD_PLATE",
+    "load_plate_bevel",
     "RockerBolster",
     "ROCKER_BOLSTERS",
     "MAX_MOVEMENT",
@@ -159,6 +170,11 @@ __all__ = [
     "HEADWALLS_CIRCULAR",
     "HEADWALLS_BY_DIAMETER",
     "headwall_for_diameter",
+    "EllipticalHeadwall",
+    "HEADWALLS_CONCRETE_CIRCULAR",
+    "HEADWALLS_CONCRETE_BY_DIAMETER",
+    "HEADWALLS_CONCRETE_ELLIPTICAL",
+    "elliptical_headwall_for_rise",
     "BoxBeamDesign",
     "BoxBeamRating",
     "BOX_BEAM_DESIGNS",

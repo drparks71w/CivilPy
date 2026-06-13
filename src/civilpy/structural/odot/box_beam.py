@@ -34,6 +34,7 @@ field name says otherwise.  Values are spot-checked against the drawing in
 the test suite; the drawing remains the controlling document.
 """
 
+import math
 from dataclasses import dataclass
 
 #: Companion design data sheet (strand tables, camber, load ratings),
@@ -204,3 +205,46 @@ BEARING_DESIGN_DATA = BearingDesignData()
 def bearing_pad(name: str) -> BearingPad:
     """Look up a standard bearing pad by name (``"B1"`` or ``"B2"``)."""
     return BEARING_PADS[name]
+
+
+# ---------------------------------------------------------------- BD-1-11
+# Beveled steel load plate used under box-beam bearings to take out roadway-
+# grade rotation (Bearing Details for Box Beam Bridges, BD-1-11, rev.
+# 2018-07-20).  Used when the elastomeric bearing alone cannot accommodate
+# the grade rotation.
+
+
+@dataclass(frozen=True)
+class BeveledLoadPlate:
+    """Beveled steel load plate detail (BD-1-11)."""
+
+    min_thickness: float = 1.5          # in
+    plate_grade: str = "ASTM A709 Gr 50"
+    anchor_rod_diameter: float = 0.75   # in, ASTM A449
+    plate_washer: str = "3 x 3 x 1/2"   # ASTM A36
+    expansion_anchor_hole: float = 1.25  # in dia
+    stud_yield: float = 50.0            # ksi (ASTM A108 end-welded stud)
+
+
+#: Beveled load plate detail (BD-1-11).
+BEVELED_LOAD_PLATE = BeveledLoadPlate()
+
+
+def load_plate_bevel(
+    longitudinal_grade: float, skew_deg: float
+) -> tuple[float, float]:
+    """Transverse and longitudinal bevels of the BD-1-11 load plate.
+
+    The plate top is beveled to match the roadway grade resolved into the
+    bearing's local axes (BD-1-11 bevel notes): the component across the
+    bearing width is ``grade * sin(skew)`` and the component along the
+    bearing length is ``grade * cos(skew)``.  ``longitudinal_grade`` is the
+    roadway grade (rise/run, e.g. 0.04 for 4%); ``skew_deg`` is the
+    structure skew angle in degrees.  Returns ``(transverse, longitudinal)``
+    bevel slopes in the same rise/run units as the grade.
+    """
+    theta = math.radians(skew_deg)
+    return (
+        longitudinal_grade * math.sin(theta),
+        longitudinal_grade * math.cos(theta),
+    )
