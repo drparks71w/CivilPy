@@ -276,6 +276,47 @@ def test_rc_flexure_compression_steel_not_yielding():
     assert r.capacity > 0
 
 
+# ── structural/aashto/lrfd/steel.py — flange/bolt/web-shear functions ─────────
+
+from civilpy.structural.aashto.lrfd import steel as lrfd_steel
+
+
+def test_tension_flange_resistance():
+    with_demand = lrfd_steel.tension_flange_resistance(f_yt=50.0, f_bu=30.0, f_l=6.0)
+    assert with_demand.demand == 32.0 and with_demand.capacity == 50.0
+    no_demand = lrfd_steel.tension_flange_resistance(f_yt=50.0)
+    assert no_demand.demand is None
+
+
+def test_proportion_limits_with_flange_inertias():
+    r = lrfd_steel.proportion_limits(d_web=50.0, t_w=0.5, b_fc=16.0, t_fc=1.0,
+                                     b_ft=16.0, t_ft=1.0, i_yc=300.0, i_yt=300.0)
+    assert "flange_inertia_ratio" in r.details
+
+
+def test_bolt_shear_long_joint_reduction():
+    short = lrfd_steel.bolt_shear_resistance(d_bolt=0.875, f_ub=120.0)
+    long = lrfd_steel.bolt_shear_resistance(d_bolt=0.875, f_ub=120.0, long_joint=True)
+    assert long.capacity == pytest.approx(short.capacity * 0.83)
+
+
+def test_web_shear_tension_field_branches():
+    # missing flange dims with tension_field → error
+    with pytest.raises(ValueError, match="requires flange dimensions"):
+        lrfd_steel.web_shear_resistance(d_web=50.0, t_w=0.5, f_yw=50.0,
+                                        d_o=50.0, tension_field=True)
+    # proportion <= 2.5 → eq 6.10.9.3.2-2
+    big = lrfd_steel.web_shear_resistance(d_web=50.0, t_w=0.5, f_yw=50.0, d_o=50.0,
+                                          tension_field=True, b_fc=16.0, t_fc=1.0,
+                                          b_ft=16.0, t_ft=1.0)
+    assert big.details["equation"] == "6.10.9.3.2-2"
+    # proportion > 2.5 → eq 6.10.9.3.2-8
+    small = lrfd_steel.web_shear_resistance(d_web=50.0, t_w=0.5, f_yw=50.0, d_o=50.0,
+                                            tension_field=True, b_fc=12.0, t_fc=0.5,
+                                            b_ft=12.0, t_ft=0.5)
+    assert small.details["equation"] == "6.10.9.3.2-8"
+
+
 # ── structural/influence_lines.py — two-span section past first support ───────
 
 def test_two_span_il_section_in_second_span():
