@@ -28,6 +28,12 @@ Sub-modules:
     Bridge railings and barriers (BR, SBR, TST, DBR, TBR, PCB series),
     each carrying its NCHRP 350 / MASH crash test level so it links to the
     Table A13.2-1 design forces in :mod:`civilpy.structural.aashto.lrfd`.
+
+``guardrail``
+    Midwest Guardrail System (MGS) roadway drawings: the standard system
+    parameters (height, post spacing, blockouts, post sections) plus the
+    series registry and the bridge terminal assemblies that tie a guardrail
+    run into the cataloged bridge railings.
 """
 
 from civilpy.structural.odot.bridge_railing import (
@@ -36,10 +42,34 @@ from civilpy.structural.odot.bridge_railing import (
     railing,
     railings_for_test_level,
 )
+from civilpy.structural.odot.guardrail import (
+    MGS,
+    MGS_DRAWINGS,
+    MGS_POST_SPACINGS,
+    MGS_STEEL_POSTS,
+    MGSDrawing,
+    MGSStandard,
+    PostSpacing,
+    SteelPost,
+    bridge_terminal_assemblies,
+    mgs_drawing,
+    terminals_for_railing,
+)
 
 __all__ = [
     "BridgeRailing",
     "BRIDGE_RAILINGS",
     "railing",
     "railings_for_test_level",
+    "MGS",
+    "MGSStandard",
+    "MGS_DRAWINGS",
+    "MGSDrawing",
+    "MGS_POST_SPACINGS",
+    "PostSpacing",
+    "MGS_STEEL_POSTS",
+    "SteelPost",
+    "mgs_drawing",
+    "bridge_terminal_assemblies",
+    "terminals_for_railing",
 ]
