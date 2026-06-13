@@ -20,6 +20,16 @@ import math
 import numpy as np
 import matplotlib.pyplot as plt
 
+from civilpy.geotech.boring import (
+    Borehole,
+    DriveIncrement,
+    GradingPoint,
+    GradingResult,
+    Sample,
+    SPTResult,
+)
+from civilpy.geotech.boring_io import parse_diggs, read_pdf_log
+
 
 def rankine_active_pressure(unit_weight, height, friction_angle):
     """
