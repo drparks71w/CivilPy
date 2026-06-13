@@ -16,8 +16,15 @@ You should have received a copy of the GNU Affero General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
 
-import psycopg as pg
-from sshtunnel import SSHTunnelForwarder
+try:  # psycopg and sshtunnel are optional, in the "db" extra.
+    import psycopg as pg
+except ImportError:
+    pg = None
+
+try:
+    from sshtunnel import SSHTunnelForwarder
+except ImportError:
+    SSHTunnelForwarder = None
 
 
 def ssh_into_postgres(creds):
@@ -28,6 +35,11 @@ def ssh_into_postgres(creds):
     :param creds: dictionary of necessary parameters to connect to the database
     :return:
     """
+    if pg is None or SSHTunnelForwarder is None:
+        raise ImportError(
+            "psycopg and sshtunnel are required for database functions. "
+            "Install with: pip install civilpy[db]"
+        )
     ssh_tunnel = SSHTunnelForwarder(
         (creds["SSH_HOST"], creds["SSH_PORT"]),
         ssh_username=creds["SSH_USER"],
