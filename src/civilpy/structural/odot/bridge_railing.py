@@ -30,6 +30,7 @@ the test suite; the drawings remain the controlling document for detailing.
 
 Sources (SCD number — drawing date / latest cited revision):
     BR-1-13   New Jersey shape concrete bridge railing      (rev. 2014-01-17)
+    BR-2-15   Bridge sidewalk railing with concrete barrier (rev. 2024-07-19)
     SBR-1-20  Single slope concrete bridge railing, 42 in   (rev. 2024-07-19)
     SBR-2-20  Single slope concrete median railing, 57 in   (rev. 2024-07-19)
     SBR-3-20  Single slope concrete bridge railing, 36 in   (rev. 2024-07-19)
@@ -105,6 +106,48 @@ class BridgeRailing:
         ``None`` if the drawing states no numeric crash test level."""
         return TEST_LEVEL_LOADS.get(self.test_level)
 
+    def meets_minimum_height(self) -> bool | None:
+        """Whether the railing's height satisfies the minimum rail height
+        ``H`` for its test level (Table A13.2-1, ``h_min``).  ``None`` when
+        the height or test level is not recorded.
+
+        For combination and post-and-beam railings ``height`` may be the
+        crashworthy element height only; treat the result accordingly.
+        """
+        tl = self.test_level_load()
+        if tl is None or self.height is None:
+            return None
+        return self.height >= tl.h_min
+
+    def design_force_check(
+        self, m_c: float, m_w: float, m_b: float = 0.0, end_region: bool = False
+    ):
+        """Run the AASHTO A13.3.1 yield-line check for this railing against
+        its own test-level design forces.
+
+        Only meaningful for concrete-parapet entries.  ``m_c`` (kip-ft/ft),
+        ``m_w`` and ``m_b`` (kip-ft) are the wall's flexural resistances;
+        the railing's catalog ``height`` (in) is converted to feet.  Returns
+        a :class:`~civilpy.structural.aashto.lrfd.core.CheckResult` whose
+        ``demand`` is the Table A13.2-1 transverse force ``Ft``.
+        """
+        from civilpy.structural.aashto.lrfd.railing import (
+            parapet_test_level_check,
+        )
+
+        if not self.test_level:
+            raise ValueError(f"{self.designation} has no crash test level")
+        if self.height is None:
+            raise ValueError(f"{self.designation} has no recorded height")
+        return parapet_test_level_check(
+            test_level=self.test_level,
+            m_c=m_c,
+            m_w=m_w,
+            h_ft=self.height / 12.0,
+            m_b=m_b,
+            end_region=end_region,
+        )
+
 
 # Ordered so that the catalog reads top-to-bottom by SCD number.
 _CATALOG: list[BridgeRailing] = [
@@ -154,6 +197,34 @@ _CATALOG: list[BridgeRailing] = [
         transition_volume_cy=1.71,
         notes="Taller TL-5 variant of the 36 in BR-1; transition vertical "
         "bars at 9 in o.c.",
+    ),
+    # ============================================================ BR-2-15
+    # Bridge sidewalk railing with concrete barrier: a 42 in (3 ft-6 in)
+    # crashworthy concrete barrier carrying a twin steel tube pedestrian
+    # rail on top.  Design criteria (sheet 5/5): NCHRP 350 TL-4, AASHTO
+    # LRFD BDS 2014; f'c = 4.5 ksi, fy = 60 ksi, tube fy = 46 ksi.  HSS
+    # 4x4x3/16 posts at 6 ft-6 in carry two HSS 4x3x1/4 rails.
+    BridgeRailing(
+        scd="BR-2-15",
+        scd_date="2024-07-19",
+        designation="BR-2 (sidewalk barrier + twin tube)",
+        name="Bridge sidewalk railing with concrete barrier (twin steel tube)",
+        shape="combination (barrier + steel tube)",
+        material="reinforced concrete + steel",
+        test_level="TL-4",
+        height=42.0,
+        top_width=12.0,
+        f_c=4.5,
+        f_y=60.0,
+        f_y_steel=46.0,
+        vertical_bar_spacing=12.0,
+        bar_sizes=(5,),
+        post_shape="HSS 4x4x3/16",
+        post_spacing=78.0,
+        rail_element="2 - HSS 4x3x1/4",
+        notes="The 42 in concrete barrier is the TL-4 crashworthy element; a "
+        "twin steel tube pedestrian rail mounts on top (combined height "
+        "higher). Optional vandal protection fence (VPF-1-24).",
     ),
     # ============================================================ SBR-3-20
     # Single-slope concrete parapet, 36 in.  Design criteria (sheet 5/5):
