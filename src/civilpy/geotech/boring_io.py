@@ -55,7 +55,7 @@ def _ln(tag: str) -> str:
     return tag.rsplit("}", 1)[-1]
 
 
-def _children(el, name: str):
+def _children(el, name: str):  # pragma: no cover - convenience helper, unused
     """Direct children of ``el`` with local name ``name``."""
     return [c for c in el if _ln(c.tag) == name]
 
