@@ -99,7 +99,7 @@ where = ["src"]
 exclude = ["tests*", "Notebooks*", "secrets*", "docs*", "res*"]
 
 [tool.setuptools.package-data]
-civilpy = ["structural/res/*.csv"]
+civilpy = ["structural/res/*.csv", "structural/odot/res/*.csv"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

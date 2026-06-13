@@ -40,6 +40,14 @@ Sub-modules:
     rods, anchor dowels, shear keys, diaphragm placement rules, and the
     standard elastomeric bearing pads.  The companion section/strand/load-
     rating sheet PSBDD-1-25 is referenced but not transcribed here.
+
+``rocker_bolster``
+    Structural steel rocker and bolster bearing dimensions and capacities
+    (RB-1-55).
+
+``headwall``
+    Cast-in-place half-height headwall dimension table for circular pipe
+    (HW-2.1).
 """
 
 from civilpy.structural.odot.bridge_railing import (
@@ -80,6 +88,19 @@ from civilpy.structural.odot.box_beam import (
     diaphragm_count,
     diaphragm_end_offset,
 )
+from civilpy.structural.odot.rocker_bolster import (
+    MAX_MOVEMENT,
+    ROCKER_BOLSTERS,
+    RockerBolster,
+    rocker_bolster,
+    smallest_for_load,
+)
+from civilpy.structural.odot.headwall import (
+    HEADWALLS_BY_DIAMETER,
+    HEADWALLS_CIRCULAR,
+    Headwall,
+    headwall_for_diameter,
+)
 
 __all__ = [
     "BridgeRailing",
@@ -114,4 +135,13 @@ __all__ = [
     "bearing_pad",
     "diaphragm_count",
     "diaphragm_end_offset",
+    "RockerBolster",
+    "ROCKER_BOLSTERS",
+    "MAX_MOVEMENT",
+    "rocker_bolster",
+    "smallest_for_load",
+    "Headwall",
+    "HEADWALLS_CIRCULAR",
+    "HEADWALLS_BY_DIAMETER",
+    "headwall_for_diameter",
 ]
