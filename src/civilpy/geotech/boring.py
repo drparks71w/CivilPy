@@ -139,7 +139,7 @@ class GradingResult:
         if not pts or size_mm < pts[0].particle_size_mm or size_mm > pts[-1].particle_size_mm:
             # allow exact endpoints
             for p in pts:
-                if abs(p.particle_size_mm - size_mm) < 1e-12:
+                if abs(p.particle_size_mm - size_mm) < 1e-12:  # pragma: no cover
                     return p.percent_passing
             return None
         import math

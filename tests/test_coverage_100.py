@@ -276,6 +276,219 @@ def test_rc_flexure_compression_steel_not_yielding():
     assert r.capacity > 0
 
 
+# ── geotech/boring.py — SPT / gradation / sample / borehole edges ─────────────
+
+from civilpy.geotech.boring import (
+    DriveIncrement, SPTResult, GradingPoint, GradingResult, Sample, Borehole,
+)
+
+
+def test_sptresult_n_value_and_n60_branches():
+    one = SPTResult(10.0, (DriveIncrement(5),))
+    assert one.n_value is None              # < 2 increments → no N
+    assert one.n60() is None                # N is None → N60 None
+    assert one.total_penetration_in == 6.0
+
+    two = SPTResult(10.0, (DriveIncrement(4), DriveIncrement(6)))
+    assert two.n_value == 10                # 2 increments → sum of both
+
+    three = SPTResult(8.0, (DriveIncrement(3), DriveIncrement(5), DriveIncrement(7)))
+    # borehole-diameter correction branches: <=4.7, <=6.0, else
+    assert three.n60(borehole_diameter_in=4.0) > 0
+    assert three.n60(borehole_diameter_in=5.5) > 0
+    assert three.n60(borehole_diameter_in=8.0, liner=True, rod_length_ft=40.0) > 0
+    # rod-length Cr bands: <13 (default depth 8), 13-20, 20-33, >=33
+    assert three.n60(rod_length_ft=15.0) > 0
+    assert three.n60(rod_length_ft=25.0) > 0
+
+
+def test_grading_size_lookups_and_coefficients():
+    pts = (GradingPoint(10.0, 100), GradingPoint(2.0, 60),
+           GradingPoint(0.5, 40), GradingPoint(0.075, 10))
+    g = GradingResult(5.0, pts)
+    assert g.percent_passing_at(2.0) == 60          # exact match
+    assert 40 < g.percent_passing_at(1.0) < 60      # interpolated
+    assert g.percent_passing_at(100.0) is None      # outside range
+    assert g.d_size(60) == 2.0                       # exact percent
+    assert g.d10 is not None and g.d30 is not None and g.d60 is not None
+    assert g.coefficient_of_uniformity is not None
+    assert g.coefficient_of_curvature is not None
+    # percent outside the curve → None
+    assert g.d_size(0.0) is None
+
+    # degenerate curves with duplicate keys exercise the equal-key branches
+    dup_size = GradingResult(5.0, (GradingPoint(2.0, 80), GradingPoint(2.0, 40)))
+    assert dup_size.percent_passing_at(2.0) in (80, 40)
+    dup_pct = GradingResult(5.0, (GradingPoint(4.0, 50), GradingPoint(1.0, 50)))
+    assert dup_pct.d_size(50) in (4.0, 1.0)
+
+    # single-point curve queried at its exact key falls through to the
+    # no-bracket return (empty consecutive-pair loop)
+    one_pt = GradingResult(5.0, (GradingPoint(2.0, 50),))
+    assert one_pt.percent_passing_at(2.0) is None
+    assert one_pt.d_size(50) is None
+
+
+def test_sample_recovery_and_borehole_lookups():
+    s = Sample(depth_top_ft=5.0, depth_bottom_ft=7.0)   # no recovery recorded
+    assert s.recovery_percent is None
+    bh = Borehole(boring_id="B1")                        # no ground elevation/data
+    assert bh.elevation_at(5.0) is None
+    assert bh.n_at(5.0) is None
+    assert bh.d50_at(5.0) is None                        # no gradation present
+
+
+# ── geotech/boring_io.py — DIGGS parser helpers and edge cases ────────────────
+
+import xml.etree.ElementTree as ET
+from civilpy.geotech import boring_io as bio
+
+
+def _el(xml):
+    return ET.fromstring(xml)
+
+
+def test_boring_io_text_and_float_helpers():
+    el = _el("<r><a>  12.5 m </a><b></b><c>not-a-number</c></r>")
+    assert bio._text(el, "a") == "12.5 m"
+    assert bio._text(el, "b") is None          # empty text
+    assert bio._text(el, "missing") is None    # absent element
+    assert bio._float("12.5 m") == 12.5        # takes first token
+    assert bio._float(None) is None
+    assert bio._float("   ") is None           # IndexError path
+    assert bio._float("abc") is None           # ValueError path
+
+
+def test_boring_io_ref_and_id_helpers():
+    el = _el('<r xmlns:x="u"><ref x:href="#B-001}"/><noref/><thing x:id="G7"/></r>')
+    assert bio._ref_id(el, "ref") == "B-001"   # strips # and stray brace
+    assert bio._ref_id(el, "noref") is None    # child present, no href
+    assert bio._ref_id(el, "absent") is None   # child absent
+    assert bio._gml_id(_el('<x id="abc"/>')) == "abc"
+    assert bio._gml_id(_el("<x/>")) is None
+    assert bio._first(_el("<r><a/></r>"), "z") is None
+
+
+def test_boring_io_poslist_helper():
+    assert bio._poslist_floats(_el("<r><pos>1 2 3</pos></r>")) == [1.0, 2.0, 3.0]
+    assert bio._poslist_floats(_el("<r><other/></r>")) == []
+
+
+def test_load_root_from_bytes_and_path(tmp_path):
+    xml = b'<Diggs xmlns="http://diggsml.org/schemas/2.5.a"></Diggs>'
+    assert bio._load_root(xml).tag.endswith("Diggs")          # bytes branch
+    p = tmp_path / "d.xml"
+    p.write_bytes(xml)
+    assert bio._load_root(str(p)).tag.endswith("Diggs")       # path branch
+    with open(p, "rb") as fh:
+        assert bio._load_root(fh).tag.endswith("Diggs")       # file-object branch
+
+
+def test_parse_borehole_full_and_partial():
+    full = _el(
+        "<Borehole id='B-1'>"
+        "<name>B-1</name>"
+        "<referencePoint><pos>-83.0 40.0 800.0</pos></referencePoint>"
+        "<station>12+34</station><offset>5 ft</offset><offsetDirection>RT</offsetDirection>"
+        "<totalMeasuredDepth>50 ft</totalMeasuredDepth><boreholePurpose>design</boreholePurpose>"
+        "<whenConstructed><start>2020-01-01</start></whenConstructed>"
+        "<waterStrike><waterLocation><pos>10.5</pos></waterLocation></waterStrike>"
+        "</Borehole>")
+    bh = bio._parse_borehole(full, project="P")
+    assert bh.boring_id == "B-1" and bh.latitude == 40.0 and bh.ground_elevation_ft == 800.0
+    assert bh.station == "12+34" and bh.offset_ft == 5.0 and bh.total_depth_ft == 50.0
+    assert bh.date == "2020-01-01" and bh.water_strike_depth_ft == 10.5
+
+    # 2-coord reference point, name falls back to gml id, no optional blocks
+    partial = _el("<Borehole id='B-2'><referencePoint><pos>-83.1 40.1</pos>"
+                  "</referencePoint></Borehole>")
+    bh2 = bio._parse_borehole(partial, project=None)
+    assert bh2.boring_id == "B-2" and bh2.longitude == -83.1 and bh2.ground_elevation_ft is None
+
+
+def test_depth_from_test_location_and_gml_fallback():
+    with_loc = _el("<Test><location><pos>1.5 2.0</pos></location></Test>")
+    assert bio._depth_from_test(with_loc) == 1.5
+    by_id = _el("<Test id='SPT_B-1_3.5'/>")        # numeric suffix of gml:id
+    assert bio._depth_from_test(by_id) == 3.5
+
+
+def test_parse_spt_variants():
+    good = _el("<Test id='SPT_B_2.0'>"
+               "<DrivenPenetrationTest><hammerType>auto</hammerType>"
+               "<hammerEfficiency>0.8</hammerEfficiency></DrivenPenetrationTest>"
+               "<DriveSet><blowCount>5</blowCount><penetration>6</penetration></DriveSet>"
+               "<DriveSet><blowCount>7</blowCount></DriveSet>"
+               "<DriveSet><penetration>6</penetration></DriveSet>"  # no blowCount → skipped
+               "</Test>")
+    spt = bio._parse_spt(good)
+    assert spt is not None and len(spt.increments) == 2 and spt.hammer_type == "auto"
+    assert bio._parse_spt(_el("<Test/>")) is None                  # no depth
+    assert bio._parse_spt(_el("<Test id='SPT_B_2.0'/>")) is None   # depth but no increments
+
+
+def test_parse_grading_variants():
+    good = _el("<Test id='PSD_B_4.0'>"
+               "<Grading><particleSize>2.0</particleSize><percentPassing>60</percentPassing></Grading>"
+               "<Grading><particleSize>0.075</particleSize></Grading>"  # missing pct → skipped
+               "</Test>")
+    g = bio._parse_grading(good)
+    assert g is not None and len(g.points) == 1
+    assert bio._parse_grading(_el("<Test/>")) is None              # no depth
+    assert bio._parse_grading(_el("<Test id='PSD_B_4.0'/>")) is None  # depth but no points
+
+
+def test_parse_sample_variants():
+    two = _el("<SamplingActivity><samplingLocation><pos>5.0 7.0</pos></samplingLocation>"
+              "<samplingMethod><name>SS</name></samplingMethod>"
+              "<totalSampleRecoveryLength>18</totalSampleRecoveryLength></SamplingActivity>")
+    s = bio._parse_sample(two)
+    assert s.depth_top_ft == 5.0 and s.depth_bottom_ft == 7.0 and s.method == "SS"
+    one = _el("<SamplingActivity><samplingLocation><pos>9.0</pos></samplingLocation></SamplingActivity>")
+    s1 = bio._parse_sample(one)
+    assert s1.depth_top_ft == s1.depth_bottom_ft == 9.0
+    assert bio._parse_sample(_el("<SamplingActivity/>")) is None   # no location
+
+
+def test_parse_diggs_ignores_orphan_tests():
+    # a Test whose samplingFeatureRef matches no Borehole is skipped
+    doc = (
+        '<Diggs xmlns="http://diggsml.org/schemas/2.5.a" '
+        'xmlns:xlink="http://www.w3.org/1999/xlink">'
+        '<Test><samplingFeatureRef xlink:href="#nope"/><DriveSet/></Test>'
+        '</Diggs>'
+    )
+    assert bio.parse_diggs(doc) == []
+
+
+def test_parse_diggs_full_document_links_records():
+    doc = (
+        '<Diggs xmlns:xlink="http://www.w3.org/1999/xlink">'
+        '<Project><name>Demo Project</name></Project>'
+        '<Borehole id="B-1"><name>B-1</name>'
+        '<referencePoint><pos>-83 40 800</pos></referencePoint></Borehole>'
+        # SPT attached via a prefixed ref that only resolves after trimming
+        '<Test id="SPT_x_2.0"><samplingFeatureRef xlink:href="#Borehole_B-1"/>'
+        '<DriveSet><blowCount>5</blowCount></DriveSet>'
+        '<DriveSet><blowCount>7</blowCount></DriveSet></Test>'
+        # grading attached via the PARTICLE name path
+        '<Test id="PSD_x_4.0"><samplingFeatureRef xlink:href="#B-1"/>'
+        '<name>PARTICLE SIZE</name>'
+        '<Grading><particleSize>2.0</particleSize><percentPassing>60</percentPassing></Grading>'
+        '</Test>'
+        '<SamplingActivity><samplingFeatureRef xlink:href="#B-1"/>'
+        '<samplingLocation><pos>5 7</pos></samplingLocation></SamplingActivity>'
+        '</Diggs>'
+    )
+    holes = bio.parse_diggs(doc)
+    assert len(holes) == 1
+    bh = holes[0]
+    assert bh.project == "Demo Project"
+    assert len(bh.spt) == 1 and bh.spt[0].n_value == 12
+    assert len(bh.grading) == 1
+    assert len(bh.samples) == 1 and bh.samples[0].depth_bottom_ft == 7.0
+
+
 # ── geotech/cande_adapter.py — soil selection ─────────────────────────────────
 
 from civilpy.geotech import cande_adapter as ca
