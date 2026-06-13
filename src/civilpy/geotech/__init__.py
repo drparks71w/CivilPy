@@ -20,6 +20,7 @@ import math
 import numpy as np
 import matplotlib.pyplot as plt
 
+from civilpy.geotech import spt
 from civilpy.geotech.boring import (
     Borehole,
     DriveIncrement,
@@ -29,6 +30,10 @@ from civilpy.geotech.boring import (
     SPTResult,
 )
 from civilpy.geotech.boring_io import parse_diggs, read_pdf_log
+
+# civilpy.geotech.cande_adapter is intentionally not imported here: it
+# depends on civilpy.structural.cande, so it stays an opt-in submodule
+# import to keep ``import civilpy.geotech`` free of the structural package.
 
 
 def rankine_active_pressure(unit_weight, height, friction_angle):
