@@ -34,6 +34,12 @@ Sub-modules:
     parameters (height, post spacing, blockouts, post sections) plus the
     series registry and the bridge terminal assemblies that tie a guardrail
     run into the cataloged bridge railings.
+
+``box_beam``
+    Prestressed concrete box beam construction details (PSBD-1-25): tie
+    rods, anchor dowels, shear keys, diaphragm placement rules, and the
+    standard elastomeric bearing pads.  The companion section/strand/load-
+    rating sheet PSBDD-1-25 is referenced but not transcribed here.
 """
 
 from civilpy.structural.odot.bridge_railing import (
@@ -55,6 +61,25 @@ from civilpy.structural.odot.guardrail import (
     mgs_drawing,
     terminals_for_railing,
 )
+from civilpy.structural.odot.box_beam import (
+    ANCHOR_DOWEL,
+    BEARING_DESIGN_DATA,
+    BEARING_PADS,
+    BOX_BEAM_DEPTHS,
+    DESIGN_DATA_SHEET,
+    DESIGN_SPEC,
+    SHEAR_KEY,
+    TIE_ROD,
+    AnchorDowelDetail,
+    BearingDesignData,
+    BearingPad,
+    BoxBeamDesignSpec,
+    ShearKeyDetail,
+    TieRodDetail,
+    bearing_pad,
+    diaphragm_count,
+    diaphragm_end_offset,
+)
 
 __all__ = [
     "BridgeRailing",
@@ -72,4 +97,21 @@ __all__ = [
     "mgs_drawing",
     "bridge_terminal_assemblies",
     "terminals_for_railing",
+    "DESIGN_DATA_SHEET",
+    "BOX_BEAM_DEPTHS",
+    "BoxBeamDesignSpec",
+    "DESIGN_SPEC",
+    "TieRodDetail",
+    "TIE_ROD",
+    "AnchorDowelDetail",
+    "ANCHOR_DOWEL",
+    "ShearKeyDetail",
+    "SHEAR_KEY",
+    "BearingPad",
+    "BEARING_PADS",
+    "BearingDesignData",
+    "BEARING_DESIGN_DATA",
+    "bearing_pad",
+    "diaphragm_count",
+    "diaphragm_end_offset",
 ]
