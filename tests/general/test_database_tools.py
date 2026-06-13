@@ -18,6 +18,14 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import unittest
 from unittest.mock import patch
+
+import pytest
+
+# psycopg and sshtunnel ship in the optional "db" extra; skip this module
+# cleanly when they are not installed rather than erroring on collection.
+pytest.importorskip("psycopg")
+pytest.importorskip("sshtunnel")
+
 from civilpy.general.database_tools import ssh_into_postgres
 
 
