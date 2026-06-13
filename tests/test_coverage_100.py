@@ -276,6 +276,53 @@ def test_rc_flexure_compression_steel_not_yielding():
     assert r.capacity > 0
 
 
+# ── structural/influence_lines.py — two-span section past first support ───────
+
+def test_two_span_il_section_in_second_span():
+    from civilpy.structural.influence_lines import InfluenceLine
+    shear = InfluenceLine.two_span_shear((40.0, 40.0), section=50.0)  # c > l1
+    moment = InfluenceLine.two_span_moment((40.0, 40.0), section=50.0)
+    assert callable(shear.eta) and callable(moment.eta)
+    # evaluate across the structure to exercise the section-dependent branches
+    assert isinstance(shear.eta(10.0), float)
+    assert isinstance(moment.eta(70.0), float)
+
+
+# ── structural/beam_bending.py — moment alias ─────────────────────────────────
+
+def test_beam_get_bending_moment_alias():
+    from civilpy.structural.beam_bending import Beam, PointLoadV
+    beam = Beam(20.0)
+    beam.pinned_support = 0
+    beam.rolling_support = 20.0
+    beam.add_loads([PointLoadV(-10.0, 10.0)])
+    assert beam.get_bending_moment() == beam.get_moment_function()
+
+
+# ── structural/strut_and_tie.py — unstable geometry raises ────────────────────
+
+def test_strut_and_tie_unstable_model_raises():
+    from civilpy.structural.strut_and_tie import StrutAndTieModel
+    m = StrutAndTieModel()
+    m.add_node("A", 0.0, 0.0)
+    m.add_node("B", 10.0, 0.0)
+    m.add_member("A", "B")
+    m.add_load("B", fy=-10.0)          # loaded but inadequately restrained
+    m.add_support("A", fix_x=True)     # singular / unstable system
+    with pytest.raises(ValueError, match="unstable"):
+        m.solve()
+
+
+# ── structural/aashto/lrfd/prestressed.py — mild compression steel ────────────
+
+def test_ps_flexural_with_compression_steel():
+    from civilpy.structural.aashto.lrfd import prestressed as ps
+    r = ps.ps_flexural_resistance(a_ps=4.59, f_pu=270.0, d_p=36.0, f_c=4.0, b=48.0,
+                                  a_s=2.0, d_s=34.0, f_y=60.0,
+                                  a_s_prime=1.0, d_s_prime=2.0, f_y_prime=60.0)
+    assert r.capacity > 0
+
+
 # ── geotech/boring.py — SPT / gradation / sample / borehole edges ─────────────
 
 from civilpy.geotech.boring import (
