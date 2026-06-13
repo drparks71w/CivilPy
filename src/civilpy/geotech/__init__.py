@@ -20,7 +20,7 @@ import math
 import numpy as np
 import matplotlib.pyplot as plt
 
-from civilpy.geotech import spt
+from civilpy.geotech import deep_foundation, spt
 from civilpy.geotech.boring import (
     Borehole,
     DriveIncrement,
