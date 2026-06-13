@@ -14,19 +14,28 @@
 #  You should have received a copy of the GNU Affero General Public License
 #  along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-"""Axial capacity of drilled shafts from a boring log.
+"""Axial capacity of deep foundations from a boring log.
 
-Implements the FHWA / AASHTO LRFD Article 10.8 drilled-shaft method
-(O'Neill & Reese, FHWA GEC-10): the alpha method for side and tip
-resistance in cohesive soil and the beta method for cohesionless soil.
+Two methods share one boring-driven integrator:
+
+* **Drilled shafts** -- FHWA / AASHTO LRFD Article 10.8 (O'Neill & Reese,
+  FHWA GEC-10): the alpha method for side and tip resistance in cohesive
+  soil and the beta method for cohesionless soil.
+* **Driven piles** -- the Meyerhof (1976) SPT method for cohesionless soil
+  (unit skin friction and end bearing from N60) plus the alpha method in
+  clay, consistent with AASHTO 10.7.3.8.6.
+
 The unit-resistance functions are the citable core; the
-:func:`drilled_shaft_capacity` driver discretises a shaft, pulls the soil
-properties at each depth from a :class:`~civilpy.geotech.boring.Borehole`
-(blow counts via :mod:`civilpy.geotech.spt`), integrates side resistance,
-and adds tip resistance.
+:func:`drilled_shaft_capacity` and :func:`driven_pile_capacity` drivers
+discretise the element, pull soil properties at each depth from a
+:class:`~civilpy.geotech.boring.Borehole` (blow counts via
+:mod:`civilpy.geotech.spt`), integrate side resistance, and add tip
+resistance.
 
-Soil parameters derived from SPT are estimates; a shaft for final design
-should be checked against a project-specific subsurface characterisation.
+Soil parameters derived from SPT are estimates; a foundation for final
+design should be checked against a project-specific subsurface
+characterisation.  The Meyerhof method in particular is known to be
+unconservative for end bearing in dense sand.
 
 Units: lengths in feet, unit weights in pcf, stresses and unit
 resistances in ksf, capacities in kips, angles in degrees.
@@ -222,6 +231,122 @@ def drilled_shaft_capacity(
 
     return ShaftCapacity(
         diameter_ft=diameter_ft,
+        tip_depth_ft=tip_depth_ft,
+        side_nominal_kips=side_kips,
+        tip_nominal_kips=tip_kips,
+    )
+
+
+# ----------------------------------------------------- driven piles (Meyerhof)
+
+
+def meyerhof_unit_skin_friction_sand(
+    n60: float, displacement: bool = True, pa_ksf: float = PA_KSF
+) -> float:
+    """Nominal unit skin friction (ksf) of a driven pile in cohesionless
+    soil (Meyerhof 1976): fs = m * Pa * N60, with m = 0.02 for large-
+    displacement piles (closed-end pipe, precast) and 0.01 for small-
+    displacement piles (H-piles, open-end pipe)."""
+    m = 0.02 if displacement else 0.01
+    return m * pa_ksf * n60
+
+
+def meyerhof_unit_end_bearing_sand(
+    n60: float, embedment_ratio: float, pa_ksf: float = PA_KSF
+) -> float:
+    """Nominal unit end bearing (ksf) of a driven pile in cohesionless soil
+    (Meyerhof 1976): qp = 0.4 Pa N60 (Lb/D) <= 4 Pa N60, where
+    ``embedment_ratio`` Lb/D is the embedment in the bearing stratum over
+    the pile width."""
+    qp = 0.4 * pa_ksf * n60 * embedment_ratio
+    return min(qp, 4.0 * pa_ksf * n60)
+
+
+def pile_unit_skin_friction_clay(su_ksf: float, alpha: float = 0.55) -> float:
+    """Nominal unit skin friction (ksf) of a driven pile in cohesive soil
+    by the alpha (total-stress) method: fs = alpha * Su.  ``alpha`` follows
+    Tomlinson/API and ranges from ~0.5 (stiff clay) to 1.0 (soft clay)."""
+    return alpha * su_ksf
+
+
+@dataclass
+class PileCapacity:
+    """Result of :func:`driven_pile_capacity`: nominal resistances (kips)
+    and the pile geometry that produced them."""
+
+    width_ft: float
+    tip_depth_ft: float
+    side_nominal_kips: float
+    tip_nominal_kips: float
+
+    @property
+    def total_nominal_kips(self) -> float:
+        return self.side_nominal_kips + self.tip_nominal_kips
+
+    def factored_kips(self, phi_side: float = 0.45, phi_tip: float = 0.45) -> float:
+        """Factored axial resistance (kips).  Defaults are representative
+        AASHTO 10.5.5.2.3 driven-pile resistance factors for the SPT-based
+        methods; pass the values for the controlling soil and method."""
+        return phi_side * self.side_nominal_kips + phi_tip * self.tip_nominal_kips
+
+
+def driven_pile_capacity(
+    borehole: Borehole,
+    width_ft: float,
+    tip_depth_ft: float,
+    perimeter_ft: float | None = None,
+    area_ft2: float | None = None,
+    displacement: bool = True,
+    alpha_clay: float = 0.55,
+    water_table_ft: float | None = None,
+    energy_ratio: float = 0.60,
+    step_ft: float = 0.5,
+    su_factor_psf: float = 92.0,
+) -> PileCapacity:
+    """Nominal axial (compression) capacity of a driven pile.
+
+    Discretises the pile, derives soil properties at each element from
+    ``borehole`` (cohesive vs cohesionless by gradation fines), and sums
+    skin friction over the full embedded length -- Meyerhof fs = m Pa N60
+    in sand, alpha * Su in clay -- then adds end bearing at the tip
+    (Meyerhof in sand, 9 Su in clay).
+
+    ``width_ft`` is the pile diameter/width.  By default a solid round/
+    square section is assumed (``perimeter`` pi*B, ``area`` pi*B^2/4);
+    pass ``perimeter_ft`` and ``area_ft2`` for H-piles or open sections.
+    ``displacement`` selects the Meyerhof skin-friction coefficient.
+    """
+    if not borehole.spt:
+        raise ValueError(f"boring {borehole.boring_id} has no SPT data")
+    if tip_depth_ft <= 0 or width_ft <= 0:
+        raise ValueError("width and tip depth must be positive")
+
+    wt = water_table_ft if water_table_ft is not None else borehole.water_strike_depth_ft
+    perimeter = perimeter_ft if perimeter_ft is not None else math.pi * width_ft
+    area = area_ft2 if area_ft2 is not None else math.pi * width_ft ** 2 / 4.0
+
+    z = 0.0
+    side_kips = 0.0
+    while z < tip_depth_ft - 1e-9:
+        dz = min(step_ft, tip_depth_ft - z)
+        z_mid = z + dz / 2.0
+        p = _props_at(borehole, z_mid, energy_ratio, su_factor_psf)
+        if p.cohesive:
+            f_s = pile_unit_skin_friction_clay(p.su_ksf, alpha_clay)
+        else:
+            f_s = meyerhof_unit_skin_friction_sand(p.n60, displacement)
+        side_kips += f_s * perimeter * dz
+        z += dz
+
+    tip = _props_at(borehole, tip_depth_ft - step_ft / 2.0, energy_ratio, su_factor_psf)
+    if tip.cohesive:
+        q_p = 9.0 * tip.su_ksf
+    else:
+        q_p = meyerhof_unit_end_bearing_sand(tip.n60, tip_depth_ft / width_ft)
+    tip_kips = q_p * area
+
+    return PileCapacity(
+        width_ft=width_ft,
         tip_depth_ft=tip_depth_ft,
         side_nominal_kips=side_kips,
         tip_nominal_kips=tip_kips,

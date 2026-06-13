@@ -140,3 +140,76 @@ class TestDriver:
         bh = _uniform_boring(n=20, fines=5)
         with pytest.raises(ValueError):
             df.drilled_shaft_capacity(bh, 0.0, 30.0)
+
+
+class TestMeyerhofUnit:
+    def test_skin_friction_displacement(self):
+        # 0.02 * 2.116 * 20 = 0.8464 ksf.
+        assert df.meyerhof_unit_skin_friction_sand(20.0) == pytest.approx(0.8464, abs=0.001)
+
+    def test_skin_friction_small_displacement_half(self):
+        full = df.meyerhof_unit_skin_friction_sand(20.0, displacement=True)
+        h = df.meyerhof_unit_skin_friction_sand(20.0, displacement=False)
+        assert h == pytest.approx(0.5 * full)
+
+    def test_end_bearing_proportional_then_capped(self):
+        # qp = 0.4 Pa N (Lb/D), cap 4 Pa N reached at Lb/D = 10.
+        below = df.meyerhof_unit_end_bearing_sand(30.0, 5.0)
+        atcap = df.meyerhof_unit_end_bearing_sand(30.0, 10.0)
+        over = df.meyerhof_unit_end_bearing_sand(30.0, 20.0)
+        assert below == pytest.approx(0.4 * df.PA_KSF * 30.0 * 5.0)
+        assert atcap == pytest.approx(4.0 * df.PA_KSF * 30.0)
+        assert over == pytest.approx(atcap)  # capped
+
+    def test_clay_skin_alpha(self):
+        assert df.pile_unit_skin_friction_clay(2.0, alpha=0.55) == pytest.approx(1.1)
+
+
+class TestDrivenPileDriver:
+    def test_sand_pile_components_positive(self):
+        bh = _uniform_boring(n=20, fines=5)
+        cap = df.driven_pile_capacity(bh, width_ft=1.0, tip_depth_ft=40.0)
+        assert cap.side_nominal_kips > 0
+        assert cap.tip_nominal_kips > 0
+        assert cap.total_nominal_kips == pytest.approx(
+            cap.side_nominal_kips + cap.tip_nominal_kips
+        )
+
+    def test_tip_matches_unit_equation(self):
+        bh = _uniform_boring(n=20, fines=5)
+        cap = df.driven_pile_capacity(bh, 1.0, 40.0)
+        # N60 = 20 at the tip; Lb/D = 40 -> capped end bearing over area.
+        area = math.pi * 1.0 ** 2 / 4.0
+        q_p = df.meyerhof_unit_end_bearing_sand(20.0, 40.0)
+        assert cap.tip_nominal_kips == pytest.approx(q_p * area, rel=0.02)
+
+    def test_full_length_skin_no_exclusions(self):
+        # Unlike drilled shafts, the pile counts skin over the whole length,
+        # so even a short pile has side resistance.
+        bh = _uniform_boring(n=20, fines=5)
+        cap = df.driven_pile_capacity(bh, 1.0, 7.0)
+        assert cap.side_nominal_kips > 0
+
+    def test_h_pile_overrides(self):
+        bh = _uniform_boring(n=20, fines=5)
+        solid = df.driven_pile_capacity(bh, 1.0, 40.0, displacement=True)
+        hpile = df.driven_pile_capacity(
+            bh, 1.0, 40.0, perimeter_ft=4.0, area_ft2=0.5, displacement=False
+        )
+        # smaller area and the small-displacement coefficient reduce capacity.
+        assert hpile.tip_nominal_kips < solid.tip_nominal_kips
+
+    def test_clay_pile_branch(self):
+        bh = _uniform_boring(n=10, fines=60)
+        cap = df.driven_pile_capacity(bh, 1.0, 40.0)
+        assert cap.side_nominal_kips > 0
+        assert cap.tip_nominal_kips > 0
+
+    def test_factored_less_than_nominal(self):
+        bh = _uniform_boring(n=20, fines=5)
+        cap = df.driven_pile_capacity(bh, 1.0, 40.0)
+        assert cap.factored_kips() < cap.total_nominal_kips
+
+    def test_requires_spt(self):
+        with pytest.raises(ValueError):
+            df.driven_pile_capacity(Borehole(boring_id="empty"), 1.0, 30.0)
