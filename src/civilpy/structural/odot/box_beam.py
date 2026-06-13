@@ -24,10 +24,10 @@ grouting, intermediate-diaphragm placement rules, the available beam
 depths, and the standard steel-reinforced elastomeric bearing pads (B1/B2)
 with their design data.
 
-NOT included: the standard box-beam *section dimensions*, *strand patterns*,
-and *load ratings*.  PSBD-1-25 states those live on the companion design
-data sheet PSBDD-1-25, which is not part of this transcription
-(:data:`DESIGN_DATA_SHEET`).
+The standard box-beam *strand patterns*, eccentricities, camber, and *load
+ratings* live on the companion design data sheet PSBDD-1-25
+(:data:`DESIGN_DATA_SHEET`); those are carried in
+:mod:`civilpy.structural.odot.box_beam_design`.
 
 Lengths are in inches, forces in kips, stresses/moduli in ksi unless a
 field name says otherwise.  Values are spot-checked against the drawing in
@@ -36,8 +36,8 @@ the test suite; the drawing remains the controlling document.
 
 from dataclasses import dataclass
 
-#: Companion design data sheet (section dims, strand tables, load ratings)
-#: referenced by PSBD-1-25 but not transcribed here.
+#: Companion design data sheet (strand tables, camber, load ratings),
+#: transcribed in :mod:`civilpy.structural.odot.box_beam_design`.
 DESIGN_DATA_SHEET = "PSBDD-1-25"
 
 #: Standard box-beam depths, inches (PSBD-1-25 sheet 4/6).

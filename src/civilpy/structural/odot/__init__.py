@@ -38,8 +38,12 @@ Sub-modules:
 ``box_beam``
     Prestressed concrete box beam construction details (PSBD-1-25): tie
     rods, anchor dowels, shear keys, diaphragm placement rules, and the
-    standard elastomeric bearing pads.  The companion section/strand/load-
-    rating sheet PSBDD-1-25 is referenced but not transcribed here.
+    standard elastomeric bearing pads.
+
+``box_beam_design``
+    Prestressed box beam standard designs and LRFR load ratings (PSBDD-1-25):
+    strand patterns, eccentricities, camber, and rating factors for the
+    composite (CB) and non-composite (B) families at five depths.
 
 ``rocker_bolster``
     Structural steel rocker and bolster bearing dimensions and capacities
@@ -101,6 +105,17 @@ from civilpy.structural.odot.headwall import (
     Headwall,
     headwall_for_diameter,
 )
+from civilpy.structural.odot.box_beam_design import (
+    BOX_BEAM_DESIGNS,
+    BOX_BEAM_RATINGS,
+    BOX_DESIGNATIONS,
+    RATING_VEHICLES,
+    BoxBeamDesign,
+    BoxBeamRating,
+    box_beam_design,
+    box_beam_rating,
+    designs_for_box,
+)
 
 __all__ = [
     "BridgeRailing",
@@ -144,4 +159,13 @@ __all__ = [
     "HEADWALLS_CIRCULAR",
     "HEADWALLS_BY_DIAMETER",
     "headwall_for_diameter",
+    "BoxBeamDesign",
+    "BoxBeamRating",
+    "BOX_BEAM_DESIGNS",
+    "BOX_BEAM_RATINGS",
+    "BOX_DESIGNATIONS",
+    "RATING_VEHICLES",
+    "box_beam_design",
+    "designs_for_box",
+    "box_beam_rating",
 ]
