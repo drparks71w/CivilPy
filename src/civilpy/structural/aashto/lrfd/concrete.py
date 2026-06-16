@@ -597,3 +597,106 @@ def box_culvert_slab_shear(
             "applicable": fill_ft >= 2.0,
         },
     )
+
+
+# ── Flexural reinforcement sizing ──────────────────────────────────────────────
+
+
+@dataclass
+class FlexuralRebarDesign:
+    """Result of :func:`size_flexural_rebar`.
+
+    ``a_s_required`` (in^2) is the tension-steel area that just reaches the
+    governing target; ``a_s_provided`` is what the selected whole ``n_bars``
+    of ``bar_size`` actually supply.  ``governing`` is ``"strength"`` or
+    ``"minimum reinforcement"``.  ``check`` is the flexural
+    :class:`CheckResult` evaluated with the provided steel against ``m_u``
+    (so ``check.ratio >= 1`` confirms the selection works).
+    """
+
+    a_s_required: float
+    a_s_provided: float
+    n_bars: int
+    bar_size: int
+    governing: str
+    check: CheckResult
+
+
+def size_flexural_rebar(
+    m_u: float,
+    b: float,
+    d_s: float,
+    *,
+    f_c: float = 4.0,
+    f_y: float = 60.0,
+    bar_size: int = 8,
+    h: float | None = None,
+    design_year: int | None = None,
+    rho_max: float = 0.08,
+) -> FlexuralRebarDesign:
+    """Select tension reinforcement for a singly reinforced rectangular RC
+    section to carry a factored moment ``m_u`` (kip-in).
+
+    The area is found by bisecting
+    :func:`rc_rectangular_flexural_resistance` until the factored resistance
+    phi*Mn reaches the governing target, then the whole number of
+    ``bar_size`` (ASTM #) bars that supplies it is chosen.  When the total
+    depth ``h`` (in) is given, the minimum-reinforcement provision (5.6.3.3)
+    can raise the target above the strength demand -- the lesser of
+    ``Mcr`` and ``1.33*Mu`` -- and ``governing`` records which controlled.
+
+    This stops at a *checked* design: it returns the bars and the governing
+    :class:`CheckResult`; detailing (bar spacing, layers, development,
+    crack control via :func:`rc_crack_control_spacing`) is the engineer's.
+    ``b``, ``d_s``, ``h`` in inches; ``f_c``, ``f_y`` in ksi; ``m_u`` kip-in.
+    """
+    from civilpy.structural.steel import Rebar
+
+    bar_area = float(Rebar(bar_size).area.magnitude)
+
+    target = m_u
+    governing = "strength"
+    if h is not None:
+        fr = modulus_of_rupture(f_c)
+        if design_year is not None and design_year < 2012:
+            gamma_1, gamma_3 = 1.2, 1.0
+        else:
+            gamma_1, gamma_3 = 1.6, 0.67
+        s_c = b * h ** 2 / 6.0
+        m_cr = gamma_3 * gamma_1 * fr * s_c
+        min_target = min(m_cr, 1.33 * m_u)
+        if min_target > target:
+            target, governing = min_target, "minimum reinforcement"
+
+    def factored_mn(a_s: float) -> float:
+        return rc_rectangular_flexural_resistance(
+            a_s=a_s, f_y=f_y, f_c=f_c, b=b, d_s=d_s
+        ).factored_capacity
+
+    # Grow an upper bound until it carries the target (capped at rho_max).
+    cap = rho_max * b * d_s
+    hi = min(0.05, cap)
+    while factored_mn(hi) < target and hi < cap:
+        hi = min(hi * 2.0, cap)
+    lo = 0.0
+    for _ in range(100):  # bisection to a tight A_s tolerance
+        mid = 0.5 * (lo + hi)
+        if factored_mn(mid) >= target:
+            hi = mid
+        else:
+            lo = mid
+    a_s_required = hi
+
+    n_bars = max(1, math.ceil(a_s_required / bar_area))
+    a_s_provided = n_bars * bar_area
+    check = rc_rectangular_flexural_resistance(
+        a_s=a_s_provided, f_y=f_y, f_c=f_c, b=b, d_s=d_s, m_u=m_u
+    )
+    return FlexuralRebarDesign(
+        a_s_required=a_s_required,
+        a_s_provided=a_s_provided,
+        n_bars=n_bars,
+        bar_size=bar_size,
+        governing=governing,
+        check=check,
+    )
