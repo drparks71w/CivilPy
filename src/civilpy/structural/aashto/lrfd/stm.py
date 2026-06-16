@@ -22,10 +22,16 @@ member forces, implemented directly from the specification.
 Units: kip, inch, ksi.  Pass strut forces as magnitudes (positive).
 """
 
+# //TODO - Add tie anchorage and development length capacity check behind the nodal zone
+
+# //TODO - Add strut bursting/splitting transverse reinforcement checks for bottle-shaped struts
+
+# //TODO - Add geometric limit checks like minimum 25-degree strut-to-tie angle (Note: Verify if this is already handled in civilpy.structural.strut_and_tie)
+
 from civilpy.structural.aashto.lrfd.core import CheckResult, article
 
 PHI_STM_TENSION = 0.90  # ties (5.5.4.2)
-PHI_STM_COMPRESSION = 0.70  # struts and nodes (5.5.4.2)
+PHI_STM_COMPRESSION = 0.70  # struts and nodes (5.5.4.2)F
 
 # Concrete efficiency factor nu (Table 5.8.2.5.3a-1) by node type, for
 # node regions WITH crack-control reinforcement per 5.8.2.6.  Without it,
@@ -76,6 +82,10 @@ def stm_node_resistance(
     reinforcement per 5.8.2.6, nu drops to 0.45.  ``m_confinement`` is the
     sqrt(A2/A1) <= 2 bearing modification; pass ``nu`` directly to
     override the table.  phi = 0.70."""
+    node_type = node_type.upper()
+    if nu is None and node_type not in NODE_EFFICIENCY:
+        raise ValueError(f"Invalid node_type '{node_type}'. Must be 'CCC', 'CCT', or 'CTT'.")
+
     if nu is None:
         nu = NODE_EFFICIENCY[node_type] if crack_control else 0.45
     f_cu = min(m_confinement, 2.0) * nu * f_c
@@ -106,13 +116,16 @@ def stm_crack_control_reinforcement(
     Pass the provided bar areas per grid spacing (in^2 at ``s_h``/``s_v``
     in); the check compares each direction's ratio against 0.003.  This
     is what qualifies the nodes for the full Table 5.8.2.5.3a-1 nu."""
+    if b_w <= 0.0 or s_h <= 0.0 or s_v <= 0.0:
+        raise ValueError("Beam width and grid spacings must be greater than zero.")
+
     required = 0.003
     ratios = {}
     if a_s_horizontal is not None:
         ratios["horizontal"] = a_s_horizontal / (b_w * s_v)
     if a_s_vertical is not None:
         ratios["vertical"] = a_s_vertical / (b_w * s_h)
-    governing = min(ratios.values()) if ratios else 0.0
+    governing = min(ratios.values()) if len(ratios) == 2 else 0.0
     return CheckResult(
         article="5.8.2.6",
         name="STM Crack Control Reinforcement",
