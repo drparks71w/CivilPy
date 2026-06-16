@@ -275,7 +275,27 @@ class TestMidasCivilRequest:
         args, kwargs = mock_req.call_args
         assert args == ("GET", "http://localhost:5000/db/NODE")
         assert kwargs["headers"]["MAPI-Key"] == "test_key"
-        assert kwargs["timeout"] == 30
+        assert kwargs["timeout"] == 60          # default request timeout
+
+    def test_request_timeout_override(self):
+        midas = _client()
+        with patch("requests.request", return_value=_response({})) as mock_req:
+            midas.request("post", "doc/ANAL", {}, timeout=600)
+        assert mock_req.call_args.kwargs["timeout"] == 600
+
+    def test_analyze_uses_long_timeout(self):
+        midas = _client()
+        with patch("requests.request", return_value=_response({})) as mock_req:
+            midas.analyze()
+        assert mock_req.call_args.kwargs["timeout"] == MidasCivil.ANALYSIS_TIMEOUT
+
+    def test_beam_forces_sends_confirmed_shape(self):
+        midas = _client()
+        with patch("requests.request", return_value=_response({"BeamForce": {}})) as mock_req:
+            midas.beam_forces([1, 2, 3], ["DC1(ST)", "HL(MV:all)"])
+        arg = mock_req.call_args.kwargs["json"]["Argument"]
+        assert arg["NODE_ELEMS"] == {"KEYS": [1, 2, 3]}   # integer ids
+        assert "UNIT" in arg and "STYLES" in arg and arg["PARTS"] == ["Part I", "Part J"]
 
     def test_http_error_raises(self):
         midas = _client()

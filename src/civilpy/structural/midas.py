@@ -391,7 +391,11 @@ class MidasCivil:
 
     DEFAULT_BASE_URL = "https://moa-engineers.midasit.com:443/civil"
 
-    def __init__(self, base_url=None, mapi_key=None, timeout=30,
+    #: Read timeout (s) for long operations — analysis, open, result tables —
+    #: on large finite-element models (a 10k-element solve exceeds the default).
+    ANALYSIS_TIMEOUT = 600
+
+    def __init__(self, base_url=None, mapi_key=None, timeout=60,
                  secrets_path=None):
         if mapi_key is None or base_url is None:
             secrets = {}
@@ -415,19 +419,21 @@ class MidasCivil:
 
     # ── Transport ─────────────────────────────────────────────────────────────
 
-    def request(self, method, command, body=None):
+    def request(self, method, command, body=None, timeout=None):
         """
         Send one request to the MIDAS API and return the parsed JSON.
 
         ``command`` is the endpoint path, e.g. ``"/db/NODE"`` or
-        ``"/doc/ANAL"``. Raises :class:`MidasApiError` on HTTP errors or
+        ``"/doc/ANAL"``. ``timeout`` overrides the instance default for one
+        call (used by :meth:`analyze`, :meth:`open`, and :meth:`result_table`
+        on large models). Raises :class:`MidasApiError` on HTTP errors or
         when the response carries an ``{"error": ...}`` payload.
         """
         url = f"{self.base_url}/{command.lstrip('/')}"
         headers = {"Content-Type": "application/json", "MAPI-Key": self.mapi_key}
         try:
             response = requests.request(method.upper(), url, headers=headers,
-                                        json=body, timeout=self.timeout)
+                                        json=body, timeout=timeout or self.timeout)
         except requests.RequestException as exc:
             raise MidasApiError(
                 f"Could not reach the MIDAS API at {self.base_url} — is "
@@ -550,8 +556,10 @@ class MidasCivil:
         return self.request("POST", "/doc/NEW", {})
 
     def open(self, path):
-        """``POST /doc/OPEN`` — open an .mcb model file on the Civil NX machine."""
-        return self.request("POST", "/doc/OPEN", {"Argument": str(path)})
+        """``POST /doc/OPEN`` — open an .mcb model file on the Civil NX machine
+        (long timeout; large files take time to load)."""
+        return self.request("POST", "/doc/OPEN", {"Argument": str(path)},
+                            timeout=self.ANALYSIS_TIMEOUT)
 
     def save(self):
         """``POST /doc/SAVE`` — save the current model."""
@@ -562,8 +570,10 @@ class MidasCivil:
         return self.request("POST", "/doc/SAVEAS", {"Argument": str(path)})
 
     def analyze(self):
-        """``POST /doc/ANAL`` — run the analysis on the current model."""
-        return self.request("POST", "/doc/ANAL", {})
+        """``POST /doc/ANAL`` — run the analysis on the current model (long
+        timeout; a large finite-element solve exceeds the default request
+        timeout)."""
+        return self.request("POST", "/doc/ANAL", {}, timeout=self.ANALYSIS_TIMEOUT)
 
     def import_file(self, path):
         """``POST /doc/IMPORT`` — import a file (e.g. .mct) into the model."""
@@ -577,7 +587,7 @@ class MidasCivil:
 
     def result_table(self, table_name, table_type=None, components=None,
                      node_elems=None, load_case_names=None, parts=None,
-                     unit=None, styles=None):
+                     unit=None, styles=None, timeout=None):
         """
         ``POST /post/TABLE`` — extract an analysis results table.
 
@@ -589,6 +599,10 @@ class MidasCivil:
                 node_elems={"KEYS": ["1to20"]},
                 load_case_names=["DL(CB)"],
             )
+
+        For element-force tables, prefer :meth:`beam_forces`, which sends the
+        request shape confirmed to work against live Civil NX. ``timeout``
+        overrides the request timeout for large result sets.
         """
         argument = {"TABLE_NAME": table_name}
         if table_type:
@@ -605,7 +619,29 @@ class MidasCivil:
             argument["LOAD_CASE_NAMES"] = list(load_case_names)
         if parts:
             argument["PARTS"] = list(parts)
-        return self.request("POST", "/post/TABLE", {"Argument": argument})
+        return self.request("POST", "/post/TABLE", {"Argument": argument},
+                            timeout=timeout or self.ANALYSIS_TIMEOUT)
+
+    def beam_forces(self, elem_ids, load_case_names,
+                    components=("Elem", "Load", "Part", "Axial",
+                                "Shear-y", "Shear-z", "Moment-y", "Moment-z"),
+                    unit=None, styles=None):
+        """
+        ``POST /post/TABLE`` BEAMFORCE in the request shape confirmed against
+        live Civil NX: **integer** element ids in ``NODE_ELEMS["KEYS"]`` plus
+        ``UNIT``, ``STYLES``, and ``PARTS`` — omitting any of those returns the
+        ``"second query is wrong"`` HTTP 400. ``elem_ids`` are integer beam
+        element ids; ``load_case_names`` use the result suffixes (``"…(ST)"``
+        static, ``"…(MV:all)"`` moving). Returns the raw ``/post/TABLE`` JSON
+        (flatten with :func:`civilpy...`/``brr.rating.parse_result_table``).
+        """
+        return self.result_table(
+            "BeamForce", table_type="BEAMFORCE", components=list(components),
+            node_elems={"KEYS": [int(e) for e in elem_ids]},
+            load_case_names=list(load_case_names), parts=["Part I", "Part J"],
+            unit=unit or {"FORCE": "KIPS", "DIST": "FT"},
+            styles=styles or {"FORMAT": "Default", "PLACE": 12},
+        )
 
     def __repr__(self):
         return f"<MidasCivil {self.base_url}>"

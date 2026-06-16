@@ -5,6 +5,20 @@ Versions follow [Semantic Versioning](https://semver.org/) (major.minor.patch).
 
 ---
 
+## [0.3.0rc2] - 2026-06-16 (release candidate)
+
+`MidasCivil` hardening from live batch load-rating runs:
+- **Long-operation timeout** — `analyze()`, `open()`, and `result_table()` now
+  use a 600 s read timeout (class attr `ANALYSIS_TIMEOUT`); the 30 s default cut
+  off large finite-element solves mid-analysis. Default request timeout 30 → 60 s,
+  and `request()` takes a per-call `timeout=`.
+- **`beam_forces(elem_ids, load_case_names, …)`** — element-force extraction in
+  the request shape confirmed against live Civil NX (integer `NODE_ELEMS` KEYS +
+  `UNIT` + `STYLES` + `PARTS`); omitting any of those returns the
+  `"second query is wrong"` HTTP 400.
+
+---
+
 ## [0.3.0rc1] - 2026-06-16 (release candidate)
 
 Pre-release for 0.3.0. A plain `pip install civilpy` will **not** select it;
