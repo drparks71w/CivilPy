@@ -41,6 +41,9 @@ from civilpy.structural.midas import (
     convert_node_units,
     MidasCivil,
     MidasApiError,
+    MidasConnectionError,
+    MidasTimeoutError,
+    MidasLicenseError,
 )
 
 
@@ -313,17 +316,189 @@ class TestMidasCivilRequest:
         assert exc_info.value.response == {"error": {"code": 1, "message": "no model"}}
 
     def test_unreachable_raises_midas_error(self):
-        midas = _client()
+        midas = _client(reconnect_retries=0)
         with patch("requests.request", side_effect=requests.ConnectionError("refused")):
-            with pytest.raises(MidasApiError, match="Could not reach"):
+            with pytest.raises(MidasConnectionError, match="Could not reach"):
                 midas.request("GET", "/db/NODE")
 
     def test_ping_true_false(self):
-        midas = _client()
+        midas = _client(reconnect_retries=0)
         with patch("requests.request", return_value=_response({"UNIT": {}})):
             assert midas.ping() is True
         with patch("requests.request", side_effect=requests.ConnectionError("down")):
             assert midas.ping() is False
+
+
+class TestMidasCivilResilience:
+    """Connection retry, error taxonomy, license + timeout classification."""
+
+    def test_analysis_timeout_override(self):
+        midas = _client(analysis_timeout=1800)
+        assert midas.ANALYSIS_TIMEOUT == 1800
+        with patch("requests.request", return_value=_response({})) as mock_req:
+            midas.analyze()
+        assert mock_req.call_args.kwargs["timeout"] == 1800
+
+    def test_connection_error_retries_then_succeeds(self):
+        midas = _client(reconnect_retries=2)
+        flaky = [requests.ConnectionError("blip"),
+                 requests.ConnectionError("blip"),
+                 _response({"NODE": {}})]
+        with patch("requests.request", side_effect=flaky) as mock_req:
+            with patch("time.sleep") as mock_sleep:
+                data = midas.request("GET", "/db/NODE")
+        assert data == {"NODE": {}}
+        assert mock_req.call_count == 3            # two failures, one success
+        assert mock_sleep.call_count == 2          # backoff between retries
+
+    def test_connection_error_exhausts_retries(self):
+        midas = _client(reconnect_retries=2)
+        with patch("requests.request", side_effect=requests.ConnectionError("dead")):
+            with patch("time.sleep") as mock_sleep:
+                with pytest.raises(MidasConnectionError, match="Could not reach"):
+                    midas.request("GET", "/db/NODE")
+        assert mock_sleep.call_count == 2          # retried twice before giving up
+
+    def test_timeout_raises_timeout_error_not_retried(self):
+        midas = _client(reconnect_retries=3)
+        with patch("requests.request", side_effect=requests.Timeout("slow")) as mock_req:
+            with pytest.raises(MidasTimeoutError, match="timed out"):
+                midas.request("POST", "/doc/ANAL", {})
+        assert mock_req.call_count == 1            # timeouts are not retried
+        assert issubclass(MidasTimeoutError, MidasConnectionError)
+
+    def test_license_400_raises_license_error(self):
+        midas = _client(reconnect_retries=0)
+        resp = _response({"message": "Construction stage count exceeds license"},
+                         ok=False, status_code=400)
+        with patch("requests.request", return_value=resp):
+            with pytest.raises(MidasLicenseError, match="license tier"):
+                midas.open("C:/models/staged.mcb")
+
+    def test_plain_400_stays_generic(self):
+        midas = _client(reconnect_retries=0)
+        resp = _response({"message": "bad request"}, ok=False, status_code=400)
+        with patch("requests.request", return_value=resp):
+            with pytest.raises(MidasApiError, match="HTTP 400") as exc:
+                midas.request("GET", "/db/NODE")
+        assert not isinstance(exc.value, MidasLicenseError)
+
+
+class TestMidasCivilTriage:
+    """summarize / capability / can_analyze model triage."""
+
+    def _client_with_tables(self, tables):
+        """A client whose get_db returns canned ``{TABLE: {...}}`` payloads."""
+        midas = _client()
+        def fake_get_db(table):
+            t = table.upper()
+            return {t: tables.get(t, {"message": "no data exist"})}
+        midas.get_db = fake_get_db
+        return midas
+
+    def test_summarize_counts_ingredients(self):
+        midas = self._client_with_tables({
+            "NODE": {"1": {}, "2": {}},
+            "ELEM": {"1": {"TYPE": "BEAM"}, "2": {"TYPE": "BEAM"}, "3": {"TYPE": "TRUSS"}},
+            "SECT": {"1": {"SECTTYPE": "I"}},
+            "CONS": {"1": {}},
+            "STLD": {"1": {}},
+            "MVLD": {},                      # empty -> {"message": ...} -> 0
+            "LCOM-GEN": {"1": {}, "2": {}},
+        })
+        s = midas.summarize()
+        assert s["nodes"] == 2
+        assert s["elems"] == 3
+        assert s["elem_types"] == {"BEAM": 2, "TRUSS": 1}
+        assert s["sect_types"] == {"I": 1}
+        assert s["supports"] == 1
+        assert s["static_loads"] == 1
+        assert s["moving_loads"] == 0
+        assert s["combinations"] == 2
+
+    def test_grab_handles_missing_table_and_api_error(self):
+        midas = _client()
+        midas.get_db = lambda table: {"MVLD": {"message": "no data exist"}}
+        assert midas._grab("MVLD") == {}
+        def boom(table):
+            raise MidasApiError("nope")
+        midas.get_db = boom
+        assert midas._grab("NODE") == {}
+
+    def test_capability_rateable(self):
+        s = {"nodes": 10, "elems": 9, "supports": 2,
+             "static_loads": 1, "moving_loads": 1}
+        can, ll, note = _client().capability(summary=s)
+        assert (can, ll) == (True, True)
+        assert "rateable" in note
+
+    def test_capability_flags_each_gap(self):
+        midas = _client()
+        cases = [
+            ({"nodes": 0, "elems": 0, "supports": 0, "static_loads": 0, "moving_loads": 0},
+             (False, False, "empty model")),
+            ({"nodes": 5, "elems": 4, "supports": 0, "static_loads": 1, "moving_loads": 1},
+             (False, False, "no supports — won't solve")),
+            ({"nodes": 5, "elems": 4, "supports": 2, "static_loads": 0, "moving_loads": 0},
+             (False, False, "no load cases")),
+            ({"nodes": 5, "elems": 4, "supports": 2, "static_loads": 1, "moving_loads": 0},
+             (True, False, None)),
+            ({"nodes": 5, "elems": 4, "supports": 2, "static_loads": 0, "moving_loads": 1},
+             (True, False, None)),
+        ]
+        for summary, (can, ll, note) in cases:
+            res = midas.capability(summary=summary)
+            assert (res[0], res[1]) == (can, ll), summary
+            if note:
+                assert res[2] == note
+
+    def test_can_analyze_uses_capability(self):
+        midas = self._client_with_tables({
+            "NODE": {"1": {}}, "ELEM": {"1": {"TYPE": "BEAM"}},
+            "CONS": {"1": {}}, "STLD": {"1": {}},
+        })
+        assert midas.can_analyze() is True
+
+
+class TestMidasCivilBeamForceValidation:
+    def test_duplicate_columns_detects_aliasing(self):
+        resp = {"BeamForce": {"HEAD": ["Elem", "Axial", "Shear-z", "Axial"],
+                              "DATA": []}}
+        assert MidasCivil.duplicate_columns(resp) == ["Axial"]
+
+    def test_duplicate_columns_clean_table(self):
+        resp = {"BeamForce": {"HEAD": ["Elem", "Axial", "Shear-z"], "DATA": []}}
+        assert MidasCivil.duplicate_columns(resp) == []
+        assert MidasCivil.duplicate_columns("not a dict") == []
+
+    def test_beam_forces_warns_on_duplicate_headers(self):
+        midas = _client()
+        dup = _response({"BeamForce": {"HEAD": ["Axial", "Axial"], "DATA": []}})
+        with patch("requests.request", return_value=dup):
+            with pytest.warns(UserWarning, match="duplicate column headers"):
+                midas.beam_forces([1, 2], ["DC(ST)"])
+
+    def test_beam_forces_no_warning_when_clean(self):
+        import warnings as _w
+        midas = _client()
+        clean = _response({"BeamForce": {"HEAD": ["Elem", "Axial"], "DATA": []}})
+        with patch("requests.request", return_value=clean):
+            with _w.catch_warnings():
+                _w.simplefilter("error")        # any warning fails the test
+                midas.beam_forces([1], ["DC(ST)"], validate=True)
+
+    def test_beam_forces_validate_false_skips_check(self):
+        import warnings as _w
+        midas = _client()
+        dup = _response({"BeamForce": {"HEAD": ["Axial", "Axial"], "DATA": []}})
+        with patch("requests.request", return_value=dup):
+            with _w.catch_warnings():
+                _w.simplefilter("error")        # would-be-duplicate, but unchecked
+                resp = midas.beam_forces([1], ["DC(ST)"], validate=False)
+        assert "BeamForce" in resp
+
+    def test_repr_shows_base_url(self):
+        assert repr(_client()) == "<MidasCivil http://localhost:5000>"
 
 
 class TestMidasCivilDb:
