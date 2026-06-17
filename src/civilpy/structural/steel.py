@@ -1,4 +1,5 @@
 #  CivilPy
+
 #  Copyright (C) $originalComment.match("Copyright \(C\) (\d+)", 1)-2026 Dane Parks
 #
 #  This program is free software: you can redistribute it and/or modify
