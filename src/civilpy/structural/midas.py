@@ -52,6 +52,60 @@ analysis_results_request = {
 MIDAS_API_KEY = ""
 
 
+# ── Result-table helpers ──────────────────────────────────────────────────────
+# Flatten a ``POST /post/TABLE`` response into row dicts and pull/envelope a
+# force component. Pure functions (no live connection) so they unit-test
+# directly and are shared by the analysis notebooks and downstream apps.
+def parse_result_table(response, table_name=None):
+    """Flatten a MIDAS ``POST /post/TABLE`` response into a list of row dicts.
+
+    MIDAS returns ``{<table>: {"HEAD": [col, ...], "DATA": [[val, ...], ...]}}``.
+    When ``table_name`` is omitted the first block that carries ``HEAD``/``DATA``
+    is used, so ``parse_result_table(resp)`` works without knowing the key. Cell
+    values are left as MIDAS sent them (usually strings); cast with
+    :func:`column_values`.
+    """
+    if not isinstance(response, dict):
+        raise TypeError(f"expected a dict response, got {type(response).__name__}")
+    if table_name is None:
+        for key, value in response.items():
+            if isinstance(value, dict) and "HEAD" in value and "DATA" in value:
+                table_name = key
+                break
+    table = response.get(table_name) if table_name else None
+    if not isinstance(table, dict):
+        return []
+    head = table.get("HEAD") or []
+    data = table.get("DATA") or []
+    return [dict(zip(head, row)) for row in data]
+
+
+def column_values(rows, column, cast=float):
+    """Pull one column from parsed rows, dropping blanks and un-castable cells."""
+    out = []
+    for row in rows:
+        raw = row.get(column)
+        if raw is None or raw == "":
+            continue
+        try:
+            out.append(cast(raw))
+        except (TypeError, ValueError):
+            continue
+    return out
+
+
+def envelope(rows, column, *, absolute=True):
+    """Largest value of ``column`` across rows (by magnitude unless told not to).
+
+    Returns ``0.0`` for no usable values — the controlling demand of an empty
+    set is nothing.
+    """
+    values = column_values(rows, column)
+    if not values:
+        return 0.0
+    return max((abs(v) for v in values)) if absolute else max(values)
+
+
 def get_api_key(secrets_path=None):
     """
     Retrieve the API key from the secrets.json file in the civilpy directory

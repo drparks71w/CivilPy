@@ -39,6 +39,9 @@ from civilpy.structural.midas import (
     get_elements_by_material_index,
     setup_output_directory,
     convert_node_units,
+    parse_result_table,
+    column_values,
+    envelope,
     MidasCivil,
     MidasApiError,
     MidasConnectionError,
@@ -607,3 +610,56 @@ class TestMidasCivilDocAndResults:
         assert mock_req.call_args.kwargs["json"] == {
             "Argument": {"TABLE_NAME": "Reaction"}
         }
+
+class TestResultTableHelpers:
+    """parse_result_table / column_values / envelope — pure, no connection."""
+
+    BEAMFORCE = {
+        "BeamForce": {
+            "HEAD": ["Elem", "Load", "Moment-y"],
+            "DATA": [
+                ["1", "DC(ST)", "100.0"],
+                ["1", "DW(ST)", "-250.5"],
+                ["2", "DC(ST)", ""],
+            ],
+        }
+    }
+
+    def test_parse_auto_detects_table(self):
+        rows = parse_result_table(self.BEAMFORCE)
+        assert len(rows) == 3
+        assert rows[0] == {"Elem": "1", "Load": "DC(ST)", "Moment-y": "100.0"}
+
+    def test_parse_explicit_table_name(self):
+        rows = parse_result_table(self.BEAMFORCE, "BeamForce")
+        assert rows[1]["Moment-y"] == "-250.5"
+
+    def test_parse_non_dict_raises(self):
+        with pytest.raises(TypeError):
+            parse_result_table(["not", "a", "dict"])
+
+    def test_parse_missing_table_returns_empty(self):
+        assert parse_result_table({"Other": {"HEAD": [], "DATA": []}}, "BeamForce") == []
+
+    def test_parse_no_head_data_blocks(self):
+        assert parse_result_table({"message": "no results"}) == []
+
+    def test_column_values_casts_and_drops_blanks(self):
+        rows = parse_result_table(self.BEAMFORCE)
+        # the empty Moment-y cell is dropped; the rest cast to float
+        assert column_values(rows, "Moment-y") == [100.0, -250.5]
+
+    def test_column_values_custom_cast(self):
+        rows = parse_result_table(self.BEAMFORCE)
+        assert column_values(rows, "Elem", cast=int) == [1, 1, 2]
+
+    def test_envelope_takes_max_magnitude(self):
+        rows = parse_result_table(self.BEAMFORCE)
+        assert envelope(rows, "Moment-y") == 250.5
+
+    def test_envelope_signed_when_not_absolute(self):
+        rows = parse_result_table(self.BEAMFORCE)
+        assert envelope(rows, "Moment-y", absolute=False) == 100.0
+
+    def test_envelope_empty_is_zero(self):
+        assert envelope([], "Moment-y") == 0.0
