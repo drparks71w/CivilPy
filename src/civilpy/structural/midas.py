@@ -18,7 +18,10 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import os
 import json
+import time
+import warnings
 import requests
+from collections import Counter
 from pathlib import Path
 from civilpy.general import units
 
@@ -358,6 +361,26 @@ class MidasApiError(RuntimeError):
         self.response = response
 
 
+class MidasConnectionError(MidasApiError):
+    """The MIDAS API could not be reached — Civil NX is closed, the session
+    dropped, or the network blipped. Transport-level and typically transient,
+    so :meth:`MidasCivil.request` retries it before giving up. Subclasses
+    :class:`MidasApiError` so existing ``except MidasApiError`` paths still
+    catch it."""
+
+
+class MidasTimeoutError(MidasConnectionError):
+    """A request outran its read timeout — usually a large finite-element
+    solve or model open that needs a longer ``analysis_timeout`` rather than a
+    retry (re-issuing it just doubles the wait)."""
+
+
+class MidasLicenseError(MidasApiError):
+    """The connected Civil NX license tier rejected the operation — e.g.
+    opening a model with more construction stages than a Plus license allows.
+    Not retryable: skip the model rather than re-sending."""
+
+
 class MidasCivil:
     """
     A connection to a running MIDAS Civil NX (or Gen NX) instance through
@@ -393,10 +416,18 @@ class MidasCivil:
 
     #: Read timeout (s) for long operations — analysis, open, result tables —
     #: on large finite-element models (a 10k-element solve exceeds the default).
+    #: Override per instance with ``analysis_timeout=`` for very large models.
     ANALYSIS_TIMEOUT = 600
 
+    #: Default retry policy for transport (connection) failures. A dropped
+    #: Civil NX session is the failure that clusters mid-batch, so one or two
+    #: backoff retries recover most blips without masking a real outage.
+    RECONNECT_RETRIES = 2
+    RETRY_BACKOFF = 0.5
+
     def __init__(self, base_url=None, mapi_key=None, timeout=60,
-                 secrets_path=None):
+                 secrets_path=None, analysis_timeout=None,
+                 reconnect_retries=None, retry_backoff=None):
         if mapi_key is None or base_url is None:
             secrets = {}
             path = Path(secrets_path) if secrets_path else Path.home() / "secrets.json"
@@ -410,6 +441,12 @@ class MidasCivil:
         self.base_url = (base_url or self.DEFAULT_BASE_URL).rstrip("/")
         self.mapi_key = mapi_key
         self.timeout = timeout
+        if analysis_timeout is not None:
+            self.ANALYSIS_TIMEOUT = analysis_timeout
+        self.reconnect_retries = (self.RECONNECT_RETRIES
+                                  if reconnect_retries is None else reconnect_retries)
+        self.retry_backoff = (self.RETRY_BACKOFF
+                              if retry_backoff is None else retry_backoff)
         if not self.mapi_key:
             raise MidasApiError(
                 "MIDAS API key missing — copy it from Civil NX "
@@ -419,42 +456,91 @@ class MidasCivil:
 
     # ── Transport ─────────────────────────────────────────────────────────────
 
-    def request(self, method, command, body=None, timeout=None):
+    def request(self, method, command, body=None, timeout=None, retries=None):
         """
         Send one request to the MIDAS API and return the parsed JSON.
 
         ``command`` is the endpoint path, e.g. ``"/db/NODE"`` or
         ``"/doc/ANAL"``. ``timeout`` overrides the instance default for one
         call (used by :meth:`analyze`, :meth:`open`, and :meth:`result_table`
-        on large models). Raises :class:`MidasApiError` on HTTP errors or
-        when the response carries an ``{"error": ...}`` payload.
+        on large models). ``retries`` overrides :attr:`reconnect_retries` for
+        one call (0 disables the backoff retry).
+
+        Error handling distinguishes three failure modes so a batch caller can
+        react sensibly:
+
+        * :class:`MidasConnectionError` — the API was unreachable (dropped
+          session); retried with backoff first, then raised.
+        * :class:`MidasTimeoutError` — the request outran its read timeout
+          (a large solve); raised immediately, not retried.
+        * :class:`MidasLicenseError` — the license tier rejected the model
+          (HTTP 400, e.g. too many construction stages).
+
+        All three subclass :class:`MidasApiError`, as does a generic HTTP or
+        ``{"error": ...}`` payload failure.
         """
         url = f"{self.base_url}/{command.lstrip('/')}"
         headers = {"Content-Type": "application/json", "MAPI-Key": self.mapi_key}
-        try:
-            response = requests.request(method.upper(), url, headers=headers,
-                                        json=body, timeout=timeout or self.timeout)
-        except requests.RequestException as exc:
-            raise MidasApiError(
-                f"Could not reach the MIDAS API at {self.base_url} — is "
-                f"Civil NX open and connected? ({exc})"
-            ) from exc
+        attempts = self.reconnect_retries if retries is None else retries
+        response = None
+        for attempt in range(attempts + 1):
+            try:
+                response = requests.request(
+                    method.upper(), url, headers=headers,
+                    json=body, timeout=timeout or self.timeout)
+                break
+            except requests.Timeout as exc:
+                # The model is likely still solving — retrying just doubles the
+                # wait, so surface it as its own error to raise analysis_timeout.
+                raise MidasTimeoutError(
+                    f"MIDAS {method.upper()} {command} timed out after "
+                    f"{timeout or self.timeout}s — the model may still be "
+                    f"solving. Raise analysis_timeout for large models."
+                ) from exc
+            except requests.RequestException as exc:
+                # Transport failure (Civil NX closed, session dropped). This is
+                # the error that cascades through a batch — retry with backoff.
+                if attempt < attempts:
+                    time.sleep(self.retry_backoff * (2 ** attempt))
+                    continue
+                raise MidasConnectionError(
+                    f"Could not reach the MIDAS API at {self.base_url} — is "
+                    f"Civil NX open and connected? ({exc})"
+                ) from exc
         try:
             data = response.json() if response.content else {}
         except ValueError:
             data = {}
         if not response.ok:
-            raise MidasApiError(
-                f"{method.upper()} {command} returned HTTP "
-                f"{response.status_code}: {data or response.text[:300]}",
-                response=data,
-            )
+            self._raise_http_error(method, command, response, data)
         if isinstance(data, dict) and "error" in data:
             raise MidasApiError(
                 f"{method.upper()} {command} rejected: {data['error']}",
                 response=data,
             )
         return data
+
+    @staticmethod
+    def _raise_http_error(method, command, response, data):
+        """Classify a non-2xx MIDAS response and raise the matching error."""
+        detail = data or (response.text[:300] if response.text else "")
+        haystack = (json.dumps(data) if isinstance(data, dict) else str(data))
+        haystack = f"{haystack} {response.text or ''}".lower()
+        if response.status_code == 400 and (
+            "construction stage" in haystack or "license" in haystack
+        ):
+            raise MidasLicenseError(
+                f"{method.upper()} {command} rejected by the MIDAS license "
+                f"tier (HTTP 400): {detail}. A model above the licensed limit "
+                f"(e.g. >10 construction stages on a Plus license) cannot be "
+                f"opened on this connection.",
+                response=data,
+            )
+        raise MidasApiError(
+            f"{method.upper()} {command} returned HTTP "
+            f"{response.status_code}: {detail}",
+            response=data,
+        )
 
     def ping(self):
         """True when Civil NX is reachable and the key is accepted."""
@@ -549,6 +635,71 @@ class MidasCivil:
             "FORCE": force, "DIST": dist, "HEAT": heat, "TEMPER": temper,
         }})
 
+    # ── Model triage ──────────────────────────────────────────────────────────
+
+    #: Tables read to judge whether a model can be analyzed / rated.
+    TRIAGE_TABLES = ("NODE", "ELEM", "CONS", "STLD", "MVLD", "LCOM-GEN", "SECT")
+
+    def _grab(self, table):
+        """``get_db(table)`` reduced to its inner ``{id: row}`` map, or ``{}``
+        when the table is empty or absent. MIDAS answers an empty/missing table
+        with ``{"TABLE": {"message": ...}}``, which collapses to ``{}`` here."""
+        try:
+            resp = self.get_db(table)
+        except MidasApiError:
+            return {}
+        inner = resp.get(table, resp) if isinstance(resp, dict) else {}
+        if not isinstance(inner, dict) or list(inner) == ["message"]:
+            return {}
+        return inner
+
+    def summarize(self):
+        """Counts of the current model's structural ingredients.
+
+        One round-trip per :attr:`TRIAGE_TABLES` entry; returns a dict with
+        ``nodes``, ``elems``, ``elem_types``, ``sect_types``, ``supports``,
+        ``static_loads``, ``moving_loads`` and ``combinations``. Feed it to
+        :meth:`capability` to decide whether a model is worth analyzing before
+        spending a long solve on it.
+        """
+        elem = self._grab("ELEM")
+        sect = self._grab("SECT")
+        return {
+            "nodes": len(self._grab("NODE")),
+            "elems": len(elem),
+            "elem_types": dict(Counter(e.get("TYPE", "?") for e in elem.values())),
+            "sect_types": dict(Counter(s.get("SECTTYPE", "?") for s in sect.values())),
+            "supports": len(self._grab("CONS")),
+            "static_loads": len(self._grab("STLD")),
+            "moving_loads": len(self._grab("MVLD")),
+            "combinations": len(self._grab("LCOM-GEN")),
+        }
+
+    def capability(self, summary=None):
+        """``(can_analyze, can_rate_live_load, note)`` for the current model.
+
+        A model needs geometry, supports, and at least one load case to solve;
+        live-load rating additionally needs a moving-load case. Pass a cached
+        :meth:`summarize` result as ``summary`` to avoid a second round-trip.
+        """
+        s = summary or self.summarize()
+        if s["nodes"] == 0 or s["elems"] == 0:
+            return (False, False, "empty model")
+        if s["supports"] == 0:
+            return (False, False, "no supports — won't solve")
+        if s["static_loads"] == 0 and s["moving_loads"] == 0:
+            return (False, False, "no load cases")
+        if s["moving_loads"] == 0:
+            return (True, False,
+                    "no moving load — DL/analysis only; LL rating needs a companion model")
+        if s["static_loads"] == 0:
+            return (True, False, "no static load — LL/DF study only")
+        return (True, True, "rateable: supports + static + moving load present")
+
+    def can_analyze(self):
+        """True when the current model has enough defined to run an analysis."""
+        return self.capability()[0]
+
     # ── Document operations ───────────────────────────────────────────────────
 
     def new(self):
@@ -622,10 +773,25 @@ class MidasCivil:
         return self.request("POST", "/post/TABLE", {"Argument": argument},
                             timeout=timeout or self.ANALYSIS_TIMEOUT)
 
+    @staticmethod
+    def duplicate_columns(response):
+        """Column headers that appear more than once in a ``/post/TABLE``
+        response. A non-empty result flags a component→column aliasing problem
+        (e.g. ``Axial`` and ``Shear-z`` resolving to the same field, seen on
+        some BEAMFORCE result shapes) — the values under aliased headers are
+        unreliable and should be re-queried."""
+        if not isinstance(response, dict):
+            return []
+        for value in response.values():
+            if isinstance(value, dict) and "HEAD" in value:
+                head = value.get("HEAD") or []
+                return [c for c, n in Counter(head).items() if n > 1]
+        return []
+
     def beam_forces(self, elem_ids, load_case_names,
                     components=("Elem", "Load", "Part", "Axial",
                                 "Shear-y", "Shear-z", "Moment-y", "Moment-z"),
-                    unit=None, styles=None):
+                    unit=None, styles=None, validate=True):
         """
         ``POST /post/TABLE`` BEAMFORCE in the request shape confirmed against
         live Civil NX: **integer** element ids in ``NODE_ELEMS["KEYS"]`` plus
@@ -634,14 +800,29 @@ class MidasCivil:
         element ids; ``load_case_names`` use the result suffixes (``"…(ST)"``
         static, ``"…(MV:all)"`` moving). Returns the raw ``/post/TABLE`` JSON
         (flatten with :func:`civilpy...`/``brr.rating.parse_result_table``).
+
+        When ``validate`` is set (default), the returned table is checked for
+        duplicate column headers via :meth:`duplicate_columns` and a warning is
+        issued if any are found — guarding against the component aliasing that
+        produced identical Axial / Shear-z envelopes on some models.
         """
-        return self.result_table(
+        response = self.result_table(
             "BeamForce", table_type="BEAMFORCE", components=list(components),
             node_elems={"KEYS": [int(e) for e in elem_ids]},
             load_case_names=list(load_case_names), parts=["Part I", "Part J"],
             unit=unit or {"FORCE": "KIPS", "DIST": "FT"},
             styles=styles or {"FORMAT": "Default", "PLACE": 12},
         )
+        if validate:
+            dups = self.duplicate_columns(response)
+            if dups:
+                warnings.warn(
+                    f"MIDAS BEAMFORCE returned duplicate column headers {dups}; "
+                    f"force components may be aliased — verify Axial vs Shear-z "
+                    f"before trusting these envelopes.",
+                    stacklevel=2,
+                )
+        return response
 
     def __repr__(self):
         return f"<MidasCivil {self.base_url}>"
