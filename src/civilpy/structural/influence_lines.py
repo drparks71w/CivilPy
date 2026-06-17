@@ -41,6 +41,90 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 
+def influence_line_from_ordinates(positions, etas, length=None, label=""):
+    """Build an :class:`InfluenceLine` from sampled ordinates.
+
+    ``positions`` (ft, ascending) and ``etas`` are paired samples of an
+    influence line obtained from *any* source — a MIDAS unit-load analysis, a
+    finite-element model, or measured data — letting the full axle-train
+    machinery (:meth:`InfluenceLine.maximize_axle_train`,
+    :meth:`~InfluenceLine.hl93_effect`, :meth:`~InfluenceLine.uniform_load_effect`)
+    run permit and rating trucks against a real structure rather than only the
+    closed-form prismatic cases.
+
+    The line is reconstructed by **linear interpolation** between samples
+    (``numpy.interp``); load positions off the sampled range contribute zero.
+    Accuracy is therefore limited by the sample spacing — and, because an
+    influence line presumes **linear superposition**, by how linear the source
+    structure is (see the walkthrough notes on nonlinear bridges).
+
+    ``length`` defaults to the largest position.
+    """
+    pos = np.asarray(positions, dtype=float)
+    eta = np.asarray(etas, dtype=float)
+    if pos.ndim != 1 or pos.shape != eta.shape:
+        raise ValueError("positions and etas must be 1-D arrays of equal length")
+    if pos.size < 2:
+        raise ValueError("need at least two samples to interpolate an influence line")
+    order = np.argsort(pos)
+    pos, eta = pos[order], eta[order]
+    span = float(length) if length is not None else float(pos[-1])
+    # Off-span positions contribute nothing (left/right fill values = 0.0).
+    return InfluenceLine(lambda x: np.interp(x, pos, eta, left=0.0, right=0.0),
+                         length=span, label=label)
+
+
+def influence_line_from_midas(midas, element, cases, *, component="Moment-y",
+                              part="Part I", length=None, label="", unit=None):
+    """Assemble an :class:`InfluenceLine` for one beam-element force effect from
+    a set of **unit-load analysis cases** already solved in a MIDAS model.
+
+    ``cases`` is an ordered iterable of ``(position_ft, load_case_name)`` pairs,
+    one per unit-load (1 kip) position along the lane. This reads
+    ``midas.beam_forces([element], …)`` once for all the cases, takes
+    ``component`` (e.g. ``"Moment-y"`` / ``"Shear-z"``) at the given ``part``
+    (``"Part I"`` or ``"Part J"``) of ``element`` under each case, and returns
+    the interpolated influence line — ready for
+    :meth:`InfluenceLine.maximize_axle_train` permit runs.
+
+    This does **not** create or modify load cases; it reads the response of unit
+    cases you (or a generator) set up, so it stays side-effect free and works
+    against whatever load-application scheme the model uses. Reactions and
+    displacements follow the same pattern via ``MidasCivil.result_table``.
+    """
+    from civilpy.structural.midas import parse_result_table
+
+    cases = list(cases)
+    names = [name for _, name in cases]
+    rows = parse_result_table(midas.beam_forces([int(element)], names, unit=unit))
+
+    # Index the response: load case name -> component value for our element/part.
+    target = str(int(element))
+    by_case = {}
+    for r in rows:
+        if str(r.get("Elem")).strip() != target:
+            continue
+        if part and str(r.get("Part", part)).strip() != part:
+            continue
+        try:
+            by_case[str(r.get("Load")).strip()] = float(r.get(component))
+        except (TypeError, ValueError):
+            continue
+
+    positions, etas = [], []
+    for pos, name in cases:
+        if name in by_case:
+            positions.append(float(pos))
+            etas.append(by_case[name])
+    if len(positions) < 2:
+        raise ValueError(
+            f"resolved {len(positions)} ordinate(s) for element {element} "
+            f"component {component!r} — check the case names, element id, and part")
+    return influence_line_from_ordinates(
+        positions, etas, length=length,
+        label=label or f"elem {element} {component}")
+
+
 @dataclass
 class TrainResult:
     """Extreme effect of an axle train on an influence line."""
