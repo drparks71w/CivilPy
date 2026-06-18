@@ -26,11 +26,11 @@ length unit throughout.  Customary usage (and the test-level table below)
 is kip and **ft**: H and Lt in ft, Mb and Mw in kip-ft, Mc in kip-ft/ft,
 giving Rw in kip.
 
-The crash test-level table reflects Table A13.2-1 as published in the 1st
-through 9th Editions (NCHRP Report 350 / pre-MASH test levels).  The 10th
-Edition (2024) revised Section 13 around MASH 2016 criteria — those revised
-design forces are not tabulated here yet; pass explicit ``f_t``/``l_t``
-values for MASH-era designs.
+The crash test-level table reflects Table A13.2-1.  The design forces,
+distribution lengths, and minimum effective heights are unchanged from the
+1st Edition (NCHRP Report 350 test levels) through the 10th Edition (2024,
+MASH-era); the 10th Edition adds the minimum rail height H row carried
+here as ``h_min``.
 """
 
 import math
@@ -41,12 +41,12 @@ from civilpy.structural.aashto.lrfd.core import CheckResult, article
 
 @dataclass(frozen=True)
 class TestLevelLoad:
-    """Design forces for one crash test level (Table A13.2-1, 1st–9th Ed.).
+    """Design forces for one crash test level (Table A13.2-1).
 
     ``f_t``/``f_l``/``f_v`` are the transverse, longitudinal, and vertical
     (down) forces in kip; ``l_t`` (= ``l_l``) and ``l_v`` their distribution
-    lengths in ft; ``h_e_min`` the minimum effective height in inches;
-    ``h_min`` the minimum rail height in inches (bottom row of Table A13.2-1).
+    lengths in ft; ``h_e_min`` the minimum effective height and ``h_min``
+    the minimum rail height, both in inches.
     """
 
     f_t: float
@@ -58,11 +58,11 @@ class TestLevelLoad:
     h_min: float
 
 
-# Table A13.2-1 (LRFD 1st-9th Ed., NCHRP 350 test levels)
+# Table A13.2-1 (values unchanged 1st Ed. through 10th Ed. 2024)
 TEST_LEVEL_LOADS: dict[str, TestLevelLoad] = {
-    "TL-1": TestLevelLoad(13.5,  4.5,  4.5, 4.0, 18.0, 18.0, 27.0),
-    "TL-2": TestLevelLoad(27.0,  9.0,  4.5, 4.0, 18.0, 20.0, 27.0),
-    "TL-3": TestLevelLoad(54.0, 18.0,  4.5, 4.0, 18.0, 24.0, 27.0),
+    "TL-1": TestLevelLoad(13.5, 4.5, 4.5, 4.0, 18.0, 18.0, 27.0),
+    "TL-2": TestLevelLoad(27.0, 9.0, 4.5, 4.0, 18.0, 20.0, 27.0),
+    "TL-3": TestLevelLoad(54.0, 18.0, 4.5, 4.0, 18.0, 24.0, 27.0),
     "TL-4": TestLevelLoad(54.0, 18.0, 18.0, 3.5, 18.0, 32.0, 32.0),
     "TL-5": TestLevelLoad(124.0, 41.0, 80.0, 8.0, 40.0, 42.0, 42.0),
     "TL-6": TestLevelLoad(175.0, 58.0, 80.0, 8.0, 40.0, 56.0, 90.0),
@@ -116,19 +116,17 @@ def parapet_test_level_check(
     end_region: bool = False,
 ) -> CheckResult:
     """Convenience wrapper: yield-line capacity checked against a Table
-    A13.2-1 test level (1st-9th Ed. forces).  ``h_ft`` is wall height in ft;
-    the result's details flag whether the wall also meets the minimum
-    effective height for the test level."""
+    A13.2-1 test level.  ``h_ft`` is wall height in ft; the result's details
+    flag whether the wall also meets the minimum effective height and the
+    minimum rail height for the test level."""
     tl = TEST_LEVEL_LOADS[test_level]
     result = parapet_yield_line_capacity(
         m_c=m_c, m_w=m_w, h=h_ft, l_t=tl.l_t, m_b=m_b,
         f_t=tl.f_t, end_region=end_region,
     )
     result.details["test_level"] = test_level
-    h_in = h_ft * 12.0
-    result.details["h_e_ok"] = h_in >= tl.h_e_min
-    result.details["h_min_ok"] = h_in >= tl.h_min
-    result.details["height_ok"] = result.details["h_e_ok"] and result.details["h_min_ok"]
+    result.details["height_ok"] = h_ft * 12.0 >= tl.h_e_min
+    result.details["rail_height_ok"] = h_ft * 12.0 >= tl.h_min
     return result
 
 

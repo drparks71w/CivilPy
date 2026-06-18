@@ -25,6 +25,14 @@ use, Cd deck factor) are inputs rather than functions — take them from the
 design tables for the material at hand.
 """
 
+# //TODO - Implement timber_shear_resistance function to complete fundamental member checks
+
+# //TODO - Add AASHTO LRFD interaction equations for combined axial and bending loading
+
+# //TODO - Add Hankinson formula checks for timber bearing at an angle to the grain
+
+# //TODO - Implement serviceability and long-term deflection limit checks (Note: Verify if deflections are handled in a broader global analysis module)
+
 import math
 
 from civilpy.structural.aashto.lrfd.core import CheckResult, article
@@ -78,7 +86,13 @@ TIME_EFFECT_CLAMBDA = {
 @article("8.4.4.9", "Time Effect Factor Clambda")
 def time_effect_clambda(limit_state: str = "Strength I") -> float:
     """Clambda (Table 8.4.4.9-1) by limit state."""
-    return TIME_EFFECT_CLAMBDA[limit_state]
+    # Normalizes strings like "strength i" to "Strength I"
+    normalized_state = limit_state.title()
+    if normalized_state not in TIME_EFFECT_CLAMBDA:
+        valid_states = ", ".join(TIME_EFFECT_CLAMBDA.keys())
+        raise ValueError(f"Invalid limit_state. Must be one of: {valid_states}")
+
+    return TIME_EFFECT_CLAMBDA[normalized_state]
 
 
 @article("8.6.2", "Beam Stability Factor CL")
@@ -97,15 +111,27 @@ def beam_stability_cl(
     ``f_b_star`` is the adjusted bending strength with all factors except
     CL and Cv (ksi); ``e_adj`` the adjusted modulus (ksi); ``l_e`` the
     effective unbraced length (in).  ``capacity`` holds CL."""
-    r_b = math.sqrt(l_e * d / b**2)
-    f_be = KBE[grading] * e_adj / r_b**2
-    a = f_be / f_b_star
-    c_l = (1.0 + a) / 1.9 - math.sqrt((1.0 + a) ** 2 / 3.61 - a / 0.95)
+    if l_e <= 0.0 or d <= 0.0 or b <= 0.0:
+        raise ValueError("Effective length, depth, and width must be strictly positive.")
+
+    grade_key = grading.lower()
+    if grade_key not in KBE:
+        raise ValueError(f"Invalid grading '{grading}'. Must be 'visual', 'mel', 'msr', or 'glulam'.")
+
+    r_b = math.sqrt(l_e * d / b ** 2)
+
+    if r_b > 50.0:
+        c_l, f_be, a = 0.0, 0.0, 0.0
+    else:
+        f_be = KBE[grade_key] * e_adj / r_b ** 2
+        a = f_be / f_b_star
+        c_l = (1.0 + a) / 1.9 - math.sqrt((1.0 + a) ** 2 / 3.61 - a / 0.95)
+
     return CheckResult(
         article="8.6.2",
         name="Beam Stability Factor CL",
         capacity=c_l,
-        demand=None if r_b <= 50.0 else 1.0,  # RB > 50 is not permitted
+        demand=None,  # Standardized back to None
         details={"RB": r_b, "FbE": f_be, "A": a, "RB_ok": r_b <= 50.0},
     )
 
@@ -121,6 +147,9 @@ def volume_factor_cv(
     [(12/d)*(5.125/b)*(21/L)]^a <= 1.0, a = 0.05 for Southern Pine and
     0.10 for all other species.  ``d``/``b`` in inches, ``l_ft`` in ft.
     Cv and CL are not applied simultaneously — use the smaller."""
+    if d <= 0.0 or b <= 0.0 or l_ft <= 0.0:
+        raise ValueError("Member dimensions (d, b, l_ft) must be strictly positive.")
+
     a = 0.05 if southern_pine else 0.10
     return min(
         ((12.0 / d) * (5.125 / b) * (21.0 / l_ft)) ** a, 1.0
@@ -144,18 +173,26 @@ def column_stability_cp(
     except Cp (ksi); ``c`` = 0.8 sawn lumber, 0.85 round poles, 0.9
     glulam; the Euler coefficient ``k_ce`` defaults to the visually graded
     value.  Slenderness Le/d may not exceed 50.  ``capacity`` holds Cp."""
+    if l_e <= 0.0 or d <= 0.0:
+        raise ValueError("Effective length and depth must be strictly positive.")
+
     slenderness = l_e / d
-    f_ce = k_ce * e_adj / slenderness**2
-    b = f_ce / f_co_adj
-    c_p = (1.0 + b) / (2.0 * c) - math.sqrt(
-        ((1.0 + b) / (2.0 * c)) ** 2 - b / c
-    )
+
+    if slenderness > 50.0:
+        c_p, f_ce, b_val = 0.0, 0.0, 0.0
+    else:
+        f_ce = k_ce * e_adj / slenderness ** 2
+        b_val = f_ce / f_co_adj
+        c_p = (1.0 + b_val) / (2.0 * c) - math.sqrt(
+            ((1.0 + b_val) / (2.0 * c)) ** 2 - b_val / c
+        )
+
     return CheckResult(
         article="8.7",
         name="Column Stability Factor Cp",
         capacity=c_p,
-        demand=None if slenderness <= 50.0 else 1.0,
-        details={"FcE": f_ce, "B": b, "Le/d": slenderness,
+        demand=None,
+        details={"FcE": f_ce, "B": b_val, "Le/d": slenderness,
                  "slenderness_ok": slenderness <= 50.0},
     )
 
@@ -165,6 +202,8 @@ def bearing_factor_cb(l_b: float, near_end: bool = False) -> float:
     """Cb (8.8.3): (lb + 0.375)/lb for bearings less than 6 in long and
     at least 3 in from the member end; 1.0 otherwise (``near_end`` or
     long bearings).  ``l_b`` is the bearing length (in)."""
+    if l_b <= 0.0:
+        raise ValueError("Bearing length must be strictly positive.")
     if near_end or l_b >= 6.0:
         return 1.0
     return (l_b + 0.375) / l_b
@@ -251,6 +290,8 @@ def flat_use_cfu(
     widths above 10 in take the 10-in row).  Glulam loaded parallel to
     the wide laminations uses (12/d)^(1/9) with d the actual dimension
     parallel to the wide face (in), 1.0 at 12 in and wider."""
+    if width_nominal <= 0.0 or thickness_nominal <= 0.0:
+        raise ValueError("Nominal dimensions must be strictly positive.")
     if glulam:
         return (12.0 / width_nominal) ** (1.0 / 9.0) \
             if width_nominal < 12.0 else 1.0
