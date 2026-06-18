@@ -138,6 +138,30 @@ class TestParapetYieldLine:
         tl3 = lrfd.TEST_LEVEL_LOADS["TL-3"]
         assert (tl3.f_t, tl3.l_t, tl3.h_e_min) == (54.0, 4.0, 24.0)
 
+    def test_table_a13_2_1_full(self):
+        # (Ft, FL, Fv, Lt, Lv, He_min, H_min) per test level, 10th Ed.
+        expected = {
+            "TL-1": (13.5, 4.5, 4.5, 4.0, 18.0, 18.0, 27.0),
+            "TL-2": (27.0, 9.0, 4.5, 4.0, 18.0, 20.0, 27.0),
+            "TL-3": (54.0, 18.0, 4.5, 4.0, 18.0, 24.0, 27.0),
+            "TL-4": (54.0, 18.0, 18.0, 3.5, 18.0, 32.0, 32.0),
+            "TL-5": (124.0, 41.0, 80.0, 8.0, 40.0, 42.0, 42.0),
+            "TL-6": (175.0, 58.0, 80.0, 8.0, 40.0, 56.0, 90.0),
+        }
+        for level, row in expected.items():
+            tl = lrfd.TEST_LEVEL_LOADS[level]
+            assert (tl.f_t, tl.f_l, tl.f_v, tl.l_t, tl.l_v,
+                    tl.h_e_min, tl.h_min) == row
+
+    def test_rail_height_flag(self):
+        # 36" wall: tall enough for TL-4 (32" min) but not TL-5 (42")
+        tl4 = lrfd.parapet_test_level_check("TL-4", m_c=16.0, m_w=18.0,
+                                            h_ft=3.0)
+        assert tl4.details["rail_height_ok"]
+        tl5 = lrfd.parapet_test_level_check("TL-5", m_c=16.0, m_w=18.0,
+                                            h_ft=3.0)
+        assert not tl5.details["rail_height_ok"]
+
     def test_overhang_tension(self):
         cap = lrfd.parapet_yield_line_capacity(m_c=16.0, m_w=18.0, h=3.0, l_t=4.0)
         t = lrfd.deck_overhang_collision_tension(

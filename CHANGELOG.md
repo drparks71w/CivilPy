@@ -5,6 +5,45 @@ Versions follow [Semantic Versioning](https://semver.org/) (major.minor.patch).
 
 ---
 
+## [0.3.0rc2] - 2026-06-16 (release candidate)
+
+`MidasCivil` hardening from live batch load-rating runs:
+- **Long-operation timeout** — `analyze()`, `open()`, and `result_table()` now
+  use a 600 s read timeout (class attr `ANALYSIS_TIMEOUT`); the 30 s default cut
+  off large finite-element solves mid-analysis. Default request timeout 30 → 60 s,
+  and `request()` takes a per-call `timeout=`.
+- **`beam_forces(elem_ids, load_case_names, …)`** — element-force extraction in
+  the request shape confirmed against live Civil NX (integer `NODE_ELEMS` KEYS +
+  `UNIT` + `STYLES` + `PARTS`); omitting any of those returns the
+  `"second query is wrong"` HTTP 400.
+
+---
+
+## [0.3.0rc1] - 2026-06-16 (release candidate)
+
+Pre-release for 0.3.0. A plain `pip install civilpy` will **not** select it;
+install it explicitly with `pip install civilpy==0.3.0rc1`.
+
+Highlights since 0.2.4:
+- **Substructure design** — cantilever retaining wall / abutment
+  (`structural.abutment`) and multi-column pier & bent (`structural.pier`).
+- **Geotechnical** — laterally loaded piles with a p-y library + FE solver and
+  Broms / subgrade methods (`geotech.lateral_pile`), LPILE integration
+  (`geotech.lpile`), drilled-shaft & driven-pile axial capacity from boring
+  logs (`geotech.deep_foundation`), shallow/spread foundations
+  (`geotech.shallow_foundation`), DIGGS boring schema and SPT correlations.
+- **MIDAS modeling** — `structural.midas_models` payload builders (curved
+  girders, bifurcated girders, integral/semi-integral abutment connections,
+  nodal soil-spring supports) and `geotech.axial_load_transfer` API RP 2A
+  t-z / q-z axial pile load-transfer curves.
+- **RC design** — `aashto.lrfd.concrete.size_flexural_rebar` selects flexural
+  reinforcement from a factored moment.
+- HEC-18 scour, ODOT standards (box beams, railings, guardrail), CANDE
+  box-culvert integration, the truss-bridge builder, and AASHTO LRFD/LRFR
+  check-suite expansions.
+
+---
+
 ## [0.2.4] - 2026-06-11
 - Added `MidasCivil` class to `civilpy.structural.midas` — object-oriented MIDAS API client
   covering the full API surface: generic `/db/*` access (`get_db`/`put_db`/`post_db`/`delete_db`),
