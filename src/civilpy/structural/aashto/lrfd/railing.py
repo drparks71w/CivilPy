@@ -45,7 +45,8 @@ class TestLevelLoad:
 
     ``f_t``/``f_l``/``f_v`` are the transverse, longitudinal, and vertical
     (down) forces in kip; ``l_t`` (= ``l_l``) and ``l_v`` their distribution
-    lengths in ft; ``h_e_min`` the minimum effective height in inches.
+    lengths in ft; ``h_e_min`` the minimum effective height in inches;
+    ``h_min`` the minimum rail height in inches (bottom row of Table A13.2-1).
     """
 
     f_t: float
@@ -54,16 +55,17 @@ class TestLevelLoad:
     l_t: float
     l_v: float
     h_e_min: float
+    h_min: float
 
 
 # Table A13.2-1 (LRFD 1st-9th Ed., NCHRP 350 test levels)
 TEST_LEVEL_LOADS: dict[str, TestLevelLoad] = {
-    "TL-1": TestLevelLoad(13.5, 4.5, 4.5, 4.0, 18.0, 18.0),
-    "TL-2": TestLevelLoad(27.0, 9.0, 4.5, 4.0, 18.0, 20.0),
-    "TL-3": TestLevelLoad(54.0, 18.0, 4.5, 4.0, 18.0, 24.0),
-    "TL-4": TestLevelLoad(54.0, 18.0, 18.0, 3.5, 18.0, 32.0),
-    "TL-5": TestLevelLoad(124.0, 41.0, 80.0, 8.0, 40.0, 42.0),
-    "TL-6": TestLevelLoad(175.0, 58.0, 80.0, 8.0, 40.0, 56.0),
+    "TL-1": TestLevelLoad(13.5,  4.5,  4.5, 4.0, 18.0, 18.0, 27.0),
+    "TL-2": TestLevelLoad(27.0,  9.0,  4.5, 4.0, 18.0, 20.0, 27.0),
+    "TL-3": TestLevelLoad(54.0, 18.0,  4.5, 4.0, 18.0, 24.0, 27.0),
+    "TL-4": TestLevelLoad(54.0, 18.0, 18.0, 3.5, 18.0, 32.0, 32.0),
+    "TL-5": TestLevelLoad(124.0, 41.0, 80.0, 8.0, 40.0, 42.0, 42.0),
+    "TL-6": TestLevelLoad(175.0, 58.0, 80.0, 8.0, 40.0, 56.0, 90.0),
 }
 
 
@@ -123,7 +125,10 @@ def parapet_test_level_check(
         f_t=tl.f_t, end_region=end_region,
     )
     result.details["test_level"] = test_level
-    result.details["height_ok"] = h_ft * 12.0 >= tl.h_e_min
+    h_in = h_ft * 12.0
+    result.details["h_e_ok"] = h_in >= tl.h_e_min
+    result.details["h_min_ok"] = h_in >= tl.h_min
+    result.details["height_ok"] = result.details["h_e_ok"] and result.details["h_min_ok"]
     return result
 
 
