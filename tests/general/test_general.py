@@ -9,12 +9,15 @@ the Free Software Foundation, either version 3 of the License, or
 """
 
 import pandas as pd
+import pytest
 from unittest.mock import MagicMock
 from civilpy.general import get_table_as_df, PrintColors
 
 
 class TestGetTableAsDf:
     def test_returns_dataframe(self):
+        # get_table_as_df needs SQLAlchemy (the optional "db" extra).
+        pytest.importorskip("sqlalchemy")
         mock_conn = MagicMock()
         mock_result = MagicMock()
         mock_result.fetchall.return_value = [("val1", "val2")]
