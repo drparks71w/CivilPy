@@ -26,18 +26,20 @@ from typing import List, Dict, Union, Optional, Any
 from IPython.display import display, Image as IPImage
 
 from .aw_fields import aw_fields
+from .credentials import get_assetwise_secrets  # cached; single source of truth
 
 base_url = "https://ohiodot-it-api.bentley.com"
 
 
-def get_assetwise_secrets():
-    """Loads API secrets from a JSON file."""
-    with open(Path.home() / "secrets.json", 'r') as file:
-        secrets = json.load(file)
-    return secrets['BENTLEY_ASSETWISE_KEY_NAME'], secrets['BENTLEY_ASSETWISE_API']
-
-
-username, password = get_assetwise_secrets()
+# Load credentials at import for the module-level helpers, but never let a
+# missing/malformed secrets.json make the module un-importable — callers on
+# machines without credentials (CI, dev, downstream imports) still need the
+# functions and classes. Functions that hit the API re-load secrets locally
+# (cheaply, since get_assetwise_secrets is cached).
+try:
+    username, password = get_assetwise_secrets()
+except (FileNotFoundError, KeyError, ValueError):
+    username, password = None, None
 
 
 # For when you only want to look at a single field and know it's id
@@ -265,6 +267,15 @@ class AssetWiseBridge:
         self._inspections: Optional[List[Dict]] = None
         self._snbi_data: Optional[Dict] = None
         self._decoded_attributes: Optional[Dict] = None
+        self._client = None  # lazily-created pooled AssetWiseClient
+
+    @property
+    def client(self) -> "AssetWiseClient":
+        """Lazily-created, connection-pooled API client shared by this bridge."""
+        if self._client is None:
+            from .assetwise_client import AssetWiseClient
+            self._client = AssetWiseClient()
+        return self._client
 
     def _fetch_core_identity(self) -> SimpleNamespace:
         """Fetches the 1:1 core asset data."""
@@ -278,6 +289,11 @@ class AssetWiseBridge:
                 raw[key] = SimpleNamespace(**value)
         return SimpleNamespace(**raw)
 
+    @property
+    def as_id(self) -> Optional[int]:
+        """Internal AssetWise primary key (as_id) for this bridge."""
+        return self._id
+
     # ==========================================================
     # 1:1 Relationships (The Bridge Table)
     # ==========================================================
@@ -290,12 +306,38 @@ class AssetWiseBridge:
 
     @property
     def snbi_data(self) -> Dict[str, Any]:
-        """Lazy-loads SNBI data (1:1 federal metrics)."""
+        """Lazy-loads SNBI data (1:1 federal metrics) as a flat {label: value} dict."""
         if self._snbi_data is None:
-            # (Your existing logic here - omitted for brevity but kept conceptually)
             raw = get_all_odot_snbi_data(self._id)
             self._snbi_data = self._flatten_snbi(raw)
         return self._snbi_data
+
+    @staticmethod
+    def _flatten_snbi(raw_pages: List) -> Dict[str, Any]:
+        """Flatten the nested template/element pages from get_all_odot_snbi_data.
+
+        ``get_all_odot_snbi_data`` returns a list of pages; each page is a list
+        of instances, each with an ``elements`` list of ``{fe_id, field, value}``
+        dicts. Collapse that to ``{label: value}`` where ``label`` is the
+        field's display name (falling back to the ``aw_fields`` dictionary, then
+        to ``field_<fe_id>``). Defensive against missing/oddly-shaped pages.
+        """
+        flat: Dict[str, Any] = {}
+        for page in raw_pages or []:
+            instances = page if isinstance(page, list) else [page]
+            for instance in instances:
+                if not isinstance(instance, dict):
+                    continue
+                for element in instance.get('elements', []) or []:
+                    fe_id = element.get('fe_id')
+                    field = element.get('field') or {}
+                    label = (
+                        field.get('fe_name')
+                        or aw_fields.get(str(fe_id))
+                        or f"field_{fe_id}"
+                    )
+                    flat[label] = element.get('value')
+        return flat
 
     # ==========================================================
     # 1:Many Relationships (The Child Tables)
@@ -320,7 +362,7 @@ class AssetWiseBridge:
     def elements(self) -> List[Dict]:
         """Retrieves Inspection Elements."""
         if self._elements is None:
-            self._elements = get_elements_for_asset(base_url, username, password, self._id)
+            self._elements = self.client.get_current_elements(self._id)
 
             # Post-Processing: Flatten and inject Foreign Key
             for el in self._elements:
@@ -360,18 +402,19 @@ class AssetWiseBridge:
             "elements": element_records
         }
 
-        return self._snbi_data
-
     def _fetch_and_decode_values(self) -> Dict[str, Union[str, int, float]]:
-        """Internal helper to fetch and map CurrentValues."""
-        api_url = f"{base_url}/api/CurrentValue/GetCurrentValuesByAssetId/{self.as_id}"
-        try:
-            response = requests.get(api_url, auth=HTTPBasicAuth(username, password))
-            response.raise_for_status()
-            raw_rows = response.json().get('data', [])
-        except Exception as e:
-            print(f"Error fetching attributes: {e}")
-            return {}
+        """Fetch CurrentValues for this asset and decode fe_ids to field names.
+
+        Returns ``{label: value}`` where ``label`` is the human-readable field
+        name from the ``aw_fields`` dictionary (falling back to ``field_<fe_id>``
+        for ids not in the dictionary). Uses the pooled client.
+        """
+        raw_lookup = self.client.get_current_values(self._id)  # {fe_id: value}
+        decoded: Dict[str, Union[str, int, float]] = {}
+        for fe_id, value in raw_lookup.items():
+            label = aw_fields.get(str(fe_id), f"field_{fe_id}")
+            decoded[label] = value
+        return decoded
 
     def __repr__(self):
         return f"<AssetWiseBridge SFN: '{self.sfn}' (1 Bridge, {len(self.spans or [])} Spans, {len(self.elements or [])} Elems)>"
