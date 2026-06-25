@@ -29,6 +29,7 @@ dependencies = [
     "pandas>=2.0",
     "sympy>=1.10",
     "matplotlib>=3.7",
+    "plotly>=5.0",
     "scipy>=1.11",
     "Pint>=0.20",
     "requests>=2.28",
