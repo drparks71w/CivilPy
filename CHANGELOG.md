@@ -5,6 +5,19 @@ Versions follow [Semantic Versioning](https://semver.org/) (major.minor.patch).
 
 ---
 
+## [0.3.0] - 2026-06-24
+
+Final 0.3.0 release, promoting the tested 0.3.0rc1/rc2 candidates so a plain
+`pip install civilpy` selects it by default.
+
+- **SNBI validation** — `state.ohio.snbi` now enforces the FHWA SNBI Data
+  Validation Rules as real Pydantic checks (state-code validation replacing
+  the former `Field(eq=39)` no-op, do-not-report rejection, enumerations,
+  date/charset/range rules, and cross-field critical/safety checks).
+- Includes everything from 0.3.0rc1 and 0.3.0rc2 below.
+
+---
+
 ## [0.3.0rc2] - 2026-06-16 (release candidate)
 
 `MidasCivil` hardening from live batch load-rating runs:
