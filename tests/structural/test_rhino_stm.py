@@ -241,3 +241,44 @@ class TestHubInterconversion:
         assert len(result.element_forces) == len(src.members)
         # the solved hub passes its own integrity check
         assert hub.check() == []
+
+
+class TestRhinoToMidas:
+    """S4: the Rhino -> Midas adapter (read .3dm into the hub, serialize)."""
+
+    def test_3dm_to_midas_payloads_end_to_end(self, tmp_path):
+        from civilpy.structural import midas_models as mm
+        path = tmp_path / "ex1.3dm"
+        _example_1().to_3dm(path, plane="XZ")
+
+        hub = rhino_stm.read_structural_model(path, plane="XZ")
+        payloads = mm.midas_payloads(hub)
+
+        assert len(payloads["NODE"]) == 6
+        assert len(payloads["ELEM"]) == 9
+        # the two 600-kip loads survive into CNLD as -Z forces
+        fz = [item["FZ"] for body in payloads["CNLD"].values()
+              for item in body["ITEMS"]]
+        assert fz == pytest.approx([-600.0, -600.0])
+
+    def test_midas_constraints_keep_6dof_from_tags(self, tmp_path):
+        """A `fixed` support's fix_rz reaches the MIDAS CONS string -- the whole
+        point of routing Rhino->Midas through the hub, not the 2D STM model."""
+        from civilpy.structural import midas_models as mm
+        f = rhino3dm.File3dm()
+        f.Settings.ModelUnitSystem = rhino3dm.UnitSystem.Feet
+        for a, b in [((0, 0, 0), (8, 0, 0)), ((8, 0, 0), (4, 0, 4)),
+                     ((0, 0, 0), (4, 0, 4))]:
+            f.Objects.AddLine(rhino3dm.Point3d(*a), rhino3dm.Point3d(*b))
+        attr = rhino3dm.ObjectAttributes()
+        attr.SetUserString("stm.kind", "support")
+        attr.SetUserString("stm.support", "fixed")
+        f.Objects.AddPoint(rhino3dm.Point3d(0, 0, 0), attr)
+        path = tmp_path / "fixed.3dm"
+        f.Write(str(path), 7)
+
+        hub = rhino_stm.read_structural_model(path)
+        payloads = mm.midas_payloads(hub)
+        constraints = [s["ITEMS"][0]["CONSTRAINT"]
+                       for s in payloads["CONS"].values()]
+        assert "1100010" in constraints      # fix_x, fix_y, fix_rz

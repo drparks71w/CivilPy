@@ -51,13 +51,81 @@ CONS, '1' = released for FRLS), matching the rest of the API client.
 from __future__ import annotations
 
 import math
-from typing import Iterable, Optional
+from typing import TYPE_CHECKING, Iterable, Optional
+
+if TYPE_CHECKING:                                    # avoid an import cycle / hard dep
+    from civilpy.structural.structural_model import StructuralModel
 
 
 def lb_per_in_to_kip_per_ft(k_lb_per_in: float) -> float:
     """Convert a spring constant from lb/in (the geotech curve unit) to
     kip/ft (the KIPS/FT model unit): ``k[kip/ft] = k[lb/in] * 12 / 1000``."""
     return k_lb_per_in * 12.0 / 1000.0
+
+
+# ===================================================== shared MIDAS encoders
+#
+# The NODE/ELEM/CONS/UNIT/MATL encodings below are the *single* source of
+# those payload fragments (design-doc stage S4): both the hub serializer in
+# this module and ``TrussBridge.midas_payloads`` build them here so the two
+# Midas exporters cannot drift.
+
+#: A709 Grade 50 steel in KIPS/FT model units (E in ksf, density in kcf) --
+#: the structural-steel property block both exporters share.
+STEEL_PROPS = {"ELAST": 4_176_000.0, "POISN": 0.3,
+               "THERMAL": 6.5e-06, "DEN": 0.490}
+
+#: Map civilpy ``Units`` labels onto the MIDAS ``UNIT`` enum values.
+_FORCE_UNIT = {"kips": "KIPS", "kip": "KIPS", "kn": "KN", "n": "N",
+               "lbf": "LBF", "tonf": "TONF", "kgf": "KGF"}
+_DIST_UNIT = {"ft": "FT", "feet": "FT", "in": "IN", "inch": "IN", "m": "M",
+              "mm": "MM", "cm": "CM"}
+
+
+def unit_block(force: str = "KIPS", dist: str = "FT",
+               heat: str = "BTU", temper: str = "F") -> dict:
+    """The ``/db/UNIT`` assign body ``{"1": {FORCE, DIST, HEAT, TEMPER}}``."""
+    return {"1": {"FORCE": force, "DIST": dist, "HEAT": heat, "TEMPER": temper}}
+
+
+def unit_block_for(units) -> dict:
+    """``unit_block`` from a hub :class:`~civilpy.structural.structural_model.Units`
+    (maps the kips/ft labels to the MIDAS enum; unknown labels pass through
+    upper-cased)."""
+    force = _FORCE_UNIT.get(units.force.lower(), units.force.upper())
+    dist = _DIST_UNIT.get(units.length.lower(), units.length.upper())
+    return unit_block(force, dist)
+
+
+def steel_material_block(name: str = "A709-50", *, matl_id: int = 1,
+                         props: Optional[dict] = None) -> dict:
+    """The ``/db/MATL`` assign body for a USER-defined steel material."""
+    return {str(matl_id): {
+        "TYPE": "USER", "NAME": name, "THMAL_UNIT": "F",
+        "bMASS_DENS": False, "DAMP_RAT": 0.0,
+        "PARAM": [{"P_TYPE": 2, "MASS": 0.0, **(props or STEEL_PROPS)}],
+    }}
+
+
+def placeholder_section_block(*, sect_id: int = 1, side_ft: float = 1.0,
+                              name: str = "PLACEHOLDER-1ft-SQ") -> dict:
+    """A solid-square ``/db/SECT`` placeholder so exported elements reference a
+    valid section.  Swap to the real shape inside Civil NX for flexure -- the
+    equal-area square keeps axial stiffness honest meanwhile (same convention
+    as ``TrussBridge``)."""
+    return {str(sect_id): {
+        "SECTTYPE": "DBUSER", "SECT_NAME": name,
+        "SECT_BEFORE": {"SHAPE": "SB", "DATATYPE": 2,
+                        "SECT_I": {"vSIZE": [round(side_ft, 6),
+                                             round(side_ft, 6)]}},
+    }}
+
+
+def constraint_assign(cons_by_id: dict[int, str]) -> dict:
+    """Wrap ``{node_id: "DX..RW" flag string}`` into the ``/db/CONS`` body
+    ``{node_id: {"ITEMS": [{"ID": 1, "CONSTRAINT": flags}]}}``."""
+    return {str(i): {"ITEMS": [{"ID": 1, "CONSTRAINT": flags}]}
+            for i, flags in cons_by_id.items()}
 
 
 # ============================================================ curved girders
@@ -308,3 +376,106 @@ def soil_spring_supports(
             "ITEMS": [{"ID": 1, "TYPE": spring_type, "SDR": list(sdr)}],
         }
     return assign
+
+
+# ============================================ canonical hub -> MIDAS (stage S4)
+#
+# The Rhino -> Midas adapter: read a tagged ``.3dm`` into the canonical
+# ``StructuralModel`` (``rhino_stm.read_structural_model``), then serialize that
+# hub straight to MIDAS -- *without* routing through the lossy 2D
+# ``StrutAndTieModel`` (which drops fix_z/rx/ry/rz).  Mirrors
+# ``TrussBridge.midas_payloads`` / ``.to_midas`` in shape and report so the two
+# exporters behave identically.
+
+
+def midas_payloads(model: "StructuralModel", *, node_start: int = 1,
+                   elem_start: int = 1, material_name: str = "A709-50") -> dict:
+    """Serialize a :class:`~civilpy.structural.structural_model.StructuralModel`
+    to MIDAS ``PUT /db/*`` assign bodies -- the **Rhino -> Midas** payload step.
+
+    Pure (no live session): returns ``{table: assign}`` in send order
+    ``UNIT, MATL, SECT, NODE, ELEM, CONS, STLD, CNLD``.  The hub's stable string
+    ids are mapped to the 1-based integer ids MIDAS uses (node insertion order);
+    full 6-DOF restraints become the 7-char ``CONS`` flag string via
+    :meth:`Restraint.to_constraint_string`, so ``fix_z/rx/ry/rz`` reach MIDAS
+    intact.  Loads are grouped into ``STLD`` cases with their nodal forces and
+    moments in ``CNLD``.
+
+    Every element references the shared placeholder section (id 1) and steel
+    material (id 1); replace them in Civil NX for flexural design.
+
+    .. note::
+       The ``CNLD`` concentrated-nodal-load layout follows the API manual but is
+       **unverified against a live Civil NX release** -- check the send report's
+       errors first when debugging (same caveat as the ``midas_models`` builders).
+    """
+    node_int: dict[str, int] = {}
+    coords_by_id: dict[int, tuple] = {}
+    for k, node in enumerate(model.nodes.values(), start=node_start):
+        node_int[node.id] = k
+        coords_by_id[k] = node.coords
+
+    nodes = {str(i): {"X": round(x, 6), "Y": round(y, 6), "Z": round(z, 6)}
+             for i, (x, y, z) in coords_by_id.items()}
+
+    elements: dict[str, dict] = {}
+    for j, elem in enumerate(model.elements.values(), start=elem_start):
+        elements[str(j)] = {
+            "TYPE": elem.midas_type, "MATL": 1, "SECT": 1,
+            "NODE": [node_int[elem.node_a], node_int[elem.node_b]],
+            "ANGLE": 0,
+        }
+
+    cons = {node_int[r.node_id]: r.to_constraint_string()
+            for r in model.restraints.values()
+            if any(r.flags())}
+
+    # Static load cases (one STLD per named case) and their nodal point loads.
+    cases = [c for c in model.cases() if model.loads_in_case(c)]
+    static_loads = {
+        str(i): {"NAME": name, "TYPE": "USER", "DESC": ""}
+        for i, name in enumerate(cases, start=1)
+    }
+    nodal_loads: dict[str, dict] = {}
+    for load in model.loads:
+        if not any((load.fx, load.fy, load.fz, load.mx, load.my, load.mz)):
+            continue
+        body = nodal_loads.setdefault(str(node_int[load.node_id]), {"ITEMS": []})
+        body["ITEMS"].append({
+            "ID": len(body["ITEMS"]) + 1, "LCNAME": load.case, "GROUP_NAME": "",
+            "FX": load.fx, "FY": load.fy, "FZ": load.fz,
+            "MX": load.mx, "MY": load.my, "MZ": load.mz,
+        })
+
+    payloads = {
+        "UNIT": unit_block_for(model.units),
+        "MATL": steel_material_block(material_name),
+        "SECT": placeholder_section_block(),
+        "NODE": nodes,
+        "ELEM": elements,
+    }
+    if cons:
+        payloads["CONS"] = constraint_assign(cons)
+    if static_loads:
+        payloads["STLD"] = static_loads
+    if nodal_loads:
+        payloads["CNLD"] = nodal_loads
+    return payloads
+
+
+def push_midas(model: "StructuralModel", midas=None, **client_kwargs) -> dict:
+    """Send a hub to a live Civil NX session (built from ``~/secrets.json`` when
+    ``midas`` is not given).  Pushes each :func:`midas_payloads` table in order,
+    keeps going on errors, and returns ``{table: {"sent": n} | {"error": msg}}``
+    -- the same report shape as ``TrussBridge.to_midas``."""
+    if midas is None:
+        from civilpy.structural.midas import MidasCivil
+        midas = MidasCivil(**client_kwargs)
+    report = {}
+    for table, assign in midas_payloads(model).items():
+        try:
+            midas.put_db(table, assign)
+            report[table] = {"sent": len(assign)}
+        except Exception as exc:            # MidasApiError, transport, etc.
+            report[table] = {"error": str(exc)}
+    return report
