@@ -5,6 +5,16 @@ Versions follow [Semantic Versioning](https://semver.org/) (major.minor.patch).
 
 ---
 
+## [0.3.1] - 2026-06-29
+
+- **SNBI validation fix** — `state.ohio.snbi` `Element.BE02` (Element Parent
+  Number) is now optional. It is only reported for child elements (defects,
+  protective systems); top-level NBE elements have no parent, so requiring it
+  raised a spurious "Field required" on every parentless element (the dominant
+  share of validation errors on complete inventories).
+
+---
+
 ## [0.3.0] - 2026-06-24
 
 Final 0.3.0 release, promoting the tested 0.3.0rc1/rc2 candidates so a plain
