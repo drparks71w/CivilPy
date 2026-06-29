@@ -372,6 +372,59 @@ class TestMemberHint:
             m.solve()
 
 
+class TestRegionUnitConversion:
+    """problem_from_3dm converts an inch-authored region to feet (S: unit gap)."""
+
+    def test_region_in_inches_converts_to_feet(self, tmp_path):
+        f = rhino3dm.File3dm()
+        f.Settings.ModelUnitSystem = rhino3dm.UnitSystem.Inches
+        # 96 in x 48 in rectangle = 8 ft x 4 ft
+        corners = [(0, 0, 0), (96, 0, 0), (96, 0, 48), (0, 0, 48), (0, 0, 0)]
+        region = rhino3dm.PolylineCurve([rhino3dm.Point3d(*c) for c in corners])
+        rattr = rhino3dm.ObjectAttributes()
+        rattr.SetUserString("stm.kind", "region")
+        rattr.SetUserString("stm.thickness", "12")   # 12 in = 1 ft
+        rattr.SetUserString("stm.fc", "5")
+        f.Objects.AddCurve(region, rattr)
+
+        sattr = rhino3dm.ObjectAttributes()
+        sattr.SetUserString("stm.kind", "support")
+        sattr.SetUserString("stm.fix_x", "true")
+        sattr.SetUserString("stm.fix_y", "true")
+        sattr.SetUserString("stm.bearing", "6")       # 6 in = 0.5 ft
+        f.Objects.AddPoint(rhino3dm.Point3d(0, 0, 0), sattr)
+
+        path = tmp_path / "region_in.3dm"
+        f.Write(str(path), 7)
+
+        prob = rhino_stm.problem_from_3dm(path, plane="XZ")
+        xs = [x for x, _ in prob.boundary]
+        ys = [y for _, y in prob.boundary]
+        assert max(xs) - min(xs) == pytest.approx(8.0)    # 96 in -> 8 ft
+        assert max(ys) - min(ys) == pytest.approx(4.0)    # 48 in -> 4 ft
+        assert prob.thickness == pytest.approx(1.0)       # 12 in -> 1 ft
+        assert prob.material.f_c == pytest.approx(5.0)    # ksi, NOT scaled
+        assert prob.supports[0].bearing == pytest.approx(0.5)  # 6 in -> 0.5 ft
+
+    def test_region_in_feet_unscaled(self, tmp_path):
+        f = rhino3dm.File3dm()
+        f.Settings.ModelUnitSystem = rhino3dm.UnitSystem.Feet
+        corners = [(0, 0, 0), (8, 0, 0), (8, 0, 4), (0, 0, 4), (0, 0, 0)]
+        region = rhino3dm.PolylineCurve([rhino3dm.Point3d(*c) for c in corners])
+        rattr = rhino3dm.ObjectAttributes()
+        rattr.SetUserString("stm.kind", "region")
+        rattr.SetUserString("stm.thickness", "1")
+        rattr.SetUserString("stm.fc", "5")
+        f.Objects.AddCurve(region, rattr)
+        path = tmp_path / "region_ft.3dm"
+        f.Write(str(path), 7)
+
+        prob = rhino_stm.problem_from_3dm(path, plane="XZ")
+        xs = [x for x, _ in prob.boundary]
+        assert max(xs) - min(xs) == pytest.approx(8.0)
+        assert prob.thickness == pytest.approx(1.0)
+
+
 class TestRhinoToMidas:
     """S4: the Rhino -> Midas adapter (read .3dm into the hub, serialize)."""
 

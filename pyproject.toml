@@ -81,12 +81,18 @@ cande = [
 rhino = [
     "rhino3dm>=8.0",
 ]
+fem = [
+    "pygmsh>=7.1",
+    "scikit-fem>=8.0",
+    "scikit-image>=0.21",
+    "networkx>=3.0",
+]
 test = [
     "pytest>=7.0",
     "pytest-cov>=4.0",
 ]
 full = [
-    "civilpy[db,pdf,geo,web,jupyter,validation,rhino]",
+    "civilpy[db,pdf,geo,web,jupyter,validation,rhino,fem]",
     "FreeSimpleGUI>=5.0",
 ]
 
