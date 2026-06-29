@@ -52,7 +52,7 @@ import math
 from collections import namedtuple
 
 from civilpy.structural.strut_and_tie import StrutAndTieModel
-from civilpy.structural.structural_model import MEMBER_TYPES, StructuralModel
+from civilpy.structural.structural_model import StructuralModel, Units
 
 
 @contextlib.contextmanager
@@ -167,22 +167,38 @@ def _label(i):
 
 
 class _NodeSet:
-    """Clusters 2D points within a tolerance and hands out stable labels."""
+    """Clusters points within a tolerance and hands out stable labels.
+
+    Points are clustered in the 2D analysis plane (so coincident endpoints
+    merge), but the first 3D coordinate seen for each cluster is retained in
+    ``coords3d`` / ``ordered3d`` so a full-3D
+    :class:`~civilpy.structural.structural_model.StructuralModel` can be built
+    without re-projecting.
+    """
 
     def __init__(self, tol):
         self.tol = tol
         self.points: list[tuple[float, float]] = []
+        self.coords3d: list[tuple[float, float, float]] = []
 
-    def add(self, xy):
+    def add(self, xy, xyz=None):
         for q in self.points:
             if math.hypot(xy[0] - q[0], xy[1] - q[1]) <= self.tol:
                 return
         self.points.append((float(xy[0]), float(xy[1])))
+        self.coords3d.append(
+            tuple(float(c) for c in xyz) if xyz is not None
+            else (float(xy[0]), float(xy[1]), 0.0)
+        )
 
     def finalize(self):
         # bottom-to-top, then left-to-right, so labels read like an elevation
-        self.ordered = sorted(self.points, key=lambda p: (round(p[1], 6), p[0]))
-        self.labels = {p: _label(i) for i, p in enumerate(self.ordered)}
+        order = sorted(range(len(self.points)),
+                       key=lambda i: (round(self.points[i][1], 6),
+                                      self.points[i][0]))
+        self.ordered = [self.points[i] for i in order]
+        self.ordered3d = [self.coords3d[i] for i in order]
+        self.labels = {p: _label(k) for k, p in enumerate(self.ordered)}
 
     def nearest(self, xy):
         best, bd = None, None
@@ -195,29 +211,30 @@ class _NodeSet:
 
 # ── Reading: 3dm -> model ─────────────────────────────────────────────────────
 
-def model_from_3dm(path, *, plane="auto", tol=0.05):
-    """Read a tagged Rhino ``.3dm`` file into a :class:`StrutAndTieModel`.
+def _read_raw(path):
+    """Parse a tagged ``.3dm`` into plain Python tuples (no model class yet).
 
-    Parameters
-    ----------
-    path : str
-        Path to the ``.3dm`` file.
-    plane : {"auto", "XY", "XZ", "YZ"}
-        World plane the model is drawn in.  ``"auto"`` infers it from the
-        geometry (the near-constant axis is the normal).
-    tol : float
-        Snapping tolerance (model units) for collapsing coincident endpoints
-        into nodes and matching supports/loads to them.
+    Returns ``(members_raw, supports_raw, loads_raw, world_pts)`` where
+
+    * ``members_raw`` is ``[(worldA, worldB), ...]`` (3D endpoints),
+    * ``supports_raw`` is ``[(world_pt, dof_dict, preset_or_None), ...]`` with
+      the **full 6-DOF** resolved into ``dof_dict``,
+    * ``loads_raw`` is ``[(world_pt, world_dir_vec, kips), ...]``, and
+    * ``world_pts`` collects every point seen, for plane detection.
+
+    This is the single Rhino parser :func:`read_structural_model` (and, through
+    it, :func:`model_from_3dm`) build on -- one reader feeding both consumers,
+    so the two never drift.
     """
     r3 = _require_rhino3dm()
     f = r3.File3dm.Read(str(path))
     if f is None:
         raise FileNotFoundError(f"could not read 3dm file: {path}")
 
-    members_raw = []   # (worldA, worldB)
-    supports_raw = []  # (world_pt, dof_dict)
-    loads_raw = []     # (world_pt, world_dir_vec, kips)
-    world_pts = []     # for plane detection
+    members_raw = []
+    supports_raw = []
+    loads_raw = []
+    world_pts = []
 
     for obj in f.Objects:
         attrs = obj.Attributes
@@ -236,9 +253,10 @@ def model_from_3dm(path, *, plane="auto", tol=0.05):
             origin = (g.Xform.M03, g.Xform.M13, g.Xform.M23)
             world_pts.append(origin)
             if name in BLOCK_SUPPORT or kind == "support":
-                dof = dict(SUPPORT_DOF.get(BLOCK_SUPPORT.get(name, ""), {}))
+                preset = BLOCK_SUPPORT.get(name)
+                dof = dict(SUPPORT_DOF.get(preset, {})) if preset else {}
                 _apply_dof_overrides(dof, us)
-                supports_raw.append((origin, dof))
+                supports_raw.append((origin, dof, us.get(TAG + "support", preset)))
             elif name == BLOCK_LOAD or kind == "load":
                 # the block's local +X axis, transformed, is the force direction
                 xaxis = (g.Xform.M00, g.Xform.M10, g.Xform.M20)
@@ -257,7 +275,7 @@ def model_from_3dm(path, *, plane="auto", tol=0.05):
             elif kind == "support":
                 dof = {}
                 _apply_dof_overrides(dof, us)
-                supports_raw.append((pa, dof))
+                supports_raw.append((pa, dof, us.get(TAG + "support")))
             else:  # member (explicit stm.kind=member or untagged fallback)
                 members_raw.append((pa, pb))
         elif gtype == "Point" and kind == "support":
@@ -265,36 +283,98 @@ def model_from_3dm(path, *, plane="auto", tol=0.05):
             world_pts.append((p.X, p.Y, p.Z))
             dof = {}
             _apply_dof_overrides(dof, us)
-            supports_raw.append(((p.X, p.Y, p.Z), dof))
+            supports_raw.append(((p.X, p.Y, p.Z), dof, us.get(TAG + "support")))
 
+    return members_raw, supports_raw, loads_raw, world_pts
+
+
+def read_structural_model(path, *, plane="auto", tol=0.05):
+    """Read a tagged Rhino ``.3dm`` into the canonical
+    :class:`~civilpy.structural.structural_model.StructuralModel` hub.
+
+    Where :func:`model_from_3dm` returns the lossy 2D :class:`StrutAndTieModel`,
+    this preserves everything the MIDAS and IFC adapters need: **full 3D node
+    coordinates, the complete 6-DOF restraint** (``stm.fix_*`` -- so
+    ``fix_z``/``fix_rx``/``fix_ry``/``fix_rz`` survive, not just the in-plane
+    pair the truss solver uses), the support preset, stable object ids, and the
+    full 3D load vectors.  This is stage **S2** of the package-coherence track
+    in ``docs/Rhino Design Philosophy.md``.
+
+    Parameters
+    ----------
+    path : str
+        Path to the ``.3dm`` file.
+    plane : {"auto", "XY", "XZ", "YZ"}
+        World plane the model is drawn in, used only to cluster coincident
+        endpoints into nodes; ``"auto"`` infers it from the geometry.  The hub
+        keeps the genuine 3D coordinates regardless.
+    tol : float
+        Snapping tolerance (model units) for collapsing coincident endpoints
+        into nodes and matching supports/loads to them.
+    """
+    members_raw, supports_raw, loads_raw, world_pts = _read_raw(path)
     if plane == "auto":
         plane = _detect_plane(world_pts)
 
-    # build nodes from member endpoints
+    # cluster nodes in the analysis plane, but keep the genuine 3D coordinate
     nodes = _NodeSet(tol)
     for pa, pb in members_raw:
-        nodes.add(_project(pa, plane))
-        nodes.add(_project(pb, plane))
+        nodes.add(_project(pa, plane), pa)
+        nodes.add(_project(pb, plane), pb)
     nodes.finalize()
 
-    model = StrutAndTieModel()
-    for p in nodes.ordered:
-        model.add_node(nodes.labels[p], p[0], p[1])
+    model = StructuralModel(units=Units(force="kips", length="ft"))
+    id_by_label = {}
+    for p2, p3 in zip(nodes.ordered, nodes.ordered3d):
+        label = nodes.labels[p2]
+        id_by_label[label] = model.add_node(p3[0], p3[1], p3[2], label=label).id
+
+    def nid(pt3):
+        return id_by_label[nodes.nearest(_project(pt3, plane))]
+
     for pa, pb in members_raw:
-        model.add_member(nodes.nearest(_project(pa, plane)),
-                         nodes.nearest(_project(pb, plane)))
-    for pt, dof in supports_raw:
-        model.add_support(nodes.nearest(_project(pt, plane)),
-                          fix_x=bool(dof.get("fix_x")),
-                          fix_y=bool(dof.get("fix_y")))
+        model.add_element(nid(pa), nid(pb))
+    for pt, dof, preset in supports_raw:
+        restraint = model.add_restraint(nid(pt), **dof)
+        if preset:
+            restraint.preset = preset
     for pt, direction, kips in loads_raw:
-        dx, dy = _project(direction, plane)
-        mag = math.hypot(dx, dy)
+        mag = math.sqrt(sum(c * c for c in direction))
         if mag == 0.0 or kips == 0.0:
             continue
-        model.add_load(nodes.nearest(_project(pt, plane)),
-                       fx=kips * dx / mag, fy=kips * dy / mag)
+        model.add_load(nid(pt), fx=kips * direction[0] / mag,
+                       fy=kips * direction[1] / mag,
+                       fz=kips * direction[2] / mag)
     return model
+
+
+def model_from_3dm(path, *, plane="auto", tol=0.05, as_model=False):
+    """Read a tagged Rhino ``.3dm`` file into a structural model.
+
+    By default returns a 2D :class:`StrutAndTieModel` (backward compatible) --
+    now produced as a thin projection of the canonical hub rather than via a
+    second parser.  Pass ``as_model=True`` to get the richer 3D / 6-DOF
+    :class:`~civilpy.structural.structural_model.StructuralModel` hub instead
+    (equivalent to :func:`read_structural_model`).
+
+    Parameters
+    ----------
+    path : str
+        Path to the ``.3dm`` file.
+    plane : {"auto", "XY", "XZ", "YZ"}
+        World plane the model is drawn in.  ``"auto"`` infers it from the
+        geometry (the near-constant axis is the normal).
+    tol : float
+        Snapping tolerance (model units) for collapsing coincident endpoints
+        into nodes and matching supports/loads to them.
+    as_model : bool
+        When ``True`` return the full :class:`StructuralModel` hub instead of
+        the projected 2D :class:`StrutAndTieModel`.
+    """
+    hub = read_structural_model(path, plane=plane, tol=tol)
+    if as_model:
+        return hub
+    return StrutAndTieModel.from_structural_model(hub, plane=plane)
 
 
 def _apply_dof_overrides(dof, us):
@@ -420,7 +500,7 @@ def build_template(path, *, version=7):
     The symbol *block definitions* (pin / rollers / fixed / load arrow) are
     intentionally **not** baked in here: rhino3dm 8.x's
     ``InstanceDefinitions.Add`` corrupts memory probabilistically, so block
-    creation is left to the in-Rhino authoring tools (``tools/rhino/
+    creation is left to the in-Rhino authoring tools (``src/civilpy/structural/rhino_scripts/
     stm_authoring.py``), where RhinoCommon creates them reliably on first use.
     The reader (:func:`model_from_3dm`) understands those Rhino-authored block
     symbols as well as the tagged points/lines this package writes.
