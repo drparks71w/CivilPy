@@ -136,7 +136,10 @@ class Element(BaseModel):
     reconciliation (B.E.03-3) are enforced."""
 
     BE01: Annotated[str, StringConstraints(max_length=4, min_length=1, strip_whitespace=True)]
-    BE02: Annotated[str, StringConstraints(max_length=4, min_length=1, strip_whitespace=True)]
+    # B.E.02 (Element Parent Number) is only reported for child elements (defects,
+    # protective systems) nested under a parent; top-level NBE elements have no
+    # parent, so it is optional.
+    BE02: Optional[Annotated[str, StringConstraints(max_length=4, strip_whitespace=True)]] = None
     BE03: Optional[Annotated[int, Field(ge=0, le=99999999)]] = None
     BCS01: Optional[Annotated[int, Field(ge=0, le=99999999)]] = None
     BCS02: Optional[Annotated[int, Field(ge=0, le=99999999)]] = None
