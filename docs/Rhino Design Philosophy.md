@@ -525,11 +525,19 @@ green. Stop-anywhere ordering:
   solved forces/reactions into a `Result`). `model_from_3dm` now parses once
   into the hub and returns `from_structural_model(hub)` — the 2D path is a thin
   projection of the hub, public behavior unchanged (all prior tests green).
-- [ ] **S4 — One Midas serializer.** Extract the shared NODE/ELEM/CONS/UNIT/MATL
-  encoding (incl. the 7-char DOF string and steel-material block) into
-  `midas_models` helpers, and add `midas_payloads(StructuralModel)` /
-  `push_midas(model, client)`. **This is the Rhino→Midas adapter** (Rhino→hub→
-  payloads→API).
+- [x] **S4 — One Midas serializer. → Shipped (Python).** Extracted the shared
+  encoding into `midas_models` helpers — `STEEL_PROPS`, `unit_block` /
+  `unit_block_for(Units)`, `steel_material_block`, `placeholder_section_block`,
+  `constraint_assign` — and `TrussBridge` now builds its UNIT/MATL through them
+  (output byte-identical, regression-tested). Added
+  `midas_models.midas_payloads(StructuralModel)` (pure; emits UNIT/MATL/SECT/
+  NODE/ELEM/CONS/STLD/CNLD, mapping the hub's full 6-DOF restraints to the
+  `CONS` string and loads to STLD cases + CNLD nodal forces) and
+  `push_midas(model, midas=None, **client_kwargs)` (mirrors
+  `TrussBridge.to_midas`'s per-table `{"sent": n} | {"error": ...}` report).
+  **This is the Rhino→Midas adapter**: `read_structural_model(path)` →
+  `push_midas(hub)`, never through the lossy 2D STM model. (CNLD layout follows
+  the manual, unverified against a live Civil NX session.)
 - [ ] **S5 — Refactor `TrussBridge` onto the shared serializer.** Have
   `TrussBridge.midas_payloads()` build the hub then call the shared serializer,
   collapsing the two Midas encoders into one. Keep its public API and report
@@ -842,17 +850,19 @@ canonical hub instead of `TrussBridge`'s internal model.
 So the work is a **hub → MIDAS serializer** modeled on `TrussBridge`, reusing the
 existing client and builders — not a fresh bridge (this is stage **S4** above):
 
-- [ ] Add `midas_payloads(StructuralModel)` / `push_midas(model, midas=None,
+- [x] Add `midas_payloads(StructuralModel)` / `push_midas(model, midas=None,
   **client_kwargs)` mirroring `TrussBridge`'s signatures and per-table report
   shape: emit `NODE` / `ELEM` / `CONS` / `STLD` assign dicts (pure, testable with
-  no live session), then push via `MidasCivil.put_db`. Extract the shared
-  NODE/ELEM/CONS/UNIT/MATL encoding into `midas_models` so `TrussBridge` and this
-  serializer share one encoder (S4/S5).
-- [ ] `Rhino → Midas` end-to-end = `from_3dm(as_model=True)` → `push_midas(...)`;
-  no `StrutAndTieModel` in the path.
-- [ ] Map `stm.fix_*` (6-DOF) → the `CONS` constraint flag string; map
-  `stm.kips` + load direction → an `STLD` static load case; map `stm.case` →
-  MIDAS load case names once that tag is adopted.
+  no live session), then push via `MidasCivil.put_db`. **Done (S4):** in
+  `midas_models`, sharing the extracted `unit_block`/`steel_material_block`/
+  `constraint_assign`/`placeholder_section_block` encoders with `TrussBridge`.
+- [x] `Rhino → Midas` end-to-end = `from_3dm(as_model=True)` → `push_midas(...)`;
+  no `StrutAndTieModel` in the path. **Done (S4)** — covered by
+  `TestRhinoToMidas` in `test_rhino_stm.py`.
+- [x] Map `stm.fix_*` (6-DOF) → the `CONS` constraint flag string; map
+  `stm.kips` + load direction → an `STLD` static load case + `CNLD` nodal force.
+  **Done (S4)** via `Restraint.to_constraint_string()`. `stm.case` → MIDAS load
+  case names still pending the load-case tag adoption.
 - [ ] Pull results back with the existing `result_table` / `beam_forces`, and
   optionally feed them to `results_to_3dm` for review in Rhino (closing the loop:
   Rhino → civilpy → MIDAS → civilpy → Rhino).
@@ -875,8 +885,8 @@ existing client and builders — not a fresh bridge (this is stage **S4** above)
 | Stable object IDs | read/preserve ☐ | mint/stamp ☐ |
 | Load cases | ☐ | ☐ |
 | Validation/diagnostics | solve-time checks ✅; pre-solve diagnostics ☐ | ☐ |
-| Canonical `StructuralModel` hub | S1–S3 shipped ✅ (`structural_model.py` + `rhino_stm.read_structural_model`/`StrutAndTieModel.{from,to}_structural_model`); S4–S9 ☐ | n/a |
+| Canonical `StructuralModel` hub | S1–S4 shipped ✅ (`structural_model.py`, `rhino_stm.read_structural_model`, `StrutAndTieModel.{from,to}_structural_model`, `midas_models.midas_payloads`/`push_midas`); S5–S9 ☐ | n/a |
 | IFC 4.3 alignment + `Pset_CivilPy_*` | schema mapping documented ✅; adapter/extension ☐ | n/a |
 | Rhino → STM | ✅ shipped (via `model_from_3dm`) | n/a |
-| Rhino → Midas | client+`TrussBridge` precedent exist ✅; hub serializer ☐ | n/a |
+| Rhino → Midas | ✅ shipped (`read_structural_model` → `midas_models.push_midas`); shares one encoder with `TrussBridge` | n/a |
 | Packaging | pip extra ✅ | Yak ☐ |
