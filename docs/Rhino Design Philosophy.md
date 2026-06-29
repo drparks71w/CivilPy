@@ -60,8 +60,11 @@ Encoded as Rhino object user text. Draft — names not final.
 | Object kind | Geometry | Tags |
 |---|---|---|
 | Member | curve (line/polyline) | `stm.kind=member` preferred; an untagged curve falls back to a member |
-| Support | block instance (or point) | `stm.kind=support`, `stm.fix_*` DOF flags (see below) |
-| Load | line / arrow | `stm.kind=load`, `stm.kips=600` (direction from the line's vector) |
+| Support | block instance (or point) | `stm.kind=support`, `stm.fix_*` DOF flags (see below); optional `stm.bearing` |
+| Load | line / arrow | `stm.kind=load`, `stm.kips=600` (direction from the line's vector); optional `stm.bearing` |
+| Region (D-region domain) | closed planar curve | `stm.kind=region`, `stm.thickness`, `stm.fc` (+ optional `stm.E`, `stm.nu`, `stm.vol_frac`) — the concrete area the optimizer fills with a truss |
+| Void | closed planar curve inside a region | `stm.kind=void` — a mandatory hole (duct/opening); those elements stay empty |
+| Solid (keep-in) | closed planar curve inside a region | `stm.kind=solid` — a zone that must stay solid concrete (bearing/anchorage block); those elements stay full |
 
 **Members:** tagging `stm.kind=member` is the explicit, preferred form, but the
 importer treats any untagged curve as a member so quick sketches still work.
@@ -81,6 +84,44 @@ Nodes are **not** authored explicitly. They are derived by snapping member
 endpoints together within a tolerance, deduping, and auto-labeling (A, B, C…
 ordered left→right then bottom→top, so labels are stable and read like an
 elevation). Supports/loads attach to whichever derived node they coincide with.
+
+### Two front ends: author a truss, or author a region
+
+The schema supports **two authoring workflows that share the same support and
+load objects**:
+
+1. **Draw the truss** (original workflow). The author lays out members; nodes are
+   derived from endpoints; `from_3dm` returns a `StrutAndTieModel` ready to solve.
+   Use when the load path is already known.
+2. **Draw the region** (topology-optimization workflow). The author draws only the
+   concrete outline as a closed `stm.kind=region` curve (a rectangle or an
+   arbitrary polygon, optionally with `stm.kind=void`/`solid` inner curves), plus
+   the same supports and loads. **No members are drawn.** civilpy meshes the
+   region, runs SIMP topology optimization to find where concrete wants to be,
+   skeletonizes the result into a truss, and hands back an (indeterminate)
+   `StrutAndTieModel`. Use when you want civilpy to *discover* the strut-and-tie
+   layout.
+
+**Dispatch rule:** a file containing any `stm.kind=region` object is an
+optimization problem; otherwise it is a drawn truss. Supports and loads are
+identical in both — in the region workflow they become the finite-element
+boundary conditions rather than joint conditions, so a model can migrate from
+"draw the region, optimize" to "tune the resulting truss" without re-authoring
+the boundary conditions.
+
+**Bearing length.** Supports and loads may carry an optional `stm.bearing=<L>`
+(model length units) giving the in-plane bearing width. The optimizer spreads the
+reaction/applied force over that width (a point load on a continuum mesh is a
+stress singularity), and the same width × `stm.thickness` gives the nodal-zone
+bearing area `Acn` for the AASHTO 5.8.2.5 node check. Absent, a default tied to
+the mesh size is used and the node check is skipped for that point.
+
+**Units for the new tags.** Geometry and `stm.thickness`/`stm.bearing` are in the
+model's length units (feet); `stm.fc` and `stm.E` are in **ksi**; the optional
+`stm.vol_frac` is dimensionless (0–1). Numerical-method knobs (penalization,
+density-filter radius, mesh resolution, move limit) are **not** authored in the
+`.3dm` — they are Python-side optimizer arguments with defaults, keeping the file
+a description of the *physics*, not the solver.
 
 ### Plane mapping
 
@@ -603,7 +644,11 @@ mirrors it.
 | Support preset | `stm.support=pin\|roller-v\|roller-h\|fixed\|custom` | sets common DOF; `fix_*` overrides win |
 | DOF flags | `stm.fix_x/y/z/rx/ry/rz` = `true\|false` | lowercase booleans; full 6-DOF stored |
 | Load | `stm.kind=load`, `stm.kips=<float>` | direction from arrow line vector (tip − tail) |
-| Units | model unit system = **feet**; forces in **kips** | reader honors `File3dm.Settings.ModelUnitSystem` |
+| Region | `stm.kind=region` on a closed planar curve | the D-region domain to optimize; its presence switches the importer to the optimization path |
+| Region material/geometry | `stm.thickness` (ft), `stm.fc` (ksi); optional `stm.E` (ksi), `stm.nu`, `stm.vol_frac` | physical SIMP + capacity-check inputs; absent optionals fall back to Python defaults |
+| Void / solid zones | `stm.kind=void` / `stm.kind=solid` on closed inner curves | passive empty / passive full regions (holes, keep-in blocks) |
+| Bearing length | `stm.bearing=<float>` (ft) on support or load | in-plane loaded width; spreads the FEA point load, gives nodal `Acn = bearing × thickness` |
+| Units | model unit system = **feet**; forces in **kips**; `stm.fc`/`stm.E` in **ksi** | reader honors `File3dm.Settings.ModelUnitSystem` |
 | Plane | drawn in **XZ** (front elevation), gravity = −Z | reader auto-detects; X→x, Z→y |
 | Block names | `STM_Pin`, `STM_Roller_V`, `STM_Roller_H`, `STM_Fixed`, `STM_Load` | C# creates them; Python reader maps them back |
 | Result colors | tie = red `(200,0,0)`, strut = blue `(0,0,255)` | written by `results_to_3dm`; C# `STMResults` reads/recolors |
@@ -746,6 +791,12 @@ spec) to RhinoCommon. All commands `[CommandStyle(Style.ScriptRunner)]`.
   `auto` by default: do **not** write an `stm.member` tag in the default case
   (auto is invisible). Offer `tie`/`strut` as an optional override (a non-default
   dropdown/option) that writes `stm.member=tie|strut` only when chosen.
+- [ ] **`STMRegion`** — select/draw a closed planar curve, tag `stm.kind=region`,
+  and prompt for `stm.thickness` (ft) and `stm.fc` (ksi) (optionally `stm.E`,
+  `stm.nu`, `stm.vol_frac`). Offer a `Void`/`Solid` option that tags an inner
+  closed curve `stm.kind=void`/`solid`. Optionally stamp `stm.bearing` on a
+  support/load when picked. This is the front end for the topology-optimization
+  workflow (Python meshes the region and discovers the truss).
 - [ ] **`STMResults`** (read-back) — load a `results.3dm` (or re-color in place):
   recolor ties red / struts blue and show force labels, per the result-color
   contract. Lets the engineer review Python's output without leaving Rhino.
@@ -845,6 +896,7 @@ existing client and builders — not a fresh bridge (this is stage **S4** above)
 | Area | Python (civilpy) | C# plugin (Rider) |
 |---|---|---|
 | File read/write bridge | ✅ shipped | n/a |
+| Topology optimization (region → truss) | building (`stm_topology`) | `STMRegion` ☐ |
 | Solve + results write-back | ✅ shipped | reads results (`STMResults`) ☐ |
 | Authoring commands | prototype in `tools/rhino/` ✅ | `STMTemplate` ✅; `STMSupport/Load/Member/Results` ☐ |
 | Symbol block creation | intentionally **not** here (rhino3dm bug) | ✅ `STMTemplate` owns this (`Core/StmDocument`) |
