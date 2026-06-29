@@ -785,13 +785,17 @@ spec) to RhinoCommon. All commands `[CommandStyle(Style.ScriptRunner)]`.
   trailing zeros trimmed) so the Python `float()` parse never trips on a locale
   comma. Label text dot sits at the unit-glyph arrow tip. Optional proportional
   scaling still deferred (minor polish).
-- [ ] **`STMMember`** — draw/select curves, tag `stm.kind=member`. Member type is
+- [~] **`STMMember`** — draw/select curves, tag `stm.kind=member`. Member type is
   `auto` by default: do **not** write an `stm.member` tag in the default case
   (auto is invisible). Offer `tie`/`strut` as an optional override (a non-default
   dropdown/option) that writes `stm.member=tie|strut` only when chosen.
-- [ ] **`STMResults`** (read-back) — load a `results.3dm` (or re-color in place):
+  **In progress (C#):** `Commands/STMMemberCommand.cs` (uncommitted). The Python
+  side already *consumes* this tag (see the Python TODO `stm.member` item), so
+  the override values must stay `tie`/`strut` exactly.
+- [~] **`STMResults`** (read-back) — load a `results.3dm` (or re-color in place):
   recolor ties red / struts blue and show force labels, per the result-color
   contract. Lets the engineer review Python's output without leaving Rhino.
+  **In progress (C#):** `Commands/STMResultsCommand.cs` (uncommitted).
 - [ ] **Stable IDs:** if adopted, stamp `stm.id` (GUID) on every authored object
   and preserve it through edits. *(C# owns minting; Python only reads.)*
 - [ ] **Input validation + user feedback (do not assume perfect input).** The
@@ -810,8 +814,10 @@ spec) to RhinoCommon. All commands `[CommandStyle(Style.ScriptRunner)]`.
     allow (don't block legitimate edge cases).
   Return `Result.Failure` only on an actual exception; use `Result.Nothing`/
   `Cancel` for user-driven aborts so the command history stays clean.
-- [ ] **Eto.Forms panel** (nice-to-have): a dockable panel (in `Views/`) listing
+- [~] **Eto.Forms panel** (nice-to-have): a dockable panel (in `Views/`) listing
   supports/loads with editable magnitudes/DOF, instead of command-line prompts.
+  **In progress (C#):** `Views/` folder + `Commands/STMPanelCommand.cs`
+  (uncommitted).
   The panel only reads/writes the model via the shared `Core/` services — no
   document edits in the view code.
 - [ ] **Yak packaging + install docs** so a non-programmer does
@@ -891,7 +897,7 @@ existing client and builders — not a fresh bridge (this is stage **S4** above)
 |---|---|---|
 | File read/write bridge | ✅ shipped | n/a |
 | Solve + results write-back | ✅ shipped | reads results (`STMResults`) ☐ |
-| Authoring commands | prototype in `src/civilpy/structural/rhino_scripts/` ✅ | `STMTemplate`+`STMSupport`+`STMLoad` ✅; `STMMember/Results` ☐ |
+| Authoring commands | prototype in `src/civilpy/structural/rhino_scripts/` ✅ | `STMTemplate`+`STMSupport`+`STMLoad` ✅; `STMMember`/`STMResults`/panel in progress (C#) |
 | Symbol block creation | intentionally **not** here (rhino3dm bug) | ✅ `STMTemplate` owns this (`Core/StmDocument`) |
 | Stable object IDs | read/preserve ☐ | mint/stamp ☐ |
 | Load cases | ☐ | ☐ |
