@@ -696,11 +696,13 @@ Remaining (revised against the above):
 - [ ] **Load-case support** (`stm.case`): today `add_load` accumulates everything
   into a single implicit case (`self.loads[node] += ...`). Add per-case grouping
   and solve-per-case. Gate behind the contract decision.
-- [ ] **Augment validation with pre-solve diagnostics.** The determinacy +
-  singular-matrix errors already fire at `solve()`; add *actionable* pre-solve
-  checks on top — name the unsupported/dangling node, flag a load on a node with
-  no member, distinguish under- vs over-constrained — so an imported Rhino model
-  fails with a fixable message, not just the generic count mismatch.
+- [x] **Augment validation with pre-solve diagnostics. → Done.**
+  `StrutAndTieModel.diagnose()` returns actionable, node-named problems (dangling
+  node, load with no load path, support on an undefined node, missing supports,
+  under- vs over-constrained), and `solve()` now appends those named diagnostics
+  to its determinacy `ValueError` so an imported Rhino model fails with a fixable
+  message, not just the generic count mismatch. (The hub's `StructuralModel.
+  check()` gives the same at the hub level.)
 - [ ] **Unit robustness:** convert a file authored in inches/mm/m to feet on read
   (currently assumes feet) via `File3dm.Settings.ModelUnitSystem` **+ the
   existing `civilpy.general.units` pint registry** (mirror
