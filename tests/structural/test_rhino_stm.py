@@ -243,6 +243,79 @@ class TestHubInterconversion:
         assert hub.check() == []
 
 
+class TestUnitConversion:
+    """The reader converts inch/mm/m files to feet (forces stay in kips)."""
+
+    def _triangle(self, tmp_path, unit_system, scale):
+        """A right triangle 0-8-4ft drawn in `unit_system` (coords * scale)."""
+        f = rhino3dm.File3dm()
+        f.Settings.ModelUnitSystem = unit_system
+        pts = [((0, 0, 0), (8 * scale, 0, 0)),
+               ((8 * scale, 0, 0), (4 * scale, 0, 4 * scale)),
+               ((0, 0, 0), (4 * scale, 0, 4 * scale))]
+        for a, b in pts:
+            f.Objects.AddLine(rhino3dm.Point3d(*a), rhino3dm.Point3d(*b))
+        path = tmp_path / f"{unit_system}.3dm"
+        f.Write(str(path), 7)
+        return path
+
+    def test_inches_convert_to_feet(self, tmp_path):
+        path = self._triangle(tmp_path, rhino3dm.UnitSystem.Inches, 12.0)
+        hub = rhino_stm.read_structural_model(path, plane="XZ")
+        # the 8 ft span authored as 96 in comes back as 8 ft
+        xs = sorted(n.x for n in hub.nodes.values())
+        assert xs[-1] == pytest.approx(8.0)
+        assert max(n.z for n in hub.nodes.values()) == pytest.approx(4.0)
+
+    def test_millimeters_convert_to_feet(self, tmp_path):
+        path = self._triangle(tmp_path, rhino3dm.UnitSystem.Millimeters,
+                              304.8)  # 1 ft = 304.8 mm
+        hub = rhino_stm.read_structural_model(path, plane="XZ")
+        xs = sorted(n.x for n in hub.nodes.values())
+        assert xs[-1] == pytest.approx(8.0, abs=1e-6)
+
+    def test_feet_unchanged(self, tmp_path):
+        path = self._triangle(tmp_path, rhino3dm.UnitSystem.Feet, 1.0)
+        hub = rhino_stm.read_structural_model(path, plane="XZ")
+        assert sorted(n.x for n in hub.nodes.values())[-1] == pytest.approx(8.0)
+
+
+class TestPlanarityGuard:
+    """The 2D path warns when geometry is not planar (it silently projects)."""
+
+    def test_non_planar_model_warns_on_2d_read(self, tmp_path):
+        f = rhino3dm.File3dm()
+        f.Settings.ModelUnitSystem = rhino3dm.UnitSystem.Feet
+        # a tetrahedron-ish frame with genuine out-of-plane depth
+        pts = {"A": (0, 0, 0), "B": (8, 0, 0), "C": (4, 0, 4), "D": (4, 5, 2)}
+        for a, b in [("A", "B"), ("B", "C"), ("A", "C"),
+                     ("A", "D"), ("B", "D"), ("C", "D")]:
+            f.Objects.AddLine(rhino3dm.Point3d(*pts[a]),
+                              rhino3dm.Point3d(*pts[b]))
+        path = tmp_path / "solid.3dm"
+        f.Write(str(path), 7)
+        with pytest.warns(UserWarning, match="not planar"):
+            rhino_stm.model_from_3dm(path)
+
+    def test_as_model_does_not_warn(self, tmp_path, recwarn):
+        f = rhino3dm.File3dm()
+        f.Settings.ModelUnitSystem = rhino3dm.UnitSystem.Feet
+        pts = {"A": (0, 0, 0), "B": (8, 0, 0), "C": (4, 0, 4), "D": (4, 5, 2)}
+        for a, b in [("A", "B"), ("B", "C"), ("A", "C"), ("A", "D")]:
+            f.Objects.AddLine(rhino3dm.Point3d(*pts[a]),
+                              rhino3dm.Point3d(*pts[b]))
+        path = tmp_path / "solid.3dm"
+        f.Write(str(path), 7)
+        rhino_stm.read_structural_model(path)   # hub keeps 3D -> no warning
+        assert not any("not planar" in str(w.message) for w in recwarn.list)
+
+    def test_planar_model_does_not_warn(self, tmp_path, recwarn):
+        path = tmp_path / "ex1.3dm"
+        _example_1().to_3dm(path, plane="XZ")
+        rhino_stm.model_from_3dm(path)
+        assert not any("not planar" in str(w.message) for w in recwarn.list)
+
+
 class TestMemberHint:
     """Contract: stm.member = auto (default, never written) | tie | strut."""
 

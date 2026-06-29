@@ -703,21 +703,25 @@ Remaining (revised against the above):
   to its determinacy `ValueError` so an imported Rhino model fails with a fixable
   message, not just the generic count mismatch. (The hub's `StructuralModel.
   check()` gives the same at the hub level.)
-- [ ] **Unit robustness:** convert a file authored in inches/mm/m to feet on read
-  (currently assumes feet) via `File3dm.Settings.ModelUnitSystem` **+ the
-  existing `civilpy.general.units` pint registry** (mirror
-  `midas.convert_node_units`).
+- [x] **Unit robustness. → Done.** `rhino_stm._unit_to_feet` reads
+  `File3dm.Settings.ModelUnitSystem` and scales every coordinate to feet through
+  the `civilpy.general.units` pint registry (mirroring `midas.convert_node_units`);
+  feet-authored files are untouched, an unrecognized unit warns and assumes feet.
+  Forces stay in kips. (inch/mm/m → ft round-trip tested.)
 - [x] **Preserve full 6-DOF for the MIDAS path. → Done (S2).**
   `StrutAndTieModel.supports` is still lossy `(fix_x, fix_y)`, but
   `read_structural_model` now retains the full `stm.fix_*` as 6-DOF
   `Restraint`s on the hub, so the MIDAS adapter reads from the hub (not the 2D
   model) and `fix_z/rx/ry/rz` reach `CONS` intact.
-- [ ] **3D / out-of-plane guard:** detect when geometry is not planar within
-  tolerance and warn (the 2D STM solver silently projects today).
+- [x] **3D / out-of-plane guard. → Done.** `model_from_3dm` (the 2D path) calls
+  `_warn_if_not_planar`: when the nodes span more than `tol` along the plane
+  normal it warns that the 2D solver will project away that depth and points to
+  `read_structural_model` / `as_model=True` for the full 3D model.
 - [ ] **Proportional arrow scaling on write** (minor polish): scale the written
   load line over the ~1–80 kip band so `results_to_3dm` reads cleanly.
 - [ ] **Tests to add:**
-  - [ ] inch/mm/meter file → feet conversion round-trips.
+  - [x] inch/mm/meter file → feet conversion round-trips. **Done**
+    (`TestUnitConversion`).
   - [ ] block-instance authored support/load (simulate the C# output) imports
     identically to the tagged-point/line form. *(Build the block instance via a
     fixture `.3dm` committed under `tests/data/`, since rhino3dm can't safely
