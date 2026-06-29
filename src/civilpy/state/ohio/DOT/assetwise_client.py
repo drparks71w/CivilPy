@@ -261,6 +261,9 @@ class AssetWiseClient:
                     return data.get('value') or data.get('data') or []
                 elif isinstance(data, list):
                     return data
+            else:
+                logger.warning("GetElements returned %d for report=%s asset=%s",
+                               resp.status_code, report_id, asset_id)
         except Exception as e:
             logger.error("Failed to fetch elements for report=%s asset=%s: %s",
                          report_id, asset_id, e)
