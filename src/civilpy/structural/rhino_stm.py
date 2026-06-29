@@ -113,6 +113,38 @@ _LAYER_COLORS = {
 }
 
 
+# rhino3dm ModelUnitSystem name -> pint unit name (for the read-time conversion
+# to feet, the STM/Midas length unit).  Names not listed assume feet.
+_RHINO_UNIT_TO_PINT = {
+    "Inches": "inch", "Feet": "feet", "Yards": "yard", "Miles": "mile",
+    "Millimeters": "mm", "Centimeters": "cm", "Decimeters": "dm",
+    "Meters": "m", "Kilometers": "km",
+}
+
+
+def _unit_to_feet(f):
+    """Conversion factor from a ``.3dm``'s model unit system to **feet** (the
+    STM / MIDAS length unit), via the ``civilpy.general.units`` pint registry --
+    mirroring ``midas.convert_node_units``.  Falls back to ``1.0`` (assume feet)
+    for an unset or unrecognized unit system, so feet-authored files are
+    untouched and never import the registry needlessly."""
+    try:
+        name = f.Settings.ModelUnitSystem.name
+    except Exception:                       # pragma: no cover - defensive
+        return 1.0
+    if name in (None, "Feet", "None", "Unset"):
+        return 1.0
+    pint_name = _RHINO_UNIT_TO_PINT.get(name)
+    if pint_name is None:
+        warnings.warn(
+            f"unrecognized .3dm model unit {name!r}; assuming feet (no scaling)",
+            stacklevel=2,
+        )
+        return 1.0
+    from civilpy.general import units
+    return (1 * units(pint_name)).to(units("feet")).magnitude
+
+
 def _require_rhino3dm():
     try:
         import rhino3dm
@@ -238,6 +270,13 @@ def _read_raw(path):
     loads_raw = []
     world_pts = []
 
+    # scale every coordinate to feet so coords, the snap tolerance, and arrow
+    # lengths are all in the one length unit downstream (forces stay in kips)
+    to_ft = _unit_to_feet(f)
+
+    def s(p):
+        return (p[0] * to_ft, p[1] * to_ft, p[2] * to_ft)
+
     for obj in f.Objects:
         attrs = obj.Attributes
         # the curves that make up the block definitions live in the object
@@ -252,7 +291,7 @@ def _read_raw(path):
         if gtype == "InstanceReference":
             defn = f.InstanceDefinitions.FindId(g.ParentIdefId)
             name = defn.Name if defn else ""
-            origin = (g.Xform.M03, g.Xform.M13, g.Xform.M23)
+            origin = s((g.Xform.M03, g.Xform.M13, g.Xform.M23))
             world_pts.append(origin)
             if name in BLOCK_SUPPORT or kind == "support":
                 preset = BLOCK_SUPPORT.get(name)
@@ -269,7 +308,7 @@ def _read_raw(path):
         # curves: members (tagged or untagged), or a load drawn as a line
         if hasattr(g, "PointAtStart") and hasattr(g, "PointAtEnd"):
             a, b = g.PointAtStart, g.PointAtEnd
-            pa, pb = (a.X, a.Y, a.Z), (b.X, b.Y, b.Z)
+            pa, pb = s((a.X, a.Y, a.Z)), s((b.X, b.Y, b.Z))
             world_pts.extend((pa, pb))
             if kind == "load":
                 direction = (pb[0] - pa[0], pb[1] - pa[1], pb[2] - pa[2])
@@ -281,11 +320,11 @@ def _read_raw(path):
             else:  # member (explicit stm.kind=member or untagged fallback)
                 members_raw.append((pa, pb, _member_type(us)))
         elif gtype == "Point" and kind == "support":
-            p = g.Location
-            world_pts.append((p.X, p.Y, p.Z))
+            p = s((g.Location.X, g.Location.Y, g.Location.Z))
+            world_pts.append(p)
             dof = {}
             _apply_dof_overrides(dof, us)
-            supports_raw.append(((p.X, p.Y, p.Z), dof, us.get(TAG + "support")))
+            supports_raw.append((p, dof, us.get(TAG + "support")))
 
     return members_raw, supports_raw, loads_raw, world_pts
 
@@ -376,7 +415,29 @@ def model_from_3dm(path, *, plane="auto", tol=0.05, as_model=False):
     hub = read_structural_model(path, plane=plane, tol=tol)
     if as_model:
         return hub
+    _warn_if_not_planar(hub, plane, tol)
     return StrutAndTieModel.from_structural_model(hub, plane=plane)
+
+
+def _warn_if_not_planar(hub, plane, tol):
+    """Warn when the hub's nodes are not planar within ``tol`` -- the 2D STM
+    solver silently projects onto the plane, so genuine out-of-plane geometry
+    would be flattened without notice.  Use ``read_structural_model`` /
+    ``as_model=True`` (which keeps full 3D) for a non-planar model."""
+    coords = [n.coords for n in hub.nodes.values()]
+    if not coords:
+        return
+    use_plane = _detect_plane(coords) if plane == "auto" else plane
+    normal = _PLANES[use_plane][2]
+    spread = max(c[normal] for c in coords) - min(c[normal] for c in coords)
+    if spread > tol:
+        warnings.warn(
+            f"model is not planar: nodes span {spread:g} (> tol {tol:g}) along "
+            f"the {use_plane!r} normal axis; the 2D strut-and-tie solver projects "
+            f"onto the plane and loses that depth. Use read_structural_model "
+            f"(as_model=True) to keep the full 3D model.",
+            stacklevel=2,
+        )
 
 
 def _member_type(us):
