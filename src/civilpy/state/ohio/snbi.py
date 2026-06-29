@@ -128,6 +128,146 @@ def _is_valid_state_or_country(text):
 
 
 # ---------------------------------------------------------------------------
+# SNBI coded-value tables (FHWA SNBI, March 2022 publication). Base codes only;
+# the helpers below also accept any "<base>-T" transition-period value (valid
+# 2026-2027), which is not in the March 2022 publication but appears in the
+# data during the transition window.
+# ---------------------------------------------------------------------------
+
+def _seq(prefix, lo, hi):
+    """{'P01','P02',...}: ``prefix`` + zero-padded width-2 numbers lo..hi."""
+    return {f"{prefix}{n:02d}" for n in range(lo, hi + 1)}
+
+
+# Owner / Maintenance Responsibility share one table (B.CL.01 / B.CL.02).
+_AGENCY = (
+    {"S01", "S02", "S03", "SX"}
+    | {"L01", "L02", "L03", "L04", "L05", "LX"}
+    | _seq("F", 1, 9) | {"FX"}
+    | {"FL01", "FL02", "FL03", "FL04", "FL05", "FL06", "FL07", "FL0X"}
+    | {"I"} | _seq("D", 1, 5) | {"DX"}
+    | {"T", "P", "R", "U", "X"}
+)
+
+# Federal/Tribal Land Access (B.CL.03) — pipe-delimited multi-value.
+_LAND_ACCESS = {"N", "BIA", "BLM", "NPS", "USACE", "USBR", "USFS", "USFWS", "X"}
+
+_SNBI_CODES = {
+    # Classification
+    "BCL01": _AGENCY,
+    "BCL02": _AGENCY,
+    # Geometry
+    "BG12": {"CU", "CP", "CK", "N"},
+    # Loads / load rating
+    "BLR01": {"H10", "H15", "H20", "HS15", "HS20", "HS20M", "HS20Plus",
+              "HL93", "HL93Plus", "RR", "U", "X"},
+    "BLR02": {"ASD", "LFD", "LRFD", "U", "X"},
+    "BLR04": {"LFR", "ASR", "LRFR", "LT", "AR", "EJ", "N"},
+    # Inspection
+    "BIE01": {str(n) for n in range(1, 10)},
+    # Features
+    "BF02": {"C", "A", "B", "T", "L"},
+    "BH01": {str(n) for n in range(1, 8)},
+    "BRR01": {"F", "FE", "P", "PE", "M", "ME", "I"},
+    # Routes
+    "BRT03": {"NB", "EB", "SB", "WB", "NS", "EW"},
+    # Posting status (B.PS.01, Table 15) & posting type (B.EP.03)
+    "BPS01": {"N", "PO", "PA", "PP", "PR", "PD", "PM",
+              "TO", "TA", "TP", "TR", "TD", "TM",
+              "SO", "SA", "SP", "SR", "SD", "SM", "C"},
+    "BEP03": {"G", "A", "D", "T", "C", "S", "L", "V", "X"},
+    # Span sets
+    "BSP04": ({"A01", "CX", "FX", "I01", "I02", "M01", "M02", "P01", "PX",
+               "SX", "TX", "X"} | _seq("C", 1, 5) | _seq("F", 1, 3)
+              | _seq("S", 1, 5) | _seq("T", 1, 4)),
+    "BSP06": (_seq("A", 1, 5) | _seq("B", 1, 4) | _seq("F", 1, 4)
+              | _seq("G", 1, 10) | {"GX"} | _seq("L", 1, 3) | {"LX"}
+              | _seq("M", 1, 3) | {"MX", "P01", "P02", "S01", "S02"}
+              | _seq("T", 1, 3) | _seq("X", 1, 3) | {"X"}),
+    "BSP07": ({"0"} | _seq("A", 1, 5) | {"AX"} | _seq("C", 1, 4) | {"CX"}
+              | {"E01", "EX"} | _seq("M", 1, 3) | {"MU", "MX", "P01",
+              "S01", "S02", "SX", "T01", "U", "X"}),
+    "BSP08": {"CS", "CU", "IM", "NC"},
+    "BSP09": ({"0", "A01", "CX", "FX", "SX", "TX", "X"} | _seq("C", 1, 5)
+              | _seq("F", 1, 3) | _seq("S", 1, 5) | _seq("T", 1, 4)),
+    "BSP10": ({"0", "B01", "CX", "CU", "E01", "P01", "P02", "PX", "S01",
+               "T01", "X"} | _seq("C", 1, 7)),
+    "BSP11": ({"0"} | _seq("A", 1, 5) | {"AX"} | _seq("C", 1, 3) | {"CX"}
+              | _seq("M", 1, 3) | {"MU", "MX", "P01", "X"}),
+    "BSP12": ({"0"} | _seq("C", 1, 3) | {"CX"} | _seq("R", 1, 7) | {"RX"}
+              | {"S01", "S02", "SX", "X"}),
+    "BSP13": {"0", "C01", "C02", "F01", "M01", "T01", "X"},
+    # Substructure sets
+    "BSB03": ({"0", "A01", "CX", "E01", "FX", "I01", "I02", "M01", "M02",
+               "P01", "PX", "SX", "TX", "X"} | _seq("C", 1, 5)
+              | _seq("F", 1, 3) | _seq("S", 1, 6) | _seq("T", 1, 4)),
+    "BSB04": ({"0", "AX", "BX", "PX", "U", "X"} | _seq("A", 1, 12)
+              | _seq("B", 1, 4) | _seq("P", 1, 8)),
+    "BSB05": ({"0"} | _seq("A", 1, 5) | {"AX"} | _seq("C", 1, 3) | {"CX"}
+              | {"E01", "EX", "P01", "S01", "S02", "SX", "T01", "X"}),
+    "BSB06": ({"E01", "PX", "U", "X"} | _seq("F", 1, 3) | _seq("P", 1, 9)
+              | _seq("S", 1, 3)),
+    "BSB07": ({"0"} | _seq("A", 1, 5) | {"AX"} | _seq("C", 1, 3) | {"CX"}
+              | {"E01", "EX", "P01", "S01", "S02", "SX", "T01", "U", "X"}),
+    # Appraisal
+    "BAP03": {"0", "A", "B", "C", "D", "E", "U"},
+    "BAP05": {"0", "N", "A", "B", "C", "D"},
+}
+
+# Sequential designation patterns (letter + 2-digit number): B.F.01, B.SP.01,
+# B.SB.01.
+_PATTERN_CODES = {
+    "BF01": r"(?:H|R|P|W|F|B|D|X)\d{2}",
+    "BSP01": r"(?:M|A|C|V|W)\d{2}",
+    "BSB01": r"(?:A|P|W)\d{2}",
+}
+
+
+def _is_transitional(text):
+    """True for a 2026-2027 transition code ('<base>-T') not in the 2022 spec."""
+    return text.endswith("-T") and len(text) > 2
+
+
+def _require_code(value, allowed, item):
+    """Validate an enumerated SNBI code; accepts '-T' transition codes."""
+    if value is None:
+        return value
+    text = str(value).strip()
+    if text in allowed or _is_transitional(text):
+        return text
+    raise ValueError(
+        f"{item} value {text!r} is not a valid SNBI code; allowed values: "
+        f"{', '.join(sorted(allowed))} (or a '-T' transition code)"
+    )
+
+
+def _require_pattern_code(value, pattern, item):
+    """Validate a sequential designation code (e.g. 'M01'); accepts '-T'."""
+    if value is None:
+        return value
+    text = str(value).strip()
+    if re.fullmatch(pattern, text) or _is_transitional(text):
+        return text
+    raise ValueError(
+        f"{item} value {text!r} is not a valid SNBI designation code"
+    )
+
+
+def _require_multi_code(value, allowed, item):
+    """Validate a pipe-delimited multi-value SNBI code field (B.CL.03)."""
+    if value is None:
+        return value
+    text = str(value).strip()
+    for part in (p.strip() for p in text.split("|") if p.strip()):
+        if part not in allowed and not _is_transitional(part):
+            raise ValueError(
+                f"{item} value {part!r} is not a valid SNBI code; allowed "
+                f"values: {', '.join(sorted(allowed))}"
+            )
+    return text
+
+
+# ---------------------------------------------------------------------------
 # Child datasets
 # ---------------------------------------------------------------------------
 class Element(BaseModel):
