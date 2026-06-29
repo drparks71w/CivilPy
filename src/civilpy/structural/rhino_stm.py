@@ -478,6 +478,13 @@ def problem_from_3dm(path, *, plane="auto", nu=0.2):
     if f is None:
         raise FileNotFoundError(f"could not read 3dm file: {path}")
 
+    # scale every length (coordinates, bearing, thickness) to feet, the STM
+    # length unit -- mirrors model_from_3dm so the region path is unit-aware too
+    to_ft = _unit_to_feet(f)
+
+    def s(p):
+        return (p[0] * to_ft, p[1] * to_ft, p[2] * to_ft)
+
     region = None          # (polygon_pts_world, tags_dict)
     voids, solids = [], []
     supports_raw = []      # (world_pt, dof_dict, bearing)
@@ -492,13 +499,13 @@ def problem_from_3dm(path, *, plane="auto", nu=0.2):
         us = dict(attrs.GetUserStrings() or {})
         kind = us.get(TAG + "kind")
         bearing = us.get(TAG + "bearing")
-        bearing = float(bearing) if bearing not in (None, "") else None
+        bearing = float(bearing) * to_ft if bearing not in (None, "") else None
         gtype = type(g).__name__
 
         if gtype == "InstanceReference":
             defn = f.InstanceDefinitions.FindId(g.ParentIdefId)
             name = defn.Name if defn else ""
-            origin = (g.Xform.M03, g.Xform.M13, g.Xform.M23)
+            origin = s((g.Xform.M03, g.Xform.M13, g.Xform.M23))
             world_pts.append(origin)
             if name in BLOCK_SUPPORT or kind == "support":
                 dof = dict(SUPPORT_DOF.get(BLOCK_SUPPORT.get(name, ""), {}))
@@ -511,7 +518,7 @@ def problem_from_3dm(path, *, plane="auto", nu=0.2):
             continue
 
         if kind == "region" or kind == "void" or kind == "solid":
-            poly = _curve_points(g)
+            poly = [s(p) for p in _curve_points(g)]
             world_pts.extend(poly)
             if kind == "region":
                 region = (poly, us)
@@ -521,7 +528,7 @@ def problem_from_3dm(path, *, plane="auto", nu=0.2):
                 solids.append(poly)
         elif hasattr(g, "PointAtStart") and hasattr(g, "PointAtEnd"):
             a, b = g.PointAtStart, g.PointAtEnd
-            pa, pb = (a.X, a.Y, a.Z), (b.X, b.Y, b.Z)
+            pa, pb = s((a.X, a.Y, a.Z)), s((b.X, b.Y, b.Z))
             world_pts.extend((pa, pb))
             if kind == "load":
                 direction = (pb[0] - pa[0], pb[1] - pa[1], pb[2] - pa[2])
@@ -531,11 +538,11 @@ def problem_from_3dm(path, *, plane="auto", nu=0.2):
                 _apply_dof_overrides(dof, us)
                 supports_raw.append((pa, dof, bearing))
         elif gtype == "Point" and kind == "support":
-            p = g.Location
-            world_pts.append((p.X, p.Y, p.Z))
+            p = s((g.Location.X, g.Location.Y, g.Location.Z))
+            world_pts.append(p)
             dof = {}
             _apply_dof_overrides(dof, us)
-            supports_raw.append(((p.X, p.Y, p.Z), dof, bearing))
+            supports_raw.append((p, dof, bearing))
 
     if region is None:
         raise ValueError(
@@ -553,7 +560,7 @@ def problem_from_3dm(path, *, plane="auto", nu=0.2):
     )
     problem = DRegionProblem(
         boundary=boundary,
-        thickness=float(tags.get(TAG + "thickness", 1.0)),
+        thickness=float(tags.get(TAG + "thickness", 1.0)) * to_ft,
         material=material,
         voids=[[_project(p, plane) for p in v] for v in voids],
         solids=[[_project(p, plane) for p in s] for s in solids],
