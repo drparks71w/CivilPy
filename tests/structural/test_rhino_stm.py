@@ -141,3 +141,103 @@ class TestReader:
         # the node nearest (0,0) carries the pin
         pinned = [n for n, s in m.supports.items() if s == (True, True)]
         assert len(pinned) == 1
+
+
+class TestStructuralModelReader:
+    """S2: reading a tagged .3dm into the canonical StructuralModel hub."""
+
+    def test_read_structural_model_preserves_full_6dof(self, tmp_path):
+        """A `fixed` support keeps fix_rz, which the 2D STM model drops."""
+        src = _example_1()
+        src.add_support("A", fix_x=True, fix_y=True)  # ensure A is the pin
+        path = tmp_path / "ex1.3dm"
+        src.to_3dm(path)
+
+        hub = rhino_stm.read_structural_model(path)
+        # full 6-DOF restraints landed on the hub
+        assert len(hub.restraints) == 2
+        # the pin at A: in-plane fixed, the rest free
+        pin = next(r for r in hub.restraints.values() if r.to_2d() == (True, True))
+        assert pin.to_constraint_string() == "1100000"
+
+    def test_fixed_support_keeps_rotational_dof(self, tmp_path):
+        """A point tagged stm.support=fixed round-trips fix_rz into the hub."""
+        f = rhino3dm.File3dm()
+        f.Settings.ModelUnitSystem = rhino3dm.UnitSystem.Feet
+        for a, b in [((0, 0, 0), (8, 0, 0)), ((8, 0, 0), (4, 0, 4)),
+                     ((0, 0, 0), (4, 0, 4))]:
+            f.Objects.AddLine(rhino3dm.Point3d(*a), rhino3dm.Point3d(*b))
+        attr = rhino3dm.ObjectAttributes()
+        attr.SetUserString("stm.kind", "support")
+        attr.SetUserString("stm.support", "fixed")
+        f.Objects.AddPoint(rhino3dm.Point3d(0, 0, 0), attr)
+        path = tmp_path / "fixed.3dm"
+        f.Write(str(path), 7)
+
+        hub = rhino_stm.read_structural_model(path)
+        fixed = next(iter(hub.restraints.values()))
+        assert fixed.fix_x and fixed.fix_y and fixed.fix_rz
+        assert fixed.preset == "fixed"
+        assert fixed.to_constraint_string() == "1100010"
+
+    def test_as_model_flag_returns_hub(self, tmp_path):
+        from civilpy.structural.structural_model import StructuralModel
+        path = tmp_path / "ex1.3dm"
+        _example_1().to_3dm(path)
+        hub = rhino_stm.model_from_3dm(path, as_model=True)
+        assert isinstance(hub, StructuralModel)
+        assert len(hub.nodes) == 6
+        assert len(hub.elements) == 9
+
+    def test_hub_preserves_3d_coordinates(self, tmp_path):
+        """The hub keeps genuine 3D coords (out-of-plane axis intact)."""
+        path = tmp_path / "ex1.3dm"
+        _example_1().to_3dm(path, plane="XZ")
+        hub = rhino_stm.read_structural_model(path, plane="XZ")
+        # drawn in XZ: every node sits at Y == 0, heights live in Z
+        assert all(abs(n.y) < 1e-9 for n in hub.nodes.values())
+        assert max(n.z for n in hub.nodes.values()) == pytest.approx(16 / 3)
+
+    def test_load_vector_preserved(self, tmp_path):
+        path = tmp_path / "ex1.3dm"
+        _example_1().to_3dm(path, plane="XZ")
+        hub = rhino_stm.read_structural_model(path, plane="XZ")
+        # the two 600-kip downward loads survive as -Z forces
+        assert len(hub.loads) == 2
+        for load in hub.loads:
+            assert load.fz == pytest.approx(-600.0, abs=1e-6)
+
+
+class TestHubInterconversion:
+    """S3 reader/writer halves: StrutAndTieModel <-> StructuralModel."""
+
+    def test_from_3dm_matches_projection_of_hub(self, tmp_path):
+        path = tmp_path / "ex1.3dm"
+        _example_1().to_3dm(path)
+        stm = rhino_stm.model_from_3dm(path)
+        hub = rhino_stm.read_structural_model(path)
+        projected = StrutAndTieModel.from_structural_model(hub)
+        assert stm.nodes == projected.nodes
+        assert stm.members == projected.members
+        assert stm.supports == projected.supports
+
+    def test_round_trip_through_hub_preserves_forces(self):
+        src = _example_1()
+        src.solve()
+        back = StrutAndTieModel.from_structural_model(
+            src.to_structural_model(plane="XZ")
+        )
+        back.solve()
+        assert list(back.nodes) == list(src.nodes)
+        for member, force in src.forces.items():
+            assert back.forces[member] == pytest.approx(force, abs=1e-6)
+
+    def test_to_structural_model_carries_results(self):
+        src = _example_1()
+        src.solve()
+        hub = src.to_structural_model(plane="XZ")
+        assert "default" in hub.results
+        result = hub.results["default"]
+        assert len(result.element_forces) == len(src.members)
+        # the solved hub passes its own integrity check
+        assert hub.check() == []

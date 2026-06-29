@@ -83,6 +83,76 @@ class StrutAndTieModel:
         from civilpy.structural.rhino_stm import model_to_3dm
         return model_to_3dm(self, path, **kwargs)
 
+    # ── Canonical-hub interconversion ─────────────────────────────────────
+
+    @classmethod
+    def from_structural_model(cls, hub, *, plane="auto"):
+        """Project a canonical :class:`~civilpy.structural.structural_model.
+        StructuralModel` hub down to this 2D model (default elevation maps
+        X->x, Z->y).  The inverse of :meth:`to_structural_model`.
+
+        The hub's full 6-DOF restraints collapse to the in-plane
+        ``(fix_x, fix_y)`` the truss solver consumes, and 3D load vectors are
+        projected onto the plane.  ``plane="auto"`` infers the drawing plane
+        from the node coordinates.  This is the reader half of stage S3 in
+        ``docs/Rhino Design Philosophy.md`` -- it lets ``from_3dm`` parse once
+        into the hub and project, instead of carrying a second parser.
+        """
+        from civilpy.structural.rhino_stm import _detect_plane, _project
+        if plane == "auto":
+            plane = _detect_plane([n.coords for n in hub.nodes.values()])
+        m = cls()
+        label_of = {}
+        for node in hub.nodes.values():
+            label = node.label or node.id
+            label_of[node.id] = label
+            x, y = _project(node.coords, plane)
+            m.add_node(label, x, y)
+        for elem in hub.elements.values():
+            m.add_member(label_of[elem.node_a], label_of[elem.node_b])
+        for restraint in hub.restraints.values():
+            fix_x, fix_y = restraint.to_2d()
+            m.add_support(label_of[restraint.node_id], fix_x=fix_x, fix_y=fix_y)
+        for load in hub.loads:
+            fx, fy = _project((load.fx, load.fy, load.fz), plane)
+            m.add_load(label_of[load.node_id], fx=fx, fy=fy)
+        return m
+
+    def to_structural_model(self, *, plane="XZ"):
+        """Lift this 2D model into the canonical
+        :class:`~civilpy.structural.structural_model.StructuralModel` hub (the
+        inverse of :meth:`from_structural_model`).
+
+        In-plane coordinates and forces are placed in the chosen world
+        ``plane``; the 2D ``(fix_x, fix_y)`` fixity widens to a 6-DOF restraint
+        with the remaining DOF free.  Solved member forces and reactions, if
+        present, are carried across into a :class:`Result`.
+        """
+        from civilpy.structural.structural_model import Result, StructuralModel
+        from civilpy.structural.rhino_stm import _unproject
+        hub = StructuralModel()
+        ids = {}
+        for label, (x, y) in self.nodes.items():
+            X, Y, Z = _unproject((x, y), plane)
+            ids[label] = hub.add_node(X, Y, Z, label=label).id
+        member_ids = {}
+        for a, b in self.members:
+            member_ids[(a, b)] = hub.add_element(ids[a], ids[b]).id
+        for node, (fix_x, fix_y) in self.supports.items():
+            hub.add_restraint(ids[node], fix_x=fix_x, fix_y=fix_y)
+        for node, (fx, fy) in self.loads.items():
+            FX, FY, FZ = _unproject((fx, fy), plane)
+            hub.add_load(ids[node], fx=FX, fy=FY, fz=FZ)
+        if self.forces is not None:
+            result = Result(case="default")
+            for member, force in self.forces.items():
+                result.element_forces[member_ids[member]] = force
+            for node, (rx, ry) in (self.reactions or {}).items():
+                RX, RY, RZ = _unproject((rx, ry), plane)
+                result.reactions[ids[node]] = (RX, RY, RZ, 0.0, 0.0, 0.0)
+            hub.results["default"] = result
+        return hub
+
     # ── Model building ────────────────────────────────────────────────────
 
     def add_node(self, label: str, x: float, y: float):

@@ -291,7 +291,12 @@ The first build landed on branch `Modeling-Pipeline`:
     `StrutAndTieModel.from_3dm(...)` — reads members (tagged or untagged
     fallback), supports, and loads; derives + labels nodes; detects the plane.
     Understands **both** Rhino-authored block-instance symbols **and** the
-    tagged points/lines this package writes.
+    tagged points/lines this package writes. Now parses once into the canonical
+    hub and projects to 2D (see S2/S3 below).
+  - `read_structural_model(path, plane="auto", tol=...)` (also
+    `model_from_3dm(..., as_model=True)`) — reads the same file into the
+    canonical `StructuralModel` hub, keeping full 3D coordinates, 6-DOF
+    restraints, support presets, stable ids, and 3D load vectors.
   - `model_to_3dm(model, path)` / `StrutAndTieModel.to_3dm(...)` — writes a
     tagged model.
   - `results_to_3dm(model, path)` — solved-model write-back (ties red, struts
@@ -300,7 +305,7 @@ The first build landed on branch `Modeling-Pipeline`:
 - **Assets:** `templates/STM_Template.3dm` (layers) and
   `Notebooks/NHI17071_Ex_1_STM.3dm` (the tagged Example 1, round-trip-verified
   against the FHWA worked values — bottom tie 1012.5 kips, vertical tie 600).
-- **Authoring prototype:** `tools/rhino/stm_authoring.py` — RhinoPython
+- **Authoring prototype:** `src/civilpy/structural/rhino_scripts/stm_authoring.py` — RhinoPython
   `STMTemplate` / `STMSupport` / `STMLoad`, run inside Rhino.
 - **Tests:** `tests/structural/test_rhino_stm.py` (skipped without `rhino3dm`).
 
@@ -316,7 +321,7 @@ safe in a library function. Consequences, all already reflected above:
   honors *geometry spatial, tags scalar*; the arrow line's vector is the force
   direction, `stm.kips` is the magnitude.
 - **Symbol *blocks* are created inside Rhino** (RhinoCommon's instance API is
-  reliable), by `tools/rhino/stm_authoring.py` and, later, the C# plugin —
+  reliable), by `src/civilpy/structural/rhino_scripts/stm_authoring.py` and, later, the C# plugin —
   ensured on first use, the standard plugin pattern. `build_template` therefore
   ships **layers only**.
 - The **reader still parses block-instance symbols**, so models authored with
@@ -507,13 +512,19 @@ green. Stop-anywhere ordering:
   to `auto`; `Units` carried as kips/ft labels (conversion stays in adapters);
   `check()` provides the named pre-solve diagnostics. Resolved open questions:
   name = `StructuralModel`; units = explicit labels, not pint in the hub.
-- [ ] **S2 — `rhino_stm` reads into the hub.** Add `from_3dm(..., as_model=True)`
-  (or a `read_structural_model`) returning the rich hub with full 6-DOF; keep the
-  existing lossy `StrutAndTieModel` path working (it becomes a thin projection of
-  the hub). This alone unblocks Rhino→Midas.
-- [ ] **S3 — STM ↔ hub interconversion.** `StrutAndTieModel.from_structural_model`
-  / `.to_structural_model` (2D projection). Re-point the existing `from_3dm`
-  convenience to go through the hub internally; public behavior unchanged.
+- [x] **S2 — `rhino_stm` reads into the hub. → Shipped.** `rhino_stm.
+  read_structural_model(path, plane="auto", tol=...)` (and `model_from_3dm(...,
+  as_model=True)`) return the rich hub with full 6-DOF, genuine 3D node
+  coordinates, the support preset, stable ids, and full 3D load vectors. A
+  single `_read_raw` parser now feeds both the hub reader and the 2D path, so
+  the two never drift. This unblocks Rhino→Midas (the 6-DOF fixity the lossy
+  `StrutAndTieModel` dropped now survives the read).
+- [x] **S3 — STM ↔ hub interconversion. → Shipped.**
+  `StrutAndTieModel.from_structural_model(hub, plane="auto")` projects the hub
+  to 2D; `.to_structural_model(plane="XZ")` lifts the 2D model back up (carrying
+  solved forces/reactions into a `Result`). `model_from_3dm` now parses once
+  into the hub and returns `from_structural_model(hub)` — the 2D path is a thin
+  projection of the hub, public behavior unchanged (all prior tests green).
 - [ ] **S4 — One Midas serializer.** Extract the shared NODE/ELEM/CONS/UNIT/MATL
   encoding (incl. the 7-char DOF string and steel-material block) into
   `midas_models` helpers, and add `midas_payloads(StructuralModel)` /
@@ -681,11 +692,11 @@ Remaining (revised against the above):
   (currently assumes feet) via `File3dm.Settings.ModelUnitSystem` **+ the
   existing `civilpy.general.units` pint registry** (mirror
   `midas.convert_node_units`).
-- [ ] **Preserve full 6-DOF for the MIDAS path.** The in-memory
-  `StrutAndTieModel.supports` is lossy — only `(fix_x, fix_y)`. The full
-  `stm.fix_*` lives in the `.3dm` tags. The STM→MIDAS adapter must read the
-  6-DOF from tags (or have `model_from_3dm` retain them), not from the 2-DOF
-  in-memory model, or `fix_z/rx/ry/rz` are dropped before they reach `CONS`.
+- [x] **Preserve full 6-DOF for the MIDAS path. → Done (S2).**
+  `StrutAndTieModel.supports` is still lossy `(fix_x, fix_y)`, but
+  `read_structural_model` now retains the full `stm.fix_*` as 6-DOF
+  `Restraint`s on the hub, so the MIDAS adapter reads from the hub (not the 2D
+  model) and `fix_z/rx/ry/rz` reach `CONS` intact.
 - [ ] **3D / out-of-plane guard:** detect when geometry is not planar within
   tolerance and warn (the 2D STM solver silently projects today).
 - [ ] **Proportional arrow scaling on write** (minor polish): scale the written
@@ -709,7 +720,7 @@ Remaining (revised against the above):
 ### C# / .NET plugin side — TODO (separate Rider solution)
 
 The plugin is the accessible authoring front end: toolbar buttons, no scripts.
-Port the proven logic from `tools/rhino/stm_authoring.py` (the schema + glyph
+Port the proven logic from `src/civilpy/structural/rhino_scripts/stm_authoring.py` (the schema + glyph
 spec) to RhinoCommon. All commands `[CommandStyle(Style.ScriptRunner)]`.
 
 > **Code organization (mandatory).** Keep UI separate from command logic. Eto
@@ -733,7 +744,7 @@ spec) to RhinoCommon. All commands `[CommandStyle(Style.ScriptRunner)]`.
   which is precisely why block creation lives here and not in Python. **Shipped:**
   `Commands/STMTemplateCommand.cs` (EnglishName `STMTemplate`) →
   `Core/StmDocument.EnsureTemplate`. Layers, glyph geometry, support presets, and
-  tag keys are ported 1:1 from `tools/rhino/stm_authoring.py` into
+  tag keys are ported 1:1 from `src/civilpy/structural/rhino_scripts/stm_authoring.py` into
   `Core/Stm.cs` + `Core/StmDocument.cs` (the C# mirror of the frozen contract).
 - [ ] **`STMSupport`** — pick point → choose Pin/Roller-V/Roller-H/Fixed (or
   Custom with a DOF checkbox panel) → insert the correct block → stamp
@@ -846,12 +857,12 @@ existing client and builders — not a fresh bridge (this is stage **S4** above)
 |---|---|---|
 | File read/write bridge | ✅ shipped | n/a |
 | Solve + results write-back | ✅ shipped | reads results (`STMResults`) ☐ |
-| Authoring commands | prototype in `tools/rhino/` ✅ | `STMTemplate` ✅; `STMSupport/Load/Member/Results` ☐ |
+| Authoring commands | prototype in `src/civilpy/structural/rhino_scripts/` ✅ | `STMTemplate` ✅; `STMSupport/Load/Member/Results` ☐ |
 | Symbol block creation | intentionally **not** here (rhino3dm bug) | ✅ `STMTemplate` owns this (`Core/StmDocument`) |
 | Stable object IDs | read/preserve ☐ | mint/stamp ☐ |
 | Load cases | ☐ | ☐ |
 | Validation/diagnostics | solve-time checks ✅; pre-solve diagnostics ☐ | ☐ |
-| Canonical `StructuralModel` hub | S1 shipped ✅ (`structural_model.py`, 27 tests); S2–S9 ☐ | n/a |
+| Canonical `StructuralModel` hub | S1–S3 shipped ✅ (`structural_model.py` + `rhino_stm.read_structural_model`/`StrutAndTieModel.{from,to}_structural_model`); S4–S9 ☐ | n/a |
 | IFC 4.3 alignment + `Pset_CivilPy_*` | schema mapping documented ✅; adapter/extension ☐ | n/a |
 | Rhino → STM | ✅ shipped (via `model_from_3dm`) | n/a |
 | Rhino → Midas | client+`TrussBridge` precedent exist ✅; hub serializer ☐ | n/a |
