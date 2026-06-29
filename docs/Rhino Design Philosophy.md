@@ -504,7 +504,7 @@ green. Stop-anywhere ordering:
 
 - [x] **S1 — Define `StructuralModel`** dataclasses (`Node`/`Element`/`Restraint`/
   `Load`/`LoadCase`/`Result`), 3D + 6-DOF + ids + cases. Pure data, fully
-  unit-tested. Nothing else changes yet. **→ Shipped:**
+  unit-tested. Nothing else changes yet. **→ Shipped (Python):**
   `src/civilpy/structural/structural_model.py` + `tests/structural/
   test_structural_model.py` (27 tests). IFC-aligned field vocabulary;
   `Restraint.to_constraint_string()` emits the MIDAS 7-char `CONS` string,
@@ -746,13 +746,26 @@ spec) to RhinoCommon. All commands `[CommandStyle(Style.ScriptRunner)]`.
   `Core/StmDocument.EnsureTemplate`. Layers, glyph geometry, support presets, and
   tag keys are ported 1:1 from `src/civilpy/structural/rhino_scripts/stm_authoring.py` into
   `Core/Stm.cs` + `Core/StmDocument.cs` (the C# mirror of the frozen contract).
-- [ ] **`STMSupport`** — pick point → choose Pin/Roller-V/Roller-H/Fixed (or
+- [x] **`STMSupport`** — pick point → choose Pin/Roller-V/Roller-H/Fixed (or
   Custom with a DOF checkbox panel) → insert the correct block → stamp
-  `stm.kind=support`, `stm.support`, and the six `stm.fix_*` flags.
-- [ ] **`STMLoad`** — pick node → drag direction → enter kips → insert `STM_Load`
+  `stm.kind=support`, `stm.support`, and the six `stm.fix_*` flags. **Shipped:**
+  `Commands/STMSupportCommand.cs` → `Core/StmDocument.AddSupport` /
+  `AddCustomSupport`. Type chosen via a command-line option list on the point
+  pick; **Custom** is implemented now as 6 Free/Fixed command-line toggles (not
+  yet the Eto checkbox panel — that lands with the Views/ panel work). Inserts on
+  the `STM::Supports` layer; self-heals by calling `EnsureTemplate` first so it
+  works even if `STMTemplate` was never run.
+- [x] **`STMLoad`** — pick node → drag direction → enter kips → insert `STM_Load`
   block rotated local +X onto the force direction (the orientation logic the
   Python prototype flagged as "eyeball this"), add a `"<kips> kips"` text label,
-  stamp `stm.kind=load`, `stm.kips`. Optional proportional scaling.
+  stamp `stm.kind=load`, `stm.kips`. **Shipped:** `Commands/STMLoadCommand.cs` →
+  `Core/StmDocument.AddLoad`. Rubber-band direction drag (`DrawLineFromPoint`);
+  self-heals via `EnsureTemplate`; guards zero-length direction (→ warn + abort)
+  and warns on non-positive / out-of-band (~1–80 kip) magnitudes without blocking.
+  `stm.kips` is written with `StmDocument.FormatKips` (invariant '.' decimal,
+  trailing zeros trimmed) so the Python `float()` parse never trips on a locale
+  comma. Label text dot sits at the unit-glyph arrow tip. Optional proportional
+  scaling still deferred (minor polish).
 - [ ] **`STMMember`** — draw/select curves, tag `stm.kind=member`. Member type is
   `auto` by default: do **not** write an `stm.member` tag in the default case
   (auto is invisible). Offer `tie`/`strut` as an optional override (a non-default
@@ -857,7 +870,7 @@ existing client and builders — not a fresh bridge (this is stage **S4** above)
 |---|---|---|
 | File read/write bridge | ✅ shipped | n/a |
 | Solve + results write-back | ✅ shipped | reads results (`STMResults`) ☐ |
-| Authoring commands | prototype in `src/civilpy/structural/rhino_scripts/` ✅ | `STMTemplate` ✅; `STMSupport/Load/Member/Results` ☐ |
+| Authoring commands | prototype in `src/civilpy/structural/rhino_scripts/` ✅ | `STMTemplate`+`STMSupport`+`STMLoad` ✅; `STMMember/Results` ☐ |
 | Symbol block creation | intentionally **not** here (rhino3dm bug) | ✅ `STMTemplate` owns this (`Core/StmDocument`) |
 | Stable object IDs | read/preserve ☐ | mint/stamp ☐ |
 | Load cases | ☐ | ☐ |
