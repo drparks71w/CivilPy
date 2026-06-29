@@ -258,3 +258,4 @@ django/
 /Notebooks/Extracted_Images/*
 /.claude/settings.local.json
 /.venv/
+/Notebooks/NHI17071_Ex_1_results.3dm

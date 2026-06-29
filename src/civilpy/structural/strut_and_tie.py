@@ -67,6 +67,22 @@ class StrutAndTieModel:
         self.forces: dict[tuple[str, str], float] | None = None
         self.reactions: dict[str, list[float]] | None = None
 
+    # ── Rhino interchange ─────────────────────────────────────────────────
+
+    @classmethod
+    def from_3dm(cls, path, **kwargs):
+        """Build a model from a tagged Rhino ``.3dm`` file.  Thin wrapper over
+        :func:`civilpy.structural.rhino_stm.model_from_3dm` (needs the optional
+        ``rhino3dm`` dependency)."""
+        from civilpy.structural.rhino_stm import model_from_3dm
+        return model_from_3dm(path, **kwargs)
+
+    def to_3dm(self, path, **kwargs):
+        """Write this model to a tagged ``.3dm`` file (members as lines,
+        supports as symbol blocks, loads as arrows)."""
+        from civilpy.structural.rhino_stm import model_to_3dm
+        return model_to_3dm(self, path, **kwargs)
+
     # ── Model building ────────────────────────────────────────────────────
 
     def add_node(self, label: str, x: float, y: float):
