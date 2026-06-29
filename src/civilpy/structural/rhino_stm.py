@@ -49,10 +49,11 @@ from __future__ import annotations
 import contextlib
 import gc
 import math
+import warnings
 from collections import namedtuple
 
 from civilpy.structural.strut_and_tie import StrutAndTieModel
-from civilpy.structural.structural_model import StructuralModel, Units
+from civilpy.structural.structural_model import MEMBER_TYPES, StructuralModel, Units
 
 
 @contextlib.contextmanager
@@ -216,7 +217,8 @@ def _read_raw(path):
 
     Returns ``(members_raw, supports_raw, loads_raw, world_pts)`` where
 
-    * ``members_raw`` is ``[(worldA, worldB), ...]`` (3D endpoints),
+    * ``members_raw`` is ``[(worldA, worldB, member_type), ...]`` (3D endpoints
+      plus the ``stm.member`` hint -- ``auto`` (default) / ``tie`` / ``strut``),
     * ``supports_raw`` is ``[(world_pt, dof_dict, preset_or_None), ...]`` with
       the **full 6-DOF** resolved into ``dof_dict``,
     * ``loads_raw`` is ``[(world_pt, world_dir_vec, kips), ...]``, and
@@ -277,7 +279,7 @@ def _read_raw(path):
                 _apply_dof_overrides(dof, us)
                 supports_raw.append((pa, dof, us.get(TAG + "support")))
             else:  # member (explicit stm.kind=member or untagged fallback)
-                members_raw.append((pa, pb))
+                members_raw.append((pa, pb, _member_type(us)))
         elif gtype == "Point" and kind == "support":
             p = g.Location
             world_pts.append((p.X, p.Y, p.Z))
@@ -318,7 +320,7 @@ def read_structural_model(path, *, plane="auto", tol=0.05):
 
     # cluster nodes in the analysis plane, but keep the genuine 3D coordinate
     nodes = _NodeSet(tol)
-    for pa, pb in members_raw:
+    for pa, pb, _mtype in members_raw:
         nodes.add(_project(pa, plane), pa)
         nodes.add(_project(pb, plane), pb)
     nodes.finalize()
@@ -332,8 +334,8 @@ def read_structural_model(path, *, plane="auto", tol=0.05):
     def nid(pt3):
         return id_by_label[nodes.nearest(_project(pt3, plane))]
 
-    for pa, pb in members_raw:
-        model.add_element(nid(pa), nid(pb))
+    for pa, pb, mtype in members_raw:
+        model.add_element(nid(pa), nid(pb), member_type=mtype)
     for pt, dof, preset in supports_raw:
         restraint = model.add_restraint(nid(pt), **dof)
         if preset:
@@ -375,6 +377,24 @@ def model_from_3dm(path, *, plane="auto", tol=0.05, as_model=False):
     if as_model:
         return hub
     return StrutAndTieModel.from_structural_model(hub, plane=plane)
+
+
+def _member_type(us):
+    """The ``stm.member`` hint (``auto`` default; ``tie``/``strut`` override).
+
+    Per the frozen contract ``auto`` is the never-written default, so an absent
+    tag reads as ``auto``.  An unrecognized value warns and falls back to
+    ``auto`` rather than failing the whole import.
+    """
+    val = (us.get(TAG + "member") or "auto").strip().lower()
+    if val not in MEMBER_TYPES:
+        warnings.warn(
+            f"ignoring unknown stm.member={val!r} (expected one of "
+            f"{MEMBER_TYPES}); treating member as 'auto'",
+            stacklevel=2,
+        )
+        return "auto"
+    return val
 
 
 def _apply_dof_overrides(dof, us):
@@ -422,10 +442,14 @@ def model_to_3dm(model, path, *, plane="XZ", arrow_len=1.0, version=7):
         keep.append(a)
         return a
 
+    member_types = getattr(model, "member_types", {})
     with _gc_paused():
         for na, nb in model.members:
+            # auto is the never-written default; only emit a forced override
+            extra = ({"member": member_types[(na, nb)]}
+                     if member_types.get((na, nb)) in ("tie", "strut") else {})
             f.Objects.AddLine(r3.Point3d(*world(na)), r3.Point3d(*world(nb)),
-                              attrs(layers[LAYER_MEMBERS], kind="member"))
+                              attrs(layers[LAYER_MEMBERS], kind="member", **extra))
 
         for node, (fix_x, fix_y) in model.supports.items():
             stype = ("pin" if fix_x and fix_y

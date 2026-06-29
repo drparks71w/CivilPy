@@ -51,6 +51,7 @@ midspan top, 4 ft deep:
 #  along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import math
+import warnings
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -62,6 +63,9 @@ class StrutAndTieModel:
     def __init__(self):
         self.nodes: dict[str, tuple[float, float]] = {}
         self.members: list[tuple[str, str]] = []
+        # ``stm.member`` hints: member -> "tie"/"strut" override (auto members
+        # are absent here -- classified from the solved sign).
+        self.member_types: dict[tuple[str, str], str] = {}
         self.loads: dict[str, list[float]] = {}
         self.supports: dict[str, tuple[bool, bool]] = {}
         self.forces: dict[tuple[str, str], float] | None = None
@@ -109,7 +113,8 @@ class StrutAndTieModel:
             x, y = _project(node.coords, plane)
             m.add_node(label, x, y)
         for elem in hub.elements.values():
-            m.add_member(label_of[elem.node_a], label_of[elem.node_b])
+            m.add_member(label_of[elem.node_a], label_of[elem.node_b],
+                         member_type=elem.member_type)
         for restraint in hub.restraints.values():
             fix_x, fix_y = restraint.to_2d()
             m.add_support(label_of[restraint.node_id], fix_x=fix_x, fix_y=fix_y)
@@ -137,7 +142,9 @@ class StrutAndTieModel:
             ids[label] = hub.add_node(X, Y, Z, label=label).id
         member_ids = {}
         for a, b in self.members:
-            member_ids[(a, b)] = hub.add_element(ids[a], ids[b]).id
+            member_ids[(a, b)] = hub.add_element(
+                ids[a], ids[b],
+                member_type=self.member_types.get((a, b), "auto")).id
         for node, (fix_x, fix_y) in self.supports.items():
             hub.add_restraint(ids[node], fix_x=fix_x, fix_y=fix_y)
         for node, (fx, fy) in self.loads.items():
@@ -158,11 +165,26 @@ class StrutAndTieModel:
     def add_node(self, label: str, x: float, y: float):
         self.nodes[label] = (float(x), float(y))
 
-    def add_member(self, node_a: str, node_b: str):
+    def add_member(self, node_a: str, node_b: str, member_type: str = "auto"):
+        """Add a member.  ``member_type`` is the ``stm.member`` hint: ``auto``
+        (classified by the solved sign) or a forced ``tie`` / ``strut``."""
         for n in (node_a, node_b):
             if n not in self.nodes:
                 raise KeyError(f"node {n!r} not defined")
         self.members.append((node_a, node_b))
+        if member_type and member_type != "auto":
+            self.member_types[(node_a, node_b)] = member_type
+
+    def classify(self, member: tuple[str, str]) -> str | None:
+        """Classify a member as ``"tie"`` (tension) or ``"strut"``
+        (compression).  A forced ``stm.member`` override wins; otherwise the
+        solved sign decides (``None`` until :meth:`solve` has run)."""
+        forced = self.member_types.get(member)
+        if forced in ("tie", "strut"):
+            return forced
+        if self.forces is None or member not in self.forces:
+            return None
+        return "tie" if self.forces[member] > 1e-9 else "strut"
 
     def add_load(self, node: str, fx: float = 0.0, fy: float = 0.0):
         """Applied joint load (kips); fy negative = downward."""
@@ -231,7 +253,29 @@ class StrutAndTieModel:
             self.reactions.setdefault(node, [0.0, 0.0])[dof] = float(
                 solution[len(self.members) + r]
             )
+        self._warn_member_type_mismatches()
         return self.forces
+
+    def _warn_member_type_mismatches(self):
+        """Warn when a member forced to ``tie``/``strut`` via ``stm.member``
+        solves with the opposite sign -- a useful modeling signal (the author's
+        detailing intent disagrees with the analysis), not an error."""
+        for member, forced in self.member_types.items():
+            force = self.forces.get(member)
+            if force is None:
+                continue
+            if forced == "tie" and force < -1e-9:
+                warnings.warn(
+                    f"member {member} is tagged stm.member=tie but solves in "
+                    f"compression ({force:+.1f}); check the model intent",
+                    stacklevel=2,
+                )
+            elif forced == "strut" and force > 1e-9:
+                warnings.warn(
+                    f"member {member} is tagged stm.member=strut but solves in "
+                    f"tension ({force:+.1f}); check the model intent",
+                    stacklevel=2,
+                )
 
     # ── Visualization ─────────────────────────────────────────────────────
 
