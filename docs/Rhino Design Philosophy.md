@@ -202,8 +202,12 @@ adds force labels for review in Rhino.
   enough for IT approval. It is *not* a statement about Rhino — Rhino is expected
   to be available in the ODOT environment. (This corrects an earlier assumption
   that conflated "no Claude at ODOT" with "no Rhino at ODOT".)
-- **Dependencies:** `rhino3dm` is a small pip package; `numpy`/`matplotlib`
-  already in use. RhinoInside adds the most approval risk.
+- **Dependencies:** `rhino3dm` is a small pip package (`pip install
+  civilpy[rhino]`); `numpy`/`matplotlib`/`scipy` already in use. The
+  topology-optimization pipeline's heavier libraries (`pygmsh`, `scikit-fem`,
+  `scikit-image`, `networkx`) live in a separate `pip install civilpy[fem]`
+  extra and are imported lazily, so neither the truss solver nor the Rhino
+  bridge pulls them in. RhinoInside adds the most approval risk.
 
 ## Resolved decisions
 
