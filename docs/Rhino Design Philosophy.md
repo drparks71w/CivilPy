@@ -684,10 +684,15 @@ Remaining (revised against the above):
 - [ ] **Honor `stm.id` on read/write** once the contract question is resolved —
   preserve a per-object GUID through `from_3dm` → `solve` → `results_to_3dm` so
   results land back on the authored object, not by nearest point.
-- [ ] **Read the `stm.member` hint** (`auto` default; `tie`/`strut` override):
-  honor a forced classification for display/classification, and warn when a
-  forced `tie` solves in compression (or vice-versa) — a modeling signal, not an
-  error. Absent tag = `auto` = classify by solved sign.
+- [x] **Read the `stm.member` hint** (`auto` default; `tie`/`strut` override).
+  **Done.** `rhino_stm._member_type` reads it (absent/`auto` = classify by sign;
+  an unknown value warns + falls back to `auto`), threaded onto
+  `Element.member_type` in the hub and `StrutAndTieModel.member_types` in the 2D
+  model. `StrutAndTieModel.classify(member)` honors a forced override for
+  display, `solve()` warns when a forced `tie` solves in compression (or a
+  `strut` in tension), and `model_to_3dm` writes `stm.member` only for a forced
+  override (auto stays invisible). **Python now consumes the C# `STMMember`
+  override tag.**
 - [ ] **Load-case support** (`stm.case`): today `add_load` accumulates everything
   into a single implicit case (`self.loads[node] += ...`). Add per-case grouping
   and solve-per-case. Gate behind the contract decision.

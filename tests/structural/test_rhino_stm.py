@@ -243,6 +243,62 @@ class TestHubInterconversion:
         assert hub.check() == []
 
 
+class TestMemberHint:
+    """Contract: stm.member = auto (default, never written) | tie | strut."""
+
+    def _triangle_with_member_tag(self, tmp_path, value):
+        f = rhino3dm.File3dm()
+        f.Settings.ModelUnitSystem = rhino3dm.UnitSystem.Feet
+        attr = rhino3dm.ObjectAttributes()
+        attr.SetUserString("stm.kind", "member")
+        if value is not None:
+            attr.SetUserString("stm.member", value)
+        f.Objects.AddLine(rhino3dm.Point3d(0, 0, 0),
+                          rhino3dm.Point3d(8, 0, 0), attr)
+        for a, b in [((8, 0, 0), (4, 0, 4)), ((0, 0, 0), (4, 0, 4))]:
+            f.Objects.AddLine(rhino3dm.Point3d(*a), rhino3dm.Point3d(*b))
+        path = tmp_path / "mem.3dm"
+        f.Write(str(path), 7)
+        return path
+
+    def test_forced_tie_reaches_hub(self, tmp_path):
+        path = self._triangle_with_member_tag(tmp_path, "tie")
+        hub = rhino_stm.read_structural_model(path)
+        types = {e.member_type for e in hub.elements.values()}
+        assert "tie" in types
+
+    def test_absent_tag_is_auto(self, tmp_path):
+        path = self._triangle_with_member_tag(tmp_path, None)
+        hub = rhino_stm.read_structural_model(path)
+        assert all(e.member_type == "auto" for e in hub.elements.values())
+
+    def test_unknown_value_warns_and_defaults_auto(self, tmp_path):
+        path = self._triangle_with_member_tag(tmp_path, "banana")
+        with pytest.warns(UserWarning, match="stm.member"):
+            hub = rhino_stm.read_structural_model(path)
+        assert all(e.member_type == "auto" for e in hub.elements.values())
+
+    def test_hint_round_trips_through_2d_model(self, tmp_path):
+        path = self._triangle_with_member_tag(tmp_path, "strut")
+        m = rhino_stm.model_from_3dm(path)
+        assert "strut" in m.member_types.values()
+        # and survives a re-write
+        out = tmp_path / "again.3dm"
+        m.to_3dm(out)
+        again = rhino_stm.model_from_3dm(out)
+        assert "strut" in again.member_types.values()
+
+    def test_forced_tie_in_compression_warns_on_solve(self):
+        # find a member that genuinely solves in compression, force it to 'tie'
+        probe = _example_1()
+        probe.solve()
+        strut = next(mem for mem, f in probe.forces.items() if f < -1e-9)
+        m = _example_1()
+        m.member_types[strut] = "tie"
+        with pytest.warns(UserWarning, match="compression"):
+            m.solve()
+
+
 class TestRhinoToMidas:
     """S4: the Rhino -> Midas adapter (read .3dm into the hub, serialize)."""
 
