@@ -402,9 +402,11 @@ class StrutAndTieModel:
         try:
             u[free] = np.linalg.solve(k[np.ix_(free, free)], f[free])
         except np.linalg.LinAlgError as exc:
+            detail = "; ".join(self.diagnose())
             raise ValueError(
                 f"singular stiffness matrix — the truss has a mechanism "
                 f"(unstable / under-braced): {exc}"
+                + (f" [{detail}]" if detail else "")
             ) from exc
 
         # reactions at the fixed DOF: r = K u - f
