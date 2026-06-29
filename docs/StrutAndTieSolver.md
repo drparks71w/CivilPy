@@ -1,67 +1,129 @@
-Here is a comprehensive, step-by-step roadmap to building a Rhino-to-Python pier cap optimizer.
+# Rhino-to-Python pier-cap optimizer — strut-and-tie solver
 
-### Phase 1: Rhino Front-End & Mesh Generation
+A roadmap, now with a **working end-to-end prototype**, for turning a drawn
+concrete D-region (a rectangle or arbitrary polygon, with supports and loads)
+into an *optimized* strut-and-tie truss, then sizing and costing it.
 
-Your goal is to grab the user’s drawing from Rhino and convert it into a mathematical grid that `scikit-fem` can actually read.
+> **Status (2026-06-29): prototype of all five phases shipped** on branch
+> `stm-topology-optimization`, in `src/civilpy/structural/stm_topology/` plus a
+> direct-stiffness upgrade to `strut_and_tie.py`.  The single-load-path cases
+> (deep beam, cantilever bent cap, region with a void) run cleanly with correct
+> statics; complex multi-point-load caps are a documented limitation (below).
 
-* **1. Draw and Tag (Rhino):** The user draws a 2D boundary representing the pier cap. Using your existing system in `rhino_stm.py`, they tag the support locations (columns) and applied loads (girders).
-* **2. Meshing:** `scikit-fem` needs a mesh, not a raw Rhino curve. You can use a lightweight Python meshing library like `pygmsh` or `meshio` to convert the 2D boundary into a triangular mesh.
-* **3. Export to Python:** Extract the mesh vertices, elements, and tagged boundary conditions using `rhino3dm` and pass them to your solver script.
-* **Libraries Needed:** `rhino3dm`, `pygmsh` or `meshio`.
+## Architecture decisions (as built)
 
----
-
-### Phase 2: The Topology Optimization Engine (The SIMP Method)
-
-This is the core of the project. You will implement the Solid Isotropic Material with Penalization (SIMP) algorithm. It works by assigning a "density" between 0 (void) and 1 (solid concrete) to every triangle in your mesh, penalizing intermediate values to force the algorithm to choose black or white.
-
-* **1. Setup Linear Elastic FEA:** Feed your mesh, boundary conditions, and loads into `scikit-fem`. Define the concrete's elastic modulus ($E$) and Poisson's ratio.
-* **2. Initialize Densities:** Start with a uniform density (e.g., 0.5) across the entire mesh.
-* **3. The Optimization Loop:** * **Solve:** Run the `scikit-fem` solver to find the displacements and strain energy.
-* **Sensitivity Analysis:** Calculate how much removing a tiny bit of material from each element would impact the overall stiffness.
-* **Filter:** Apply a mathematical filter to prevent "checkerboarding" (a common glitch where the algorithm creates alternating solid and void pixels).
-* **Update:** Adjust the densities using an optimality criteria optimizer.
-
-
-* **4. Convergence:** Repeat the loop until the volume hits your target constraint (e.g., 30% of the original volume) and the density map stops changing.
-* **Libraries Needed:** `scikit-fem`, `scipy.sparse`, `numpy`.
-
----
-
-### Phase 3: Truss Extraction (Density Map to Strut-and-Tie)
-
-Now you have a 2D picture of where the concrete needs to be, looking a bit like a skeletal web. You need to convert this into a 1D truss.
-
-* **1. Thresholding:** Convert the density map to pure binary (e.g., any element with a density > 0.6 becomes 1, the rest become 0).
-* **2. Skeletonization:** Use an image processing library to thin the "thick" concrete paths down to 1D centerlines.
-* **3. Graph Extraction:** Walk along these centerlines to identify intersection points (your truss nodes) and the lines connecting them (your truss members).
-* **4. Map to Civilpy:** Feed these new nodes and members into your `StrutAndTieModel` class.
-* **Libraries Needed:** `scikit-image` (for morphology/skeletonization), `networkx` (to manage the node/edge graph logic).
+- **One front end, two authors.** The optimizer consumes a
+  `DRegionProblem` (boundary polygon + thickness + material + supports + loads).
+  The manual workflow builds it in Python; the Rhino workflow reads the same
+  object from a tagged `.3dm` via `rhino_stm.problem_from_3dm` (a
+  `stm.kind=region` curve, per the frozen contract in
+  `docs/Rhino Design Philosophy.md` §"Two front ends").  The optimizer never
+  imports `rhino3dm`.
+- **Structured quads on a fixed grid, not a body-fitted mesh.** Arbitrary
+  polygons (and voids/solids) are handled by masking a bounding-box grid of
+  square Q4 elements — elements whose centroid falls outside the polygon are
+  passive. This keeps the regular grid that makes the density filter and the
+  skeletonization trivial, and it means **no `gmsh`/`scikit-fem` dependency**.
+- **NumPy/SciPy only.** The FEA uses the closed-form `top88` element stiffness;
+  the skeletonization is a hand-rolled Zhang–Suen thinning; arbitrary-polygon
+  point-in-polygon uses `matplotlib.path`. No `scikit-fem`, `scikit-image`,
+  `networkx`, `pygmsh`, or `shapely` — the pipeline runs on civilpy's existing
+  core deps.
+- **The extracted truss is solved by the new indeterminate solver** (Phase 4),
+  with an optional fully-stressed (area∝force) iteration to pick the load path.
 
 ---
 
-### Phase 4: Indeterminate Truss Solver
+### Phase 1 — Region front end & meshing ✅
 
-Because the extracted truss will almost certainly be statically indeterminate, your current Method of Joints solver will fail. You must upgrade `strut_and_tie.py` to use the Direct Stiffness Method (DSM).
+* Manual: `DRegionProblem` / `DRegionProblem.rectangle(...)`.
+* Rhino: `rhino_stm.problem_from_3dm(path)` → `DRegionProblem`
+  (`stm.kind=region` + `stm.thickness`/`stm.fc`/… and `void`/`solid` curves;
+  `stm.bearing` on supports/loads).
+* Meshing: `stm_topology.mesh.GroundMesh` — structured Q4 grid, arbitrary
+  polygon + void + solid masking, support/load → grid-node mapping with bearing
+  spreading. **`top88` node/DOF numbering** so the element stiffness drops in.
 
-* **1. Local Stiffness:** For each extracted member, calculate its local stiffness matrix based on its angle, length, area, and elastic modulus.
-* **2. Global Assembly:** Assemble these into a massive global stiffness matrix ($K$) for the entire truss.
-* **3. Solve Displacements:** Apply the load vector ($F$) and solve the matrix equation $F = KU$ to find how much every node moves ($U$).
-* **4. Back-Calculate Forces:** Use the displacements to determine the internal axial force (tension or compression) in every strut and tie.
-* **Libraries Needed:** `numpy` and `numpy.linalg`.
+### Phase 2 — SIMP topology optimization engine ✅
+
+* `stm_topology.simp.optimize_density(mesh, vol_frac, penal, rmin, …)`.
+* Linear plane-stress FEA (sparse assembly + `spsolve`), optimality-criteria
+  update, cone density filter, passive solid/void elements. Returns a
+  `(nely, nelx)` density field. Verified to drive a deep beam to the classic
+  tied-arch pattern.
+
+### Phase 3 — Truss extraction (density → strut-and-tie) ✅
+
+* `stm_topology.extract.extract_truss(density_result, threshold, merge)`.
+* Threshold → **Zhang–Suen thinning** → skeleton graph walk → straight members
+  between real graph nodes (junctions + forced support/load anchors) → node
+  merge → graph cleanup (prune degree-1 spurs, contract degree-2 chains, keep
+  the anchored component). Anchors snap to their true BC coordinates.
+* Key idealization: truss joints land **only at supports, loads, and genuine
+  junctions** — a smooth arch becomes one straight strut, not a wobbly chain.
+
+### Phase 4 — Indeterminate truss solver (DSM) ✅
+
+* `StrutAndTieModel.solve(method="auto")` — method of joints when determinate,
+  **direct stiffness** when indeterminate; `degree_of_indeterminacy()` dispatches.
+* Member `area` (relative stiffness) sets the load path among redundants.
+* `StrutAndTieModel.solve_fully_stressed()` — iterate area∝|force| to a
+  uniform-stress load path (the natural STM idealization), exception-safe
+  against members shrinking to a mechanism.
+* The original determinate API and results are unchanged (doctest + tests green).
+
+### Phase 5 — Code checks & ODOT cost ✅
+
+* `stm_topology.cost` — `size_ties` (invert AASHTO 5.8.2.4: `Ast = Pu/(φ·fy)`,
+  rounded to whole bars), `check_nodes` (5.8.2.5 bearing/nodal-zone, CCC/CCT/CTT
+  classified from solved member signs), `material_takeoff`, `estimate_cost`
+  (concrete by the cy, reinforcing by the lb, ODOT-style unit prices).
 
 ---
 
-### Phase 5: Code Checks & ODOT Cost Optimization
+## The one call
 
-With the forces solved, you can calculate the real-world costs.
+```python
+from civilpy.structural.stm_topology import DRegionProblem
 
-* **1. Reinforcement Sizing:** For every member in tension (ties), use your `size_flexural_rebar` function in `stm.py` to calculate exactly how much steel is required.
-* **2. Concrete Checks:** Use `stm_node_resistance` to ensure the compressive struts won't crush the nodes.
-* **3. Volume Calculation:** Calculate the volume of the required steel, and the volume of the concrete (using the optimized shape's area $\times$ thickness).
-* **4. Cost Function:** Multiply the volumes by your ODOT unit prices to get the total material cost. You can even wrap an outer loop around this entire process to test different volume fractions in Phase 2 to find the absolute cheapest valid design.
-* **Libraries Needed:** Pure Python (using your `stm.py` file).
+p = DRegionProblem.rectangle(20, 10, thickness=2.0, vol_frac=0.35)
+p.add_support(1, 0, bearing=1.5)
+p.add_support(19, 0, fix_x=False, bearing=1.5)
+p.add_load(10, 10, fy=-600, bearing=1.5)
 
----
+result = p.solve()        # mesh → SIMP → extract → solve → size → cost
+print(result.summary())
+result.plot()             # density field + extracted truss overlay
+```
 
-This is a phenomenal pipeline that will completely replace the black box of STM-CAP. Which phase do you want to tackle first—should we start by rewriting the truss solver in Phase 4 to handle indeterminate structures, or would you rather look at the Phase 1 meshing logic?
+`result.forces` feeds the AASHTO capacity checks; `result.model` is a normal
+`StrutAndTieModel` (so `to_3dm`, `plot`, etc. all work).
+
+## Validation
+
+| Case | Result |
+|---|---|
+| Deep beam (20×10, central load) | Tied arch, DoI=0, tie = (P/2)(L/2)/d to <1%; struts/tie statics exact |
+| Cantilever bent cap (12×6) | Stable 5-node/7-member truss, ΣRy = applied load, top tie sized |
+| Rectangle with a duct void | Load path routes around the void, stable |
+
+11 unit tests in `tests/structural/test_stm_topology.py` (solver determinacy,
+DSM equilibrium, mesh masking, SIMP convergence, thinning, end-to-end statics,
+tie sizing/cost). All green; existing `strut_and_tie`/`rhino_stm` tests unaffected.
+
+## Known limitations / next steps
+
+- **Multi-point-load caps** (several loads on a straight top chord) can extract
+  as an under-triangulated mechanism; the pipeline degrades gracefully
+  (`result.stable == False`, density + geometry still returned) instead of
+  crashing. Next: a triangulation/stabilization pass that guarantees each load
+  has a strut path to a support (e.g. add minimal bracing members, or solve as a
+  ground-structure layout problem).
+- **`scikit-image` skeletonize** could replace the hand-rolled thinning if the
+  optional dep is acceptable — pluggable behind `extract`.
+- **Volume-fraction sweep** (Phase 5 outer loop): wrap `optimize_to_stm` over a
+  range of `vol_frac` and pick the minimum-cost valid design. Deferred.
+- **Rhino round-trip** of the extracted truss + an `STMRegion` authoring command
+  on the C# side (tracked in `docs/Rhino Design Philosophy.md`).
+- **`problem_from_3dm`** is written against the frozen tag schema but untested
+  live (needs `rhino3dm` + an authored region `.3dm` fixture).

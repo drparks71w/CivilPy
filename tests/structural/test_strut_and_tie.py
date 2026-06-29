@@ -61,14 +61,25 @@ class TestDiagnose:
         m.add_support("A", fix_x=True)     # 1 member + 1 reaction < 4 eqs
         assert any("under-constrained" in p for p in m.diagnose())
 
-    def test_over_constrained_reported(self):
+    def test_indeterminate_reported_as_solvable_by_dsm(self):
+        # internally redundant: a square braced by BOTH diagonals (one is the
+        # redundant member) with a pin + roller -> degree 1, but solvable by DSM
         m = StrutAndTieModel()
-        m.add_node("A", 0, 0)
-        m.add_node("B", 4, 0)
-        m.add_member("A", "B")
+        for label, (x, y) in {"A": (0, 0), "B": (4, 0),
+                              "C": (4, 4), "D": (0, 4)}.items():
+            m.add_node(label, x, y)
+        for a, b in [("A", "B"), ("B", "C"), ("C", "D"), ("D", "A"),
+                     ("A", "C"), ("B", "D")]:
+            m.add_member(a, b)
         m.add_support("A", fix_x=True, fix_y=True)
-        m.add_support("B", fix_x=True, fix_y=True)   # 1 + 4 > 4 eqs
-        assert any("over-constrained" in p for p in m.diagnose())
+        m.add_support("B", fix_y=True)
+        m.add_load("C", fy=-10)
+        assert m.degree_of_indeterminacy() == 1
+        problems = m.diagnose()
+        assert any("statically indeterminate" in p for p in problems)
+        # genuinely solvable now (DSM auto-dispatch), not a hard failure
+        m.solve()
+        assert m.forces is not None and len(m.forces) == 6
 
     def test_solve_error_includes_named_diagnostics(self):
         m = StrutAndTieModel()

@@ -458,6 +458,148 @@ def _member_type(us):
     return val
 
 
+def problem_from_3dm(path, *, plane="auto", nu=0.2):
+    """Read a tagged Rhino ``.3dm`` authored with the *region* workflow into a
+    :class:`~civilpy.structural.stm_topology.problem.DRegionProblem`.
+
+    The file holds one closed ``stm.kind=region`` curve (the concrete D-region)
+    carrying ``stm.thickness`` (ft) and ``stm.fc`` (ksi), optionally
+    ``stm.E``/``stm.nu``/``stm.vol_frac``; optional ``stm.kind=void`` /
+    ``stm.kind=solid`` inner curves; and the same supports and loads as the
+    drawn-truss workflow, optionally with an ``stm.bearing`` (ft) width.  See
+    ``docs/Rhino Design Philosophy.md`` (§"Two front ends").
+    """
+    from civilpy.structural.stm_topology.problem import (
+        DRegionProblem, Material, Support, Load,
+    )
+
+    r3 = _require_rhino3dm()
+    f = r3.File3dm.Read(str(path))
+    if f is None:
+        raise FileNotFoundError(f"could not read 3dm file: {path}")
+
+    region = None          # (polygon_pts_world, tags_dict)
+    voids, solids = [], []
+    supports_raw = []      # (world_pt, dof_dict, bearing)
+    loads_raw = []         # (world_pt, world_dir, kips, bearing)
+    world_pts = []
+
+    for obj in f.Objects:
+        attrs = obj.Attributes
+        if attrs.IsInstanceDefinitionObject:
+            continue
+        g = obj.Geometry
+        us = dict(attrs.GetUserStrings() or {})
+        kind = us.get(TAG + "kind")
+        bearing = us.get(TAG + "bearing")
+        bearing = float(bearing) if bearing not in (None, "") else None
+        gtype = type(g).__name__
+
+        if gtype == "InstanceReference":
+            defn = f.InstanceDefinitions.FindId(g.ParentIdefId)
+            name = defn.Name if defn else ""
+            origin = (g.Xform.M03, g.Xform.M13, g.Xform.M23)
+            world_pts.append(origin)
+            if name in BLOCK_SUPPORT or kind == "support":
+                dof = dict(SUPPORT_DOF.get(BLOCK_SUPPORT.get(name, ""), {}))
+                _apply_dof_overrides(dof, us)
+                supports_raw.append((origin, dof, bearing))
+            elif name == BLOCK_LOAD or kind == "load":
+                xaxis = (g.Xform.M00, g.Xform.M10, g.Xform.M20)
+                kips = float(us.get(TAG + "kips", 0.0))
+                loads_raw.append((origin, xaxis, kips, bearing))
+            continue
+
+        if kind == "region" or kind == "void" or kind == "solid":
+            poly = _curve_points(g)
+            world_pts.extend(poly)
+            if kind == "region":
+                region = (poly, us)
+            elif kind == "void":
+                voids.append(poly)
+            else:
+                solids.append(poly)
+        elif hasattr(g, "PointAtStart") and hasattr(g, "PointAtEnd"):
+            a, b = g.PointAtStart, g.PointAtEnd
+            pa, pb = (a.X, a.Y, a.Z), (b.X, b.Y, b.Z)
+            world_pts.extend((pa, pb))
+            if kind == "load":
+                direction = (pb[0] - pa[0], pb[1] - pa[1], pb[2] - pa[2])
+                loads_raw.append((pa, direction, float(us.get(TAG + "kips", 0.0)), bearing))
+            elif kind == "support":
+                dof = {}
+                _apply_dof_overrides(dof, us)
+                supports_raw.append((pa, dof, bearing))
+        elif gtype == "Point" and kind == "support":
+            p = g.Location
+            world_pts.append((p.X, p.Y, p.Z))
+            dof = {}
+            _apply_dof_overrides(dof, us)
+            supports_raw.append(((p.X, p.Y, p.Z), dof, bearing))
+
+    if region is None:
+        raise ValueError(
+            "no stm.kind=region curve found — this file is not a topology-"
+            "optimization problem (use model_from_3dm for a drawn truss)")
+    if plane == "auto":
+        plane = _detect_plane(world_pts)
+
+    poly, tags = region
+    boundary = [_project(p, plane) for p in poly]
+    material = Material(
+        f_c=float(tags.get(TAG + "fc", 5.0)),
+        E=float(tags[TAG + "E"]) if tags.get(TAG + "E") else None,
+        nu=float(tags.get(TAG + "nu", nu)),
+    )
+    problem = DRegionProblem(
+        boundary=boundary,
+        thickness=float(tags.get(TAG + "thickness", 1.0)),
+        material=material,
+        voids=[[_project(p, plane) for p in v] for v in voids],
+        solids=[[_project(p, plane) for p in s] for s in solids],
+        vol_frac=float(tags.get(TAG + "vol_frac", 0.3)),
+    )
+    for pt, dof, bearing in supports_raw:
+        x, y = _project(pt, plane)
+        problem.add_support(x, y, fix_x=bool(dof.get("fix_x")),
+                            fix_y=bool(dof.get("fix_y")), bearing=bearing)
+    for pt, direction, kips, bearing in loads_raw:
+        dx, dy = _project(direction, plane)
+        mag = math.hypot(dx, dy)
+        if mag == 0.0 or kips == 0.0:
+            continue
+        x, y = _project(pt, plane)
+        problem.add_load(x, y, fx=kips * dx / mag, fy=kips * dy / mag, bearing=bearing)
+    return problem
+
+
+def _curve_points(g, n=96):
+    """Return a polygon ``[(X,Y,Z), ...]`` for a closed Rhino curve, preferring
+    its polyline form and falling back to uniform sampling."""
+    pl = None
+    if hasattr(g, "TryGetPolyline"):
+        try:
+            ok = g.TryGetPolyline()
+            pl = ok[1] if isinstance(ok, (tuple, list)) else ok
+        except Exception:
+            pl = None
+    pts = []
+    if pl is not None and hasattr(pl, "__len__") and len(pl):
+        for i in range(len(pl)):
+            p = pl[i]
+            pts.append((p.X, p.Y, p.Z))
+    elif hasattr(g, "PointAt") and hasattr(g, "Domain"):
+        d = g.Domain
+        for i in range(n):
+            t = d.T0 + (d.T1 - d.T0) * i / n
+            p = g.PointAt(t)
+            pts.append((p.X, p.Y, p.Z))
+    # drop a duplicated closing point
+    if len(pts) > 1 and pts[0] == pts[-1]:
+        pts = pts[:-1]
+    return pts
+
+
 def _apply_dof_overrides(dof, us):
     """Overlay explicit ``stm.fix_*`` and ``stm.support`` user text onto a DOF
     dict (mutates in place)."""
