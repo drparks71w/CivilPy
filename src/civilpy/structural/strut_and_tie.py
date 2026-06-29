@@ -197,6 +197,49 @@ class StrutAndTieModel:
 
     # ── Analysis ──────────────────────────────────────────────────────────
 
+    def diagnose(self) -> list[str]:
+        """Actionable pre-solve checks that **name** the offending node/member.
+
+        The method-of-joints :meth:`solve` already rejects an indeterminate or
+        unstable model, but only with a generic count mismatch.  These checks
+        run first and point at the fixable cause -- a dangling node, a load with
+        no load path, a support on an undefined node, missing supports, and
+        whether the model is under- (mechanism) or over-constrained
+        (indeterminate).  Returns an empty list for a clean, determinate model.
+        """
+        problems: list[str] = []
+        touched = {n for member in self.members for n in member}
+
+        for node in self.nodes:
+            if node not in touched:
+                problems.append(f"node {node!r}: not connected to any member")
+        for node in self.supports:
+            if node not in self.nodes:
+                problems.append(f"support on undefined node {node!r}")
+        for node, load in self.loads.items():
+            if node not in self.nodes:
+                problems.append(f"load on undefined node {node!r}")
+            elif node not in touched and any(load):
+                problems.append(
+                    f"load on node {node!r}: no member reaches it (no load path)")
+        if self.nodes and not self.supports:
+            problems.append("model has no supports -- it is a mechanism")
+
+        n_reactions = sum(int(fx) + int(fy) for fx, fy in self.supports.values())
+        n_unknowns = len(self.members) + n_reactions
+        n_eq = 2 * len(self.nodes)
+        if n_unknowns < n_eq:
+            problems.append(
+                f"under-constrained (mechanism): {len(self.members)} members + "
+                f"{n_reactions} reactions < {n_eq} equilibrium equations -- add "
+                f"members or restraints")
+        elif n_unknowns > n_eq:
+            problems.append(
+                f"over-constrained (statically indeterminate): {len(self.members)} "
+                f"members + {n_reactions} reactions > {n_eq} equilibrium equations "
+                f"-- the method of joints needs a determinate model")
+        return problems
+
     def _direction(self, a: str, b: str) -> tuple[float, float, float]:
         (xa, ya), (xb, yb) = self.nodes[a], self.nodes[b]
         length = math.hypot(xb - xa, yb - ya)
@@ -219,10 +262,12 @@ class StrutAndTieModel:
         ]
         n_unknowns = len(self.members) + len(reaction_cols)
         if n_unknowns != n_eq:
+            detail = "; ".join(self.diagnose())
             raise ValueError(
                 f"statically indeterminate or unstable model: "
                 f"{len(self.members)} members + {len(reaction_cols)} "
                 f"reactions != 2*{len(self.nodes)} equations"
+                + (f" [{detail}]" if detail else "")
             )
 
         a = np.zeros((n_eq, n_unknowns))
