@@ -29,6 +29,9 @@ from civilpy.structural.stm_topology.simp import optimize_density, element_stiff
 from civilpy.structural.stm_topology.extract import (
     zhang_suen, extract_truss, is_stable,
 )
+from civilpy.structural.stm_topology.design import (
+    optimize_pier_cap, governing_strut_angle,
+)
 
 
 # ── Phase 4: direct-stiffness / indeterminate solver ─────────────────────────
@@ -261,3 +264,39 @@ def test_extraction_aci_geometry():
     bottom = [(a, b) for a, b in m.members
               if max(m.nodes[a][1], m.nodes[b][1]) < 1.0]
     assert len(bottom) >= 2
+
+
+# ── pier-cap depth optimization ──────────────────────────────────────────────
+
+def test_governing_strut_angle_geometry():
+    """a/d geometry: flattest strut is the largest girder-to-column shear span."""
+    # loads at 12.5 / 27.5 sit 7.5 ft from the nearest column -> governs
+    ang = governing_strut_angle([2.5, 12.5, 20, 27.5, 37.5], [5, 20, 35], depth=7.5)
+    assert ang == pytest.approx(45.0, abs=0.1)            # atan(7.5/7.5)
+    # deeper cap -> steeper strut
+    assert governing_strut_angle([12.5], [5, 20], 15.0) > \
+        governing_strut_angle([12.5], [5, 20], 5.0)
+
+
+def test_optimize_pier_cap_picks_shallowest_feasible():
+    """Sweeping depth returns the shallowest depth that clears the 25 deg a/d
+    gate, with a complete, equilibrated STM for the five girder reactions."""
+    design = optimize_pier_cap(
+        loads=[250, 250, 250, 250, 250],
+        load_xs=[2.5, 12.5, 20, 27.5, 37.5],
+        column_xs=[5, 20, 35],
+        depth_bounds=(3.0, 7.0), n_depths=3, nelx=60,
+    )
+    assert design.optimal is not None
+    feas = [c for c in design.candidates if c.feasible]
+    # the optimum is the cheapest (shallowest) feasible candidate
+    assert design.optimal.depth == pytest.approx(min(c.depth for c in feas))
+    # 3 ft fails the 25 deg strut-angle gate (a/d too high), 5/7 ft pass
+    by_depth = {round(c.depth): c for c in design.candidates}
+    assert not by_depth[3].feasible
+    assert by_depth[5].feasible and by_depth[7].feasible
+    # the optimal model is a complete, globally-equilibrated load path
+    m = design.model
+    assert len(m.loads) == 5 and len(m.supports) == 3
+    ry = sum(v[1] for v in m.reactions.values())
+    assert ry == pytest.approx(1250.0, rel=0.02)
