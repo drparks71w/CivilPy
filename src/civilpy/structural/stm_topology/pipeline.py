@@ -29,7 +29,7 @@ import numpy as np
 
 from .mesh import GroundMesh
 from .simp import optimize_density, DensityResult
-from .extract import extract_truss, refine_truss, is_stable
+from .extract import extract_truss, refine_truss
 from . import cost as _cost
 
 
@@ -52,9 +52,10 @@ class STMResult:
 
     def summary(self) -> str:
         m = self.model
+        state = "equilibrium load path" if self.stable else "UNSOLVED"
         lines = [
             f"Strut-and-Tie result: {len(m.nodes)} nodes, {len(m.members)} members "
-            f"(DoI={m.degree_of_indeterminacy()}, {'stable' if self.stable else 'UNSTABLE'})",
+            f"({state})",
             f"  mesh {self.mesh.nelx}x{self.mesh.nely}, vol_frac="
             f"{self.problem.vol_frac:.2f}",
         ]
@@ -93,9 +94,10 @@ def optimize_to_stm(problem, *, nelx: int = 120, threshold: float = 0.3,
                     **price_kwargs) -> STMResult:
     """Run the full pipeline and return an :class:`STMResult`.
 
-    The extraction merge tolerance is escalated automatically until the truss
-    is stable (statically determinate or solvable indeterminate) so the caller
-    gets a usable model without hand-tuning.
+    Extraction skeletonizes the SIMP field for node positions, then solves an LP
+    plastic truss layout optimization for the discrete load path; the resulting
+    model carries its own member forces and reactions (an equilibrium load path,
+    so no separate solve is needed).
     """
     mesh = GroundMesh(problem, nelx=nelx)
     density = optimize_density(mesh, vol_frac=problem.vol_frac, penal=penal,
@@ -104,13 +106,14 @@ def optimize_to_stm(problem, *, nelx: int = 120, threshold: float = 0.3,
 
     model, used, stable = _extract_stable(density, threshold, merge, verbose)
 
-    forces = {}
+    forces = model.forces or {}
     report = _cost.DesignReport()
     try:
-        if fully_stressed:
-            forces = model.solve_fully_stressed()
-        else:
-            forces = model.solve(method="auto")
+        # the LP extraction already solved the load path; only solve here if the
+        # FSD fallback returned a model without forces.
+        if not forces:
+            forces = (model.solve_fully_stressed() if fully_stressed
+                      else model.solve(method="auto"))
         report = _cost.design_report(model, problem, density, threshold=threshold,
                                      **price_kwargs)
     except ValueError as exc:
@@ -125,30 +128,30 @@ def optimize_to_stm(problem, *, nelx: int = 120, threshold: float = 0.3,
 
 
 def _extract_stable(density, threshold, merge, verbose):
-    """Extract a skeleton truss and complete it into a stable strut-and-tie
-    model with the ground-structure refinement.
+    """Extract a skeleton truss and complete it into a solved strut-and-tie model.
 
-    Skeleton tracing finds the struts but misses the tension chords, so the raw
-    truss is usually a mechanism.  Instead of merging joints until it collapses,
-    :func:`~civilpy.structural.stm_topology.extract.refine_truss` lays in the
-    members that run through solid material and prunes the dead ones.  A couple
-    of coarser merges are tried only as a fallback if that still leaves a
-    mechanism.
+    Skeleton tracing fixes the joint positions; :func:`refine_truss` then chooses
+    the discrete load path by LP layout optimization (falling back to the
+    fully-stressed ground-structure refinement if the LP is infeasible).  A
+    couple of coarser skeleton merges are tried only if the first yields too few
+    joints to optimize over.
     """
     base = merge if merge is not None else max(3.0, 0.05 * density.mesh.nelx)
     candidates = [base] if merge is not None else [base * f for f in (1.0, 1.5, 2.0)]
     last = None
     for mg in candidates:
-        model = extract_truss(density, threshold=threshold, merge=mg)
-        if len(model.nodes) >= 3:
-            refine_truss(model, density)
+        raw = extract_truss(density, threshold=threshold, merge=mg)
+        if len(raw.nodes) < 3:
+            last = (raw, mg)
+            continue
+        model = refine_truss(raw, density)
         last = (model, mg)
-        if is_stable(model):
+        if model.forces:
             if verbose:
-                print(f"  merge={mg:.1f}: refined to {len(model.nodes)} nodes, "
-                      f"{len(model.members)} members (stable)")
+                print(f"  merge={mg:.1f}: extracted {len(model.nodes)} nodes, "
+                      f"{len(model.members)} members")
             return model, mg, True
         if verbose:
-            print(f"  merge={mg:.1f}: still a mechanism, escalating")
+            print(f"  merge={mg:.1f}: extraction unsolved, escalating")
     model, mg = last
-    return model, mg, False
+    return model, mg, bool(model.forces)
