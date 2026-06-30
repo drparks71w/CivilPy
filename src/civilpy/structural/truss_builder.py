@@ -65,6 +65,11 @@ from dataclasses import dataclass, field
 import matplotlib.pyplot as plt
 
 from civilpy.structural.truss import Truss
+from civilpy.structural.midas_models import (
+    STEEL_PROPS,
+    steel_material_block,
+    unit_block,
+)
 from civilpy.structural.aashto.lrfd.steel import (
     tension_member_resistance,
     compression_member_resistance,
@@ -846,8 +851,7 @@ class TrussBridge:
 
     # E [ksf], Poisson, thermal [1/°F], weight density [kcf] in the
     # KIPS/FT unit system the export sets (E = 29,000 ksi).
-    _STEEL_PROPS = {"ELAST": 4_176_000.0, "POISN": 0.3,
-                    "THERMAL": 6.5e-06, "DEN": 0.490}
+    _STEEL_PROPS = STEEL_PROPS          # shared with the hub serializer (S4)
 
     def _node_3d(self, name: str, plane: int) -> tuple[float, float, float]:
         x, z = self.nodes[name]
@@ -1042,13 +1046,8 @@ class TrussBridge:
             }
 
         payloads = {
-            "UNIT": {"1": {"FORCE": "KIPS", "DIST": "FT",
-                           "HEAT": "BTU", "TEMPER": "F"}},
-            "MATL": {"1": {
-                "TYPE": "USER", "NAME": "A709-50", "THMAL_UNIT": "F",
-                "bMASS_DENS": False, "DAMP_RAT": 0.0,
-                "PARAM": [{"P_TYPE": 2, "MASS": 0.0, **self._STEEL_PROPS}],
-            }},
+            "UNIT": unit_block(),
+            "MATL": steel_material_block("A709-50", props=self._STEEL_PROPS),
             "SECT": sections,
             "NODE": nodes,
             "ELEM": elements,

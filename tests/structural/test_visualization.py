@@ -104,11 +104,16 @@ class TestStrutAndTie:
         assert stm.reactions["A"][1] == pytest.approx(50.0)
         assert stm.reactions["B"][1] == pytest.approx(50.0)
 
-    def test_indeterminate_raises(self):
+    def test_indeterminate_solves_via_dsm(self):
         stm = self._deep_beam()
-        stm.add_support("C", fix_x=True)  # extra restraint
+        stm.add_support("C", fix_x=True)  # extra restraint -> indeterminate
+        assert stm.degree_of_indeterminacy() > 0
+        # auto-dispatch now handles indeterminate trusses (direct stiffness)
+        forces = stm.solve()
+        assert forces is not None
+        # but explicitly forcing the method of joints still rejects it
         with pytest.raises(ValueError):
-            stm.solve()
+            stm.solve(method="joints")
 
     def test_unknown_node_raises(self):
         stm = StrutAndTieModel()

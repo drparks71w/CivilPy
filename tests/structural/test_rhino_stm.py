@@ -1,0 +1,466 @@
+#  CivilPy
+#  Copyright (C) 2026 Dane Parks
+#
+#  This program is free software: you can redistribute it and/or modify
+#  it under the terms of the GNU Affero General Public License as published by
+#  the Free Software Foundation, either version 3 of the License, or
+#  (at your option) any later version.
+#
+#  This program is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#  GNU Affero General Public License for more details.
+#
+#  You should have received a copy of the GNU Affero General Public License
+#  along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+"""Round-trip and reader tests for the Rhino <-> strut-and-tie bridge.
+
+Skipped entirely when the optional ``rhino3dm`` dependency is absent.
+"""
+
+import pytest
+
+pytest.importorskip("rhino3dm")
+
+import rhino3dm  # noqa: E402
+
+from civilpy.structural import rhino_stm  # noqa: E402
+from civilpy.structural.strut_and_tie import StrutAndTieModel  # noqa: E402
+
+
+def _example_1():
+    """FHWA-NHI-17-071 Design Example 1 (deep beam), drawn in feet."""
+    m = StrutAndTieModel()
+    coords = {"A": (0, 0), "B": (4.5, 0), "C": (27, 0),
+              "D": (4.5, 16 / 3), "E": (9, 16 / 3), "F": (18, 16 / 3)}
+    for label, (x, y) in coords.items():
+        m.add_node(label, x, y)
+    m.add_support("A", fix_x=True, fix_y=True)
+    m.add_support("C", fix_y=True)
+    m.add_load("E", fy=-600)
+    m.add_load("F", fy=-600)
+    for a, b in [("A", "B"), ("A", "D"), ("B", "C"), ("B", "D"), ("D", "E"),
+                 ("B", "E"), ("E", "F"), ("C", "F"), ("C", "E")]:
+        m.add_member(a, b)
+    return m
+
+
+class TestRoundTrip:
+    def test_forces_survive_round_trip(self, tmp_path):
+        src = _example_1()
+        src.solve()
+        path = tmp_path / "ex1.3dm"
+        src.to_3dm(path)
+
+        back = StrutAndTieModel.from_3dm(path)
+        back.solve()
+
+        # auto-labeling reproduces the elevation order A..F
+        assert list(back.nodes) == ["A", "B", "C", "D", "E", "F"]
+        for member, force in src.forces.items():
+            assert back.forces[member] == pytest.approx(force, abs=1e-6)
+
+    def test_matches_published_values(self, tmp_path):
+        path = tmp_path / "ex1.3dm"
+        _example_1().to_3dm(path)
+        m = StrutAndTieModel.from_3dm(path)
+        m.solve()
+        # bottom tie and vertical tie from the FHWA worked example
+        assert m.forces[("B", "C")] == pytest.approx(1012.5, abs=0.1)
+        assert m.forces[("B", "D")] == pytest.approx(600.0, abs=0.1)
+
+    def test_supports_and_loads_survive(self, tmp_path):
+        path = tmp_path / "ex1.3dm"
+        _example_1().to_3dm(path)
+        m = StrutAndTieModel.from_3dm(path)
+        assert m.supports["A"] == (True, True)   # pin
+        assert m.supports["C"] == (False, True)  # vertical roller
+        assert m.loads["E"] == pytest.approx([0.0, -600.0])
+        assert m.loads["F"] == pytest.approx([0.0, -600.0])
+
+
+class TestTemplate:
+    def test_build_template_has_layers(self, tmp_path):
+        path = tmp_path / "tpl.3dm"
+        rhino_stm.build_template(path)
+        f = rhino3dm.File3dm.Read(str(path))
+        names = {layer.FullPath for layer in f.Layers}
+        assert {rhino_stm.LAYER_MEMBERS, rhino_stm.LAYER_SUPPORTS,
+                rhino_stm.LAYER_LOADS, rhino_stm.LAYER_RESULTS} <= names
+
+    def test_results_writer_runs(self, tmp_path):
+        m = _example_1()
+        m.solve()
+        path = tmp_path / "res.3dm"
+        rhino_stm.results_to_3dm(m, path)
+        f = rhino3dm.File3dm.Read(str(path))
+        assert sum(1 for _ in f.Objects) > 0
+
+
+class TestReader:
+    def test_untagged_curves_fall_back_to_members(self, tmp_path):
+        """A plain drawing (untagged lines) imports as members."""
+        f = rhino3dm.File3dm()
+        f.Settings.ModelUnitSystem = rhino3dm.UnitSystem.Feet
+        # a simple triangle truss in the XZ plane
+        pts = {"A": (0, 0, 0), "B": (8, 0, 0), "C": (4, 0, 4)}
+        for a, b in [("A", "B"), ("B", "C"), ("A", "C")]:
+            f.Objects.AddLine(rhino3dm.Point3d(*pts[a]),
+                              rhino3dm.Point3d(*pts[b]))
+        path = tmp_path / "raw.3dm"
+        f.Write(str(path), 7)
+
+        m = rhino_stm.model_from_3dm(path)
+        assert len(m.nodes) == 3
+        assert len(m.members) == 3
+
+    def test_plane_autodetect_xz(self, tmp_path):
+        path = tmp_path / "ex1.3dm"
+        _example_1().to_3dm(path, plane="XZ")
+        m = rhino_stm.model_from_3dm(path, plane="auto")
+        # the model was drawn in XZ, so node y-coords recover the heights
+        assert max(y for _, y in m.nodes.values()) == pytest.approx(16 / 3)
+
+    def test_fix_overrides_from_user_text(self, tmp_path):
+        """An explicit stm.fix_x override on a support point is honored."""
+        f = rhino3dm.File3dm()
+        f.Settings.ModelUnitSystem = rhino3dm.UnitSystem.Feet
+        for a, b in [((0, 0, 0), (8, 0, 0)), ((8, 0, 0), (4, 0, 4)),
+                     ((0, 0, 0), (4, 0, 4))]:
+            f.Objects.AddLine(rhino3dm.Point3d(*a), rhino3dm.Point3d(*b))
+        attr = rhino3dm.ObjectAttributes()
+        attr.SetUserString("stm.kind", "support")
+        attr.SetUserString("stm.fix_x", "true")
+        attr.SetUserString("stm.fix_y", "true")
+        f.Objects.AddPoint(rhino3dm.Point3d(0, 0, 0), attr)
+        path = tmp_path / "sup.3dm"
+        f.Write(str(path), 7)
+
+        m = rhino_stm.model_from_3dm(path)
+        # the node nearest (0,0) carries the pin
+        pinned = [n for n, s in m.supports.items() if s == (True, True)]
+        assert len(pinned) == 1
+
+
+class TestStructuralModelReader:
+    """S2: reading a tagged .3dm into the canonical StructuralModel hub."""
+
+    def test_read_structural_model_preserves_full_6dof(self, tmp_path):
+        """A `fixed` support keeps fix_rz, which the 2D STM model drops."""
+        src = _example_1()
+        src.add_support("A", fix_x=True, fix_y=True)  # ensure A is the pin
+        path = tmp_path / "ex1.3dm"
+        src.to_3dm(path)
+
+        hub = rhino_stm.read_structural_model(path)
+        # full 6-DOF restraints landed on the hub
+        assert len(hub.restraints) == 2
+        # the pin at A: in-plane fixed, the rest free
+        pin = next(r for r in hub.restraints.values() if r.to_2d() == (True, True))
+        assert pin.to_constraint_string() == "1100000"
+
+    def test_fixed_support_keeps_rotational_dof(self, tmp_path):
+        """A point tagged stm.support=fixed round-trips fix_rz into the hub."""
+        f = rhino3dm.File3dm()
+        f.Settings.ModelUnitSystem = rhino3dm.UnitSystem.Feet
+        for a, b in [((0, 0, 0), (8, 0, 0)), ((8, 0, 0), (4, 0, 4)),
+                     ((0, 0, 0), (4, 0, 4))]:
+            f.Objects.AddLine(rhino3dm.Point3d(*a), rhino3dm.Point3d(*b))
+        attr = rhino3dm.ObjectAttributes()
+        attr.SetUserString("stm.kind", "support")
+        attr.SetUserString("stm.support", "fixed")
+        f.Objects.AddPoint(rhino3dm.Point3d(0, 0, 0), attr)
+        path = tmp_path / "fixed.3dm"
+        f.Write(str(path), 7)
+
+        hub = rhino_stm.read_structural_model(path)
+        fixed = next(iter(hub.restraints.values()))
+        assert fixed.fix_x and fixed.fix_y and fixed.fix_rz
+        assert fixed.preset == "fixed"
+        assert fixed.to_constraint_string() == "1100010"
+
+    def test_as_model_flag_returns_hub(self, tmp_path):
+        from civilpy.structural.structural_model import StructuralModel
+        path = tmp_path / "ex1.3dm"
+        _example_1().to_3dm(path)
+        hub = rhino_stm.model_from_3dm(path, as_model=True)
+        assert isinstance(hub, StructuralModel)
+        assert len(hub.nodes) == 6
+        assert len(hub.elements) == 9
+
+    def test_hub_preserves_3d_coordinates(self, tmp_path):
+        """The hub keeps genuine 3D coords (out-of-plane axis intact)."""
+        path = tmp_path / "ex1.3dm"
+        _example_1().to_3dm(path, plane="XZ")
+        hub = rhino_stm.read_structural_model(path, plane="XZ")
+        # drawn in XZ: every node sits at Y == 0, heights live in Z
+        assert all(abs(n.y) < 1e-9 for n in hub.nodes.values())
+        assert max(n.z for n in hub.nodes.values()) == pytest.approx(16 / 3)
+
+    def test_load_vector_preserved(self, tmp_path):
+        path = tmp_path / "ex1.3dm"
+        _example_1().to_3dm(path, plane="XZ")
+        hub = rhino_stm.read_structural_model(path, plane="XZ")
+        # the two 600-kip downward loads survive as -Z forces
+        assert len(hub.loads) == 2
+        for load in hub.loads:
+            assert load.fz == pytest.approx(-600.0, abs=1e-6)
+
+
+class TestHubInterconversion:
+    """S3 reader/writer halves: StrutAndTieModel <-> StructuralModel."""
+
+    def test_from_3dm_matches_projection_of_hub(self, tmp_path):
+        path = tmp_path / "ex1.3dm"
+        _example_1().to_3dm(path)
+        stm = rhino_stm.model_from_3dm(path)
+        hub = rhino_stm.read_structural_model(path)
+        projected = StrutAndTieModel.from_structural_model(hub)
+        assert stm.nodes == projected.nodes
+        assert stm.members == projected.members
+        assert stm.supports == projected.supports
+
+    def test_round_trip_through_hub_preserves_forces(self):
+        src = _example_1()
+        src.solve()
+        back = StrutAndTieModel.from_structural_model(
+            src.to_structural_model(plane="XZ")
+        )
+        back.solve()
+        assert list(back.nodes) == list(src.nodes)
+        for member, force in src.forces.items():
+            assert back.forces[member] == pytest.approx(force, abs=1e-6)
+
+    def test_to_structural_model_carries_results(self):
+        src = _example_1()
+        src.solve()
+        hub = src.to_structural_model(plane="XZ")
+        assert "default" in hub.results
+        result = hub.results["default"]
+        assert len(result.element_forces) == len(src.members)
+        # the solved hub passes its own integrity check
+        assert hub.check() == []
+
+
+class TestUnitConversion:
+    """The reader converts inch/mm/m files to feet (forces stay in kips)."""
+
+    def _triangle(self, tmp_path, unit_system, scale):
+        """A right triangle 0-8-4ft drawn in `unit_system` (coords * scale)."""
+        f = rhino3dm.File3dm()
+        f.Settings.ModelUnitSystem = unit_system
+        pts = [((0, 0, 0), (8 * scale, 0, 0)),
+               ((8 * scale, 0, 0), (4 * scale, 0, 4 * scale)),
+               ((0, 0, 0), (4 * scale, 0, 4 * scale))]
+        for a, b in pts:
+            f.Objects.AddLine(rhino3dm.Point3d(*a), rhino3dm.Point3d(*b))
+        path = tmp_path / f"{unit_system}.3dm"
+        f.Write(str(path), 7)
+        return path
+
+    def test_inches_convert_to_feet(self, tmp_path):
+        path = self._triangle(tmp_path, rhino3dm.UnitSystem.Inches, 12.0)
+        hub = rhino_stm.read_structural_model(path, plane="XZ")
+        # the 8 ft span authored as 96 in comes back as 8 ft
+        xs = sorted(n.x for n in hub.nodes.values())
+        assert xs[-1] == pytest.approx(8.0)
+        assert max(n.z for n in hub.nodes.values()) == pytest.approx(4.0)
+
+    def test_millimeters_convert_to_feet(self, tmp_path):
+        path = self._triangle(tmp_path, rhino3dm.UnitSystem.Millimeters,
+                              304.8)  # 1 ft = 304.8 mm
+        hub = rhino_stm.read_structural_model(path, plane="XZ")
+        xs = sorted(n.x for n in hub.nodes.values())
+        assert xs[-1] == pytest.approx(8.0, abs=1e-6)
+
+    def test_feet_unchanged(self, tmp_path):
+        path = self._triangle(tmp_path, rhino3dm.UnitSystem.Feet, 1.0)
+        hub = rhino_stm.read_structural_model(path, plane="XZ")
+        assert sorted(n.x for n in hub.nodes.values())[-1] == pytest.approx(8.0)
+
+
+class TestPlanarityGuard:
+    """The 2D path warns when geometry is not planar (it silently projects)."""
+
+    def test_non_planar_model_warns_on_2d_read(self, tmp_path):
+        f = rhino3dm.File3dm()
+        f.Settings.ModelUnitSystem = rhino3dm.UnitSystem.Feet
+        # a tetrahedron-ish frame with genuine out-of-plane depth
+        pts = {"A": (0, 0, 0), "B": (8, 0, 0), "C": (4, 0, 4), "D": (4, 5, 2)}
+        for a, b in [("A", "B"), ("B", "C"), ("A", "C"),
+                     ("A", "D"), ("B", "D"), ("C", "D")]:
+            f.Objects.AddLine(rhino3dm.Point3d(*pts[a]),
+                              rhino3dm.Point3d(*pts[b]))
+        path = tmp_path / "solid.3dm"
+        f.Write(str(path), 7)
+        with pytest.warns(UserWarning, match="not planar"):
+            rhino_stm.model_from_3dm(path)
+
+    def test_as_model_does_not_warn(self, tmp_path, recwarn):
+        f = rhino3dm.File3dm()
+        f.Settings.ModelUnitSystem = rhino3dm.UnitSystem.Feet
+        pts = {"A": (0, 0, 0), "B": (8, 0, 0), "C": (4, 0, 4), "D": (4, 5, 2)}
+        for a, b in [("A", "B"), ("B", "C"), ("A", "C"), ("A", "D")]:
+            f.Objects.AddLine(rhino3dm.Point3d(*pts[a]),
+                              rhino3dm.Point3d(*pts[b]))
+        path = tmp_path / "solid.3dm"
+        f.Write(str(path), 7)
+        rhino_stm.read_structural_model(path)   # hub keeps 3D -> no warning
+        assert not any("not planar" in str(w.message) for w in recwarn.list)
+
+    def test_planar_model_does_not_warn(self, tmp_path, recwarn):
+        path = tmp_path / "ex1.3dm"
+        _example_1().to_3dm(path, plane="XZ")
+        rhino_stm.model_from_3dm(path)
+        assert not any("not planar" in str(w.message) for w in recwarn.list)
+
+
+class TestMemberHint:
+    """Contract: stm.member = auto (default, never written) | tie | strut."""
+
+    def _triangle_with_member_tag(self, tmp_path, value):
+        f = rhino3dm.File3dm()
+        f.Settings.ModelUnitSystem = rhino3dm.UnitSystem.Feet
+        attr = rhino3dm.ObjectAttributes()
+        attr.SetUserString("stm.kind", "member")
+        if value is not None:
+            attr.SetUserString("stm.member", value)
+        f.Objects.AddLine(rhino3dm.Point3d(0, 0, 0),
+                          rhino3dm.Point3d(8, 0, 0), attr)
+        for a, b in [((8, 0, 0), (4, 0, 4)), ((0, 0, 0), (4, 0, 4))]:
+            f.Objects.AddLine(rhino3dm.Point3d(*a), rhino3dm.Point3d(*b))
+        path = tmp_path / "mem.3dm"
+        f.Write(str(path), 7)
+        return path
+
+    def test_forced_tie_reaches_hub(self, tmp_path):
+        path = self._triangle_with_member_tag(tmp_path, "tie")
+        hub = rhino_stm.read_structural_model(path)
+        types = {e.member_type for e in hub.elements.values()}
+        assert "tie" in types
+
+    def test_absent_tag_is_auto(self, tmp_path):
+        path = self._triangle_with_member_tag(tmp_path, None)
+        hub = rhino_stm.read_structural_model(path)
+        assert all(e.member_type == "auto" for e in hub.elements.values())
+
+    def test_unknown_value_warns_and_defaults_auto(self, tmp_path):
+        path = self._triangle_with_member_tag(tmp_path, "banana")
+        with pytest.warns(UserWarning, match="stm.member"):
+            hub = rhino_stm.read_structural_model(path)
+        assert all(e.member_type == "auto" for e in hub.elements.values())
+
+    def test_hint_round_trips_through_2d_model(self, tmp_path):
+        path = self._triangle_with_member_tag(tmp_path, "strut")
+        m = rhino_stm.model_from_3dm(path)
+        assert "strut" in m.member_types.values()
+        # and survives a re-write
+        out = tmp_path / "again.3dm"
+        m.to_3dm(out)
+        again = rhino_stm.model_from_3dm(out)
+        assert "strut" in again.member_types.values()
+
+    def test_forced_tie_in_compression_warns_on_solve(self):
+        # find a member that genuinely solves in compression, force it to 'tie'
+        probe = _example_1()
+        probe.solve()
+        strut = next(mem for mem, f in probe.forces.items() if f < -1e-9)
+        m = _example_1()
+        m.member_types[strut] = "tie"
+        with pytest.warns(UserWarning, match="compression"):
+            m.solve()
+
+
+class TestRegionUnitConversion:
+    """problem_from_3dm converts an inch-authored region to feet (S: unit gap)."""
+
+    def test_region_in_inches_converts_to_feet(self, tmp_path):
+        f = rhino3dm.File3dm()
+        f.Settings.ModelUnitSystem = rhino3dm.UnitSystem.Inches
+        # 96 in x 48 in rectangle = 8 ft x 4 ft
+        corners = [(0, 0, 0), (96, 0, 0), (96, 0, 48), (0, 0, 48), (0, 0, 0)]
+        region = rhino3dm.PolylineCurve([rhino3dm.Point3d(*c) for c in corners])
+        rattr = rhino3dm.ObjectAttributes()
+        rattr.SetUserString("stm.kind", "region")
+        rattr.SetUserString("stm.thickness", "12")   # 12 in = 1 ft
+        rattr.SetUserString("stm.fc", "5")
+        f.Objects.AddCurve(region, rattr)
+
+        sattr = rhino3dm.ObjectAttributes()
+        sattr.SetUserString("stm.kind", "support")
+        sattr.SetUserString("stm.fix_x", "true")
+        sattr.SetUserString("stm.fix_y", "true")
+        sattr.SetUserString("stm.bearing", "6")       # 6 in = 0.5 ft
+        f.Objects.AddPoint(rhino3dm.Point3d(0, 0, 0), sattr)
+
+        path = tmp_path / "region_in.3dm"
+        f.Write(str(path), 7)
+
+        prob = rhino_stm.problem_from_3dm(path, plane="XZ")
+        xs = [x for x, _ in prob.boundary]
+        ys = [y for _, y in prob.boundary]
+        assert max(xs) - min(xs) == pytest.approx(8.0)    # 96 in -> 8 ft
+        assert max(ys) - min(ys) == pytest.approx(4.0)    # 48 in -> 4 ft
+        assert prob.thickness == pytest.approx(1.0)       # 12 in -> 1 ft
+        assert prob.material.f_c == pytest.approx(5.0)    # ksi, NOT scaled
+        assert prob.supports[0].bearing == pytest.approx(0.5)  # 6 in -> 0.5 ft
+
+    def test_region_in_feet_unscaled(self, tmp_path):
+        f = rhino3dm.File3dm()
+        f.Settings.ModelUnitSystem = rhino3dm.UnitSystem.Feet
+        corners = [(0, 0, 0), (8, 0, 0), (8, 0, 4), (0, 0, 4), (0, 0, 0)]
+        region = rhino3dm.PolylineCurve([rhino3dm.Point3d(*c) for c in corners])
+        rattr = rhino3dm.ObjectAttributes()
+        rattr.SetUserString("stm.kind", "region")
+        rattr.SetUserString("stm.thickness", "1")
+        rattr.SetUserString("stm.fc", "5")
+        f.Objects.AddCurve(region, rattr)
+        path = tmp_path / "region_ft.3dm"
+        f.Write(str(path), 7)
+
+        prob = rhino_stm.problem_from_3dm(path, plane="XZ")
+        xs = [x for x, _ in prob.boundary]
+        assert max(xs) - min(xs) == pytest.approx(8.0)
+        assert prob.thickness == pytest.approx(1.0)
+
+
+class TestRhinoToMidas:
+    """S4: the Rhino -> Midas adapter (read .3dm into the hub, serialize)."""
+
+    def test_3dm_to_midas_payloads_end_to_end(self, tmp_path):
+        from civilpy.structural import midas_models as mm
+        path = tmp_path / "ex1.3dm"
+        _example_1().to_3dm(path, plane="XZ")
+
+        hub = rhino_stm.read_structural_model(path, plane="XZ")
+        payloads = mm.midas_payloads(hub)
+
+        assert len(payloads["NODE"]) == 6
+        assert len(payloads["ELEM"]) == 9
+        # the two 600-kip loads survive into CNLD as -Z forces
+        fz = [item["FZ"] for body in payloads["CNLD"].values()
+              for item in body["ITEMS"]]
+        assert fz == pytest.approx([-600.0, -600.0])
+
+    def test_midas_constraints_keep_6dof_from_tags(self, tmp_path):
+        """A `fixed` support's fix_rz reaches the MIDAS CONS string -- the whole
+        point of routing Rhino->Midas through the hub, not the 2D STM model."""
+        from civilpy.structural import midas_models as mm
+        f = rhino3dm.File3dm()
+        f.Settings.ModelUnitSystem = rhino3dm.UnitSystem.Feet
+        for a, b in [((0, 0, 0), (8, 0, 0)), ((8, 0, 0), (4, 0, 4)),
+                     ((0, 0, 0), (4, 0, 4))]:
+            f.Objects.AddLine(rhino3dm.Point3d(*a), rhino3dm.Point3d(*b))
+        attr = rhino3dm.ObjectAttributes()
+        attr.SetUserString("stm.kind", "support")
+        attr.SetUserString("stm.support", "fixed")
+        f.Objects.AddPoint(rhino3dm.Point3d(0, 0, 0), attr)
+        path = tmp_path / "fixed.3dm"
+        f.Write(str(path), 7)
+
+        hub = rhino_stm.read_structural_model(path)
+        payloads = mm.midas_payloads(hub)
+        constraints = [s["ITEMS"][0]["CONSTRAINT"]
+                       for s in payloads["CONS"].values()]
+        assert "1100010" in constraints      # fix_x, fix_y, fix_rz
