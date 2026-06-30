@@ -26,8 +26,21 @@ from civilpy.state.ohio.snbi import (
 )
 
 
+def _route():
+    return Route(BRT01="R1", BRT02="00071", BRT03="NB", BRT04="1", BRT05="1")
+
+
+def _highway_feature(**overrides):
+    data = dict(
+        BF01="H01", BH02="99999", BH06="ROUTE 71", BH09=5000, BH11=2024,
+        BH13=99.9, BH16=40.0, BH17=10, Routes=[_route()],
+    )
+    data.update(overrides)
+    return Feature(**data)
+
+
 def _features():
-    return [Feature(BF01="H01", Routes=[Route(BRT01="R1")])]
+    return [_highway_feature()]
 
 
 def _valid_kwargs(**overrides):
@@ -38,12 +51,13 @@ def _valid_kwargs(**overrides):
         BCL01="S01", BCL02="S01", BCL03="N", BCL04="N", BCL05="N",
         BG01=100.0, BG02=110.0, BG03=50.0, BG05=40.0, BG06=38.0,
         BG07=2.0, BG08=2.0, BG09=36.0, BG10="0", BG11=0, BG14="N",
-        BC01="7", BC02="6", BC03="6", BC04="N",
+        BC01="7", BC02="6", BC03="6", BC04="N", BC09="N",
         BIR01="N", BIR03="N",
         BAP01="G", BAP02="0", BAP03="U", BAP05="N",
         Features=_features(),
         PostingStatuses=[PostingStatus(BPS01="N")],
-        SpanSets=[SpanSet(BSP01="M01", BSP06="G01")],
+        SpanSets=[SpanSet(BSP01="M01", BSP02=2, BSP04="S01", BSP05="1",
+                          BSP06="G01", BSP09="C01", BSP12="R01")],
         SubstructureSets=[SubstructureSet(BSB01="A01")],
         Works=[Work(BW02=1985)],
     )
@@ -202,7 +216,8 @@ class TestRequiredDatasets:
     def test_substructure_optional_for_buried_culvert(self):
         # All spans are buried pipe culverts (BSP06 = P01) -> substructure optional
         b = make_bridge(
-            SpanSets=[SpanSet(BSP01="C01", BSP06="P01")],
+            SpanSets=[SpanSet(BSP01="C01", BSP02=1, BSP04="C01", BSP05="7",
+                              BSP06="P01")],
             SubstructureSets=None,
             BC04="5",
         )
@@ -222,7 +237,8 @@ class TestFeatureConditionals:
             make_bridge(Features=[Feature(BF01="W01")])
 
     def test_waterway_with_navigable_code_ok(self):
-        b = make_bridge(Features=[Feature(BF01="W01", BN01="N")])
+        # A waterway feature means the bridge must carry a 0-9 channel rating.
+        b = make_bridge(Features=[Feature(BF01="W01", BN01="N")], BC09="5")
         assert b.Features[0].BN01 == "N"
 
 
@@ -327,21 +343,27 @@ class TestChildRequirements:
 # Coded-value enumerations (newly wired from _SNBI_CODES / _PATTERN_CODES)
 # --------------------------------------------------------------------------- #
 class TestCodedValues:
+    def _span(self, **overrides):
+        data = dict(BSP01="M01", BSP02=2, BSP04="S01", BSP05="1",
+                    BSP06="G01", BSP09="C01", BSP12="R01")
+        data.update(overrides)
+        return SpanSet(**data)
+
     def test_span_protective_system_invalid(self):
         # BSP12 Deck Reinforcing Protective System: enum now enforced
         with pytest.raises(ValidationError):
-            SpanSet(BSP01="M01", BSP12="ZZ")
+            self._span(BSP12="ZZ")
 
     def test_span_protective_system_valid(self):
-        s = SpanSet(BSP01="M01", BSP12="R01")
-        assert s.BSP12 == "R01"
+        assert self._span(BSP12="R01").BSP12 == "R01"
 
     def test_route_direction_invalid(self):
         with pytest.raises(ValidationError):
-            Route(BRT01="R1", BRT03="QQ")
+            _highway_feature(Routes=[Route(BRT01="R1", BRT02="00071",
+                                           BRT03="QQ", BRT04="1", BRT05="1")])
 
     def test_route_direction_valid(self):
-        assert Route(BRT01="R1", BRT03="NB").BRT03 == "NB"
+        assert _route().BRT03 == "NB"
 
     def test_feature_type_pattern_requires_two_digits(self):
         # BF01 "H" (letter only) no longer accepted; needs e.g. "H01"
@@ -396,3 +418,75 @@ class TestRequiredForAllBridges:
         # BG06 (1232 FHWA findings): "either null or not a value greater than 0"
         with pytest.raises(ValidationError):
             make_bridge(BG06=0)
+
+
+# --------------------------------------------------------------------------- #
+# Conditional requiredness & cross-field rules (B2 / C / D / E)
+# --------------------------------------------------------------------------- #
+class TestConditionalAndCrossField:
+    @pytest.mark.parametrize("field", [
+        "BH02", "BH06", "BH09", "BH11", "BH13", "BH16", "BH17",
+    ])
+    def test_highway_feature_requires_sub_items(self, field):
+        with pytest.raises(ValidationError):
+            make_bridge(Features=[_highway_feature(**{field: None})])
+
+    def test_navigable_waterway_requires_clearances(self):
+        # BN01 = 'Y' -> navigation clearances (BN02/BN04/BN06) required
+        with pytest.raises(ValidationError):
+            make_bridge(
+                Features=[Feature(BF01="W01", BN01="Y")], BC09="5")
+        b = make_bridge(
+            Features=[Feature(BF01="W01", BN01="Y", BN02=20.0, BN04=100.0,
+                              BN06="0")],
+            BC09="5")
+        assert b.Features[0].BN02 == 20.0
+
+    def test_span_set_requires_core_items(self):
+        with pytest.raises(ValidationError):
+            make_bridge(SpanSets=[SpanSet(BSP01="M01", BSP06="G01")])
+
+    def test_deck_items_skipped_for_pipe_culvert(self):
+        # P01 pipe culvert needs no BSP09/BSP12 (no deck)
+        b = make_bridge(
+            SpanSets=[SpanSet(BSP01="C01", BSP02=1, BSP04="C01", BSP05="7",
+                              BSP06="P01")],
+            SubstructureSets=None, BC04="5")
+        assert b.SpanSets[0].BSP06 == "P01"
+
+    def test_zero_beam_lines_only_for_pipe(self):
+        with pytest.raises(ValidationError):
+            make_bridge(SpanSets=[SpanSet(BSP01="M01", BSP02=2, BSP03=0,
+                                          BSP04="S01", BSP05="1", BSP06="G01",
+                                          BSP09="C01", BSP12="R01")])
+
+    def test_posting_value_not_reported_for_type_c(self):
+        with pytest.raises(ValidationError):
+            PostingEvaluation(BEP01="X", BEP03="C", BEP04="10")
+
+    def test_out_to_out_must_exceed_curb_to_curb(self):
+        with pytest.raises(ValidationError):
+            make_bridge(BG05=30.0, BG06=30.0)
+        # ...unless sidehill
+        assert make_bridge(BG05=30.0, BG06=30.0, BG14="Y").BG14 == "Y"
+
+    def test_channel_rating_requires_waterway_consistency(self):
+        # waterway feature but BC09 = 'N' -> error
+        with pytest.raises(ValidationError):
+            make_bridge(Features=[Feature(BF01="W01", BN01="N")], BC09="N")
+        # no waterway feature but BC09 is a number -> error
+        with pytest.raises(ValidationError):
+            make_bridge(BC09="5")
+
+    def test_crossing_bridge_number_differs(self):
+        with pytest.raises(ValidationError):
+            make_bridge(Features=[_highway_feature(BH18="0100226")])  # == BID01
+
+    def test_work_year_not_before_built(self):
+        with pytest.raises(ValidationError):
+            make_bridge(BW01=1990, Works=[Work(BW02=1985)])
+
+    def test_irregular_deck_area_one_decimal(self):
+        with pytest.raises(ValidationError):
+            make_bridge(BG15=12.55)
+        assert make_bridge(BG15=12.5).BG15 == 12.5

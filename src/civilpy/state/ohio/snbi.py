@@ -115,6 +115,21 @@ def _require_charset(value, pattern, item):
     return value
 
 
+def _one_decimal(value, item):
+    """Validate that a numeric value carries at most one decimal place.
+
+    The SNBI workbook requires several measurements to be "numeric with one
+    decimal place" (e.g. B.G.15, B.H.16). Float storage cannot distinguish
+    ``12`` from ``12.0``, so this enforces the practical constraint: no more
+    than one fractional digit (12.5 ok, 12.55 rejected).
+    """
+    if value is None:
+        return value
+    if abs(round(float(value), 1) - float(value)) > 1e-9:
+        raise ValueError(f"{item} must be numeric with one decimal place")
+    return value
+
+
 def _is_valid_state_or_country(text):
     """True if ``text`` is a valid SNBI State code or the border countries MX/CA."""
     upper = str(text).strip().upper()
@@ -303,10 +318,11 @@ class Route(BaseModel):
     """SNBI route record (B.RT). Required for every 'highway' feature."""
 
     BRT01: Annotated[str, StringConstraints(max_length=3, min_length=1, strip_whitespace=True)]
-    BRT02: Optional[Annotated[str, StringConstraints(max_length=15, strip_whitespace=True)]] = None
-    BRT03: Optional[Annotated[str, StringConstraints(max_length=3, strip_whitespace=True)]] = None
-    BRT04: Optional[Annotated[str, StringConstraints(max_length=1, strip_whitespace=True)]] = None
-    BRT05: Optional[Annotated[str, StringConstraints(max_length=1, strip_whitespace=True)]] = None
+    # B.RT.02-05 are reported for every route (FHWA flags each as null).
+    BRT02: Annotated[str, StringConstraints(max_length=15, strip_whitespace=True)]
+    BRT03: Annotated[str, StringConstraints(max_length=3, strip_whitespace=True)]
+    BRT04: Annotated[str, StringConstraints(max_length=1, strip_whitespace=True)]
+    BRT05: Annotated[str, StringConstraints(max_length=1, strip_whitespace=True)]
 
     @field_validator("BRT01")
     @classmethod
@@ -436,9 +452,28 @@ class Feature(BaseModel):
     def _railroad_service(cls, v):
         return _require_code(v, _SNBI_CODES["BRR01"], "BRR01 Railroad Service Type")
 
+    @field_validator("BH02")
+    @classmethod
+    def _urban_code(cls, v):
+        # B.H.02: numeric Census urban-area code (e.g. 99999 for rural). The
+        # full Census UACE code table is not reproduced here; this enforces the
+        # numeric format and catches blanks.
+        if v is None:
+            return v
+        if not re.fullmatch(r"[0-9]{1,5}", str(v).strip()):
+            raise ValueError("BH02 Urban Code must be a numeric Census urban-area code")
+        return v
+
+    @field_validator("BH16")
+    @classmethod
+    def _usable_surface_width(cls, v):
+        return _one_decimal(v, "BH16 Highway Maximum Usable Surface Width")
+
     @model_validator(mode="after")
     def _feature_type_conditionals(self):
         ftype = (self.BF01 or "").upper()
+        # Highway sub-items reported for every highway feature (FHWA flags null)
+        highway_required = ("BH02", "BH06", "BH09", "BH11", "BH13", "BH16", "BH17")
         # B.RT.01 (Critical): highway features must carry at least one route
         if ftype.startswith("H"):
             if not self.Routes or not any(r.BRT01 for r in self.Routes):
@@ -446,12 +481,28 @@ class Feature(BaseModel):
                     "A highway feature (BF01 begins with 'H') must report at "
                     "least one Route dataset with BRT01"
                 )
+            missing = [f for f in highway_required if getattr(self, f) is None]
+            if missing:
+                raise ValueError(
+                    "A highway feature (BF01 begins with 'H') must report "
+                    + ", ".join(missing)
+                )
         # B.N (Critical): waterway features must report navigable-waterway code
-        if ftype.startswith("W") and self.BN01 is None:
-            raise ValueError(
-                "A waterway feature (BF01 begins with 'W') must report BN01 "
-                "Navigable Waterway (Y, N, or U)"
-            )
+        if ftype.startswith("W"):
+            if self.BN01 is None:
+                raise ValueError(
+                    "A waterway feature (BF01 begins with 'W') must report BN01 "
+                    "Navigable Waterway (Y, N, or U)"
+                )
+            # Navigable waterways must report navigation clearances.
+            if self.BN01.upper() == "Y":
+                nav_missing = [f for f in ("BN02", "BN04", "BN06")
+                               if getattr(self, f) is None]
+                if nav_missing:
+                    raise ValueError(
+                        "A navigable waterway feature (BN01 = 'Y') must report "
+                        + ", ".join(nav_missing)
+                    )
         return self
 
 
@@ -523,6 +574,16 @@ class PostingEvaluation(BaseModel):
     def _posting_type(cls, v):
         return _require_code(v, _SNBI_CODES["BEP03"], "BEP03 Posting Type")
 
+    @model_validator(mode="after")
+    def _posting_value_not_reported(self):
+        # B.EP.04: do not report a posting value for posting types that carry
+        # no numeric value (C, S, L, V).
+        if (self.BEP03 or "").upper() in {"C", "S", "L", "V"} and self.BEP04 is not None:
+            raise ValueError(
+                "BEP04 Posting Value must not be reported when BEP03 Posting "
+                "Type is C, S, L, or V")
+        return self
+
 
 class PostingStatus(BaseModel):
     """SNBI load posting status record (B.PS)."""
@@ -575,6 +636,30 @@ class SpanSet(BaseModel):
     @classmethod
     def _span_codes(cls, v, info):
         return _require_code(v, _SNBI_CODES[info.field_name], info.field_name)
+
+    @model_validator(mode="after")
+    def _span_required(self):
+        # Reported for every span set (FHWA flags each as null/invalid).
+        missing = [f for f in ("BSP02", "BSP04", "BSP05", "BSP06")
+                   if getattr(self, f) is None]
+        if missing:
+            raise ValueError(
+                "Span set must report " + ", ".join(missing))
+        # Deck items apply only to spans that carry a deck (not pipe culverts).
+        is_pipe_culvert = (self.BSP06 or "").upper() in {"P01", "P02"}
+        if not is_pipe_culvert:
+            deck_missing = [f for f in ("BSP09", "BSP12")
+                            if getattr(self, f) is None]
+            if deck_missing:
+                raise ValueError(
+                    "A span set with a deck must report "
+                    + ", ".join(deck_missing))
+        # B.SP.03-2: zero beam lines is only valid for slab/pipe spans (P01/P02).
+        if self.BSP03 == 0 and not is_pipe_culvert:
+            raise ValueError(
+                "BSP03 Number of Beam Lines is 0 but BSP06 Span Type is not "
+                "a slab/pipe span (P01 or P02)")
+        return self
 
 
 class SubstructureSet(BaseModel):
@@ -792,6 +877,11 @@ class Bridge(BaseModel):
             raise ValueError("BG16 Calculated Deck Area is FHWA-calculated; do not report it")
         return v
 
+    @field_validator("BG15")
+    @classmethod
+    def _irregular_deck_area(cls, v):
+        return _one_decimal(v, "BG15 Irregular Deck Area")
+
     @field_validator("BLR03")
     @classmethod
     def _load_rating_date(cls, v):
@@ -945,4 +1035,59 @@ class Bridge(BaseModel):
                 "Safety check: BLR07 Controlling Legal Load Rating Factor < 1.0 but "
                 "the bridge is not posted/restricted/closed"
             )
+        return self
+
+    @model_validator(mode="after")
+    def _width_consistency(self):
+        # B.G.05-3: out-to-out width must exceed curb-to-curb width, except on
+        # sidehill bridges (BG14 = 'Y').
+        if (
+            self.BG05 is not None
+            and self.BG06 is not None
+            and (self.BG14 or "").upper() != "Y"
+            and self.BG05 <= self.BG06
+        ):
+            raise ValueError(
+                "BG05 Bridge Width Out-to-Out must be greater than BG06 Bridge "
+                "Width Curb-to-Curb (except on a Sidehill Bridge)")
+        return self
+
+    @model_validator(mode="after")
+    def _channel_rating_consistency(self):
+        # B.C.09: channel condition rating must be 'N' when the bridge has no
+        # waterway/relief-waterway feature, and 0-9 when it does.
+        has_waterway = any(
+            (f.BF01 or "").upper().startswith("W") for f in (self.Features or [])
+        )
+        if has_waterway:
+            if self.BC09 is None or self.BC09 == "N":
+                raise ValueError(
+                    "BC09 Channel Condition Rating must be 0-9 for a bridge with "
+                    "a waterway feature")
+        else:
+            if self.BC09 != "N":
+                raise ValueError(
+                    "BC09 Channel Condition Rating must be 'N' for a bridge with "
+                    "no waterway feature")
+        return self
+
+    @model_validator(mode="after")
+    def _crossing_bridge_number_differs(self):
+        # B.H.18: a highway feature's crossing bridge number must not equal this
+        # bridge's own number (BID01).
+        for feature in (self.Features or []):
+            if feature.BH18 is not None and feature.BH18 == self.BID01:
+                raise ValueError(
+                    "BH18 Crossing Bridge Number must not equal BID01 Bridge Number")
+        return self
+
+    @model_validator(mode="after")
+    def _work_year_not_before_built(self):
+        # B.W.02-2: year work performed must not predate the year built.
+        if self.BW01 is not None:
+            for work in (self.Works or []):
+                if work.BW02 is not None and work.BW02 < self.BW01:
+                    raise ValueError(
+                        "BW02 Year Work Performed must not be earlier than BW01 "
+                        "Year Built")
         return self
