@@ -5,6 +5,25 @@ Versions follow [Semantic Versioning](https://semver.org/) (major.minor.patch).
 
 ---
 
+## [0.3.2] - 2026-06-30
+
+- **SNBI validation — FHWA agreement build-out** (`state.ohio.snbi`). Closes
+  most of the gap against FHWA's own SNBI processing report. See
+  `docs/SNBIValidationRules.md` for the full per-item roadmap.
+  - Wired the coded-value tables (`_SNBI_CODES` / `_PATTERN_CODES`, previously
+    unused) to their fields, so invalid coded values now raise.
+  - Made the unconditional "report for all bridges" items required: BG06 (`>0`),
+    BG07, BG08, BG03 (`>0`), BG10, BG11, BG14, BAP01/02/03/05, BCL03/04/05,
+    BIR01/03.
+  - Conditional requiredness: highway features require BH02/06/09/11/13/16/17;
+    routes require BRT02–05; span sets require BSP02/04/05/06 (plus BSP09/12 for
+    decked, non-pipe-culvert spans); navigable waterways require BN02/04/06.
+  - Cross-field rules: BG05 > BG06 (except sidehill), BC09 channel-vs-waterway,
+    BH18 ≠ BID01, BW02 ≥ BW01, BEP04 not reported with BEP03 ∈ {C,S,L,V}, and
+    one-decimal-place format for BG15/BH16.
+
+---
+
 ## [0.3.1] - 2026-06-29
 
 - **SNBI validation fix** — `state.ohio.snbi` `Element.BE02` (Element Parent
