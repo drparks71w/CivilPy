@@ -26,7 +26,9 @@ from civilpy.structural.strut_and_tie import StrutAndTieModel
 from civilpy.structural.stm_topology import DRegionProblem, Material
 from civilpy.structural.stm_topology.mesh import GroundMesh
 from civilpy.structural.stm_topology.simp import optimize_density, element_stiffness
-from civilpy.structural.stm_topology.extract import zhang_suen, extract_truss
+from civilpy.structural.stm_topology.extract import (
+    zhang_suen, extract_truss, is_stable,
+)
 
 
 # ── Phase 4: direct-stiffness / indeterminate solver ─────────────────────────
@@ -179,3 +181,49 @@ def test_arbitrary_polygon_void_pipeline_runs():
     p.add_load(10, 10, fy=-600, bearing=1.5)
     result = p.solve(nelx=60, max_iter=40)
     assert len(result.model.nodes) >= 3
+
+
+# ── Phase 3½: ground-structure refinement / stability ────────────────────────
+
+def test_is_stable_detects_mechanism():
+    """is_stable must flag an under-braced truss (collinear chain) and accept a
+    properly triangulated one — the honest test the pipeline relies on."""
+    mech = StrutAndTieModel()
+    for n, x, y in [("A", 0, 0), ("B", 10, 0), ("C", 20, 0)]:
+        mech.add_node(n, x, y)
+    mech.add_member("A", "B"); mech.add_member("B", "C")
+    mech.add_support("A", fix_x=True, fix_y=True); mech.add_support("C", fix_y=True)
+    assert not is_stable(mech)
+
+    tri = StrutAndTieModel()
+    for n, x, y in [("A", 0, 0), ("B", 8, 0), ("C", 4, 4)]:
+        tri.add_node(n, x, y)
+    tri.add_member("A", "C"); tri.add_member("B", "C"); tri.add_member("A", "B")
+    tri.add_support("A", fix_x=True, fix_y=True); tri.add_support("B", fix_y=True)
+    assert is_stable(tri)
+
+
+def test_pier_cap_multipanel():
+    """Three columns + five girder loads must produce a rich, stable, multi-panel
+    strut-and-tie model — not the bare triangle a single load collapses to."""
+    cap = DRegionProblem.rectangle(40, 12, thickness=4.0,
+                                   material=Material(f_c=5.0), vol_frac=0.30)
+    cap.add_support(5, 0, fix_x=False, fix_y=True, bearing=3.0)
+    cap.add_support(20, 0, fix_x=True, fix_y=True, bearing=3.0)
+    cap.add_support(35, 0, fix_x=False, fix_y=True, bearing=3.0)
+    for x in (2.5, 12.5, 20, 27.5, 37.5):
+        cap.add_load(x, 12, fy=-250, bearing=1.5)
+    result = cap.solve(nelx=80, max_iter=60)
+
+    m = result.model
+    assert result.stable and is_stable(m)
+    # genuinely more than a triangle: many joints, both chords and a web
+    assert len(m.nodes) >= 8
+    assert len(m.members) >= 12
+    # vertical equilibrium against the five 250-kip girders
+    ry = sum(v[1] for v in m.reactions.values())
+    assert ry == pytest.approx(1250.0, abs=2.0)
+    # a real strut-and-tie mix (top tension chord + compression fans)
+    ties = [f for f in result.forces.values() if f > 1e-6]
+    struts = [f for f in result.forces.values() if f < -1e-6]
+    assert len(ties) >= 3 and len(struts) >= 5

@@ -362,3 +362,199 @@ def _nearest_label(model, pt, exclude=()):
         if bestd is None or d < bestd:
             best, bestd = lab, d
     return best
+
+
+# ── ground-structure stabilization (Phase 3½) ──────────────────────────────
+#
+# Skeleton tracing reliably finds the *struts* (the load fans down to the
+# supports) but routinely misses the *ties* — the top and bottom chords — because
+# a tension chord hugs the member face where the SIMP density is smeared and
+# thin, and because long collinear runs get contracted away.  The raw truss is
+# therefore usually a mechanism (more joint equations than members + reactions).
+#
+# Rather than merging joints until the truss accidentally becomes solvable (which
+# collapses a rich pier-cap into a bare triangle), we *complete* it the way a
+# truss topology optimizer would: treat the skeleton joints as a node set, lay in
+# every candidate member that runs through solid material (a "ground structure"),
+# size them all by a fully-stressed solve, then prune the members that carry
+# essentially no force.  What survives is the discrete strut-and-tie load path.
+
+
+def is_stable(model, tol: float = 1e-8) -> bool:
+    """True when the truss has no mechanism — its free-DOF stiffness matrix
+    (unit member stiffness, supports applied) is non-singular.
+
+    This is the honest stability test the pipeline needs: the member/reaction
+    *count* (:meth:`StrutAndTieModel.degree_of_indeterminacy`) is necessary but
+    not sufficient, and ``np.linalg.solve`` can return garbage for a near-
+    mechanism instead of raising.  We compare the smallest singular value of the
+    free-free stiffness block against the largest.
+    """
+    if len(model.nodes) < 3 or len(model.members) < 3:
+        return False
+    kff = _free_stiffness(model)
+    if kff.size == 0:
+        return False
+    s = np.linalg.svd(kff, compute_uv=False)
+    return bool(s[-1] > tol * s[0])
+
+
+def refine_truss(model, density_result, *, search: float | None = None,
+                 passover_tol: float | None = None, threshold: float = 0.25,
+                 coverage: float = 0.8, prune_frac: float = 0.04):
+    """Complete a raw skeleton truss into a stable, fully-stressed strut-and-tie
+    model by the ground-structure method, in place.
+
+    Parameters
+    ----------
+    search:
+        Perpendicular half-width (model units) used when testing whether a
+        candidate member runs through solid material — it bridges SIMP's smeared
+        density band so a chord sitting on the member face still registers.
+        Defaults to a few mesh cells.
+    passover_tol:
+        A candidate is rejected if a third joint lies within this distance of it
+        (the member would pass straight over an existing node); keeps only
+        adjacent connections so chords come out as a clean run, not a spanning
+        bundle.
+    threshold, coverage:
+        A candidate counts as solid when at least ``coverage`` of the points
+        sampled along it reach density ``threshold``.
+    prune_frac:
+        Members carrying less than this fraction of the largest force are
+        removed when doing so leaves the truss stable.
+    """
+    mesh = density_result.mesh
+    if search is None:
+        search = max(3.0 * mesh.h, 0.02 * mesh.width)
+    if passover_tol is None:
+        passover_tol = 2.0 * search
+    sample = _density_sampler(mesh, density_result.density)
+
+    # 1. ground structure — add every solid-supported, non-pass-over candidate
+    labels = list(model.nodes)
+    existing = {frozenset(m) for m in model.members}
+    for i in range(len(labels)):
+        for j in range(i + 1, len(labels)):
+            a, b = labels[i], labels[j]
+            if frozenset((a, b)) in existing:
+                continue
+            pa, pb = model.nodes[a], model.nodes[b]
+            others = [model.nodes[c] for c in labels if c != a and c != b]
+            if _passes_over_node(pa, pb, others, passover_tol):
+                continue
+            if _seg_in_solid(sample, mesh.h, pa, pb, search, threshold, coverage):
+                model.add_member(a, b)
+
+    # 2. size by a fully-stressed solve, then 3. prune the dead members
+    anchors = set(model.supports) | set(model.loads)
+    try:
+        model.solve_fully_stressed()
+    except ValueError:
+        return model     # ground structure itself unsolvable; leave for review
+    _prune_members(model, anchors, prune_frac)
+    try:
+        model.solve_fully_stressed()
+    except ValueError:
+        pass
+    return model
+
+
+def _free_stiffness(model):
+    """Free-DOF truss stiffness with unit member stiffness (1/L axial)."""
+    idx = {n: i for i, n in enumerate(model.nodes)}
+    ndof = 2 * len(model.nodes)
+    k = np.zeros((ndof, ndof))
+    for a, b in model.members:
+        (xa, ya), (xb, yb) = model.nodes[a], model.nodes[b]
+        length = np.hypot(xb - xa, yb - ya)
+        if length < 1e-9:
+            continue
+        cx, cy = (xb - xa) / length, (yb - ya) / length
+        c = np.array([cx, cy, -cx, -cy])
+        d = [2 * idx[a], 2 * idx[a] + 1, 2 * idx[b], 2 * idx[b] + 1]
+        k[np.ix_(d, d)] += np.outer(c, c) / length
+    fixed = np.zeros(ndof, dtype=bool)
+    for n, (fx, fy) in model.supports.items():
+        if n not in idx:
+            continue
+        if fx:
+            fixed[2 * idx[n]] = True
+        if fy:
+            fixed[2 * idx[n] + 1] = True
+    free = ~fixed
+    return k[np.ix_(free, free)] if free.any() else np.zeros((0, 0))
+
+
+def _density_sampler(mesh, density):
+    def sample(x, y):
+        col = int(round((x - mesh.x0) / mesh.h - 0.5))
+        row = int(round((mesh.ytop - y) / mesh.h - 0.5))
+        if 0 <= row < mesh.nely and 0 <= col < mesh.nelx:
+            return float(density[row, col])
+        return 0.0
+    return sample
+
+
+def _seg_in_solid(sample, h, pa, pb, search, threshold, coverage, n=24):
+    xa, ya = pa
+    xb, yb = pb
+    offs = np.linspace(-search, search, max(3, int(2 * search / h) + 1))
+    hits = 0
+    for t in np.linspace(0.0, 1.0, n):
+        x = xa + t * (xb - xa)
+        y = ya + t * (yb - ya)
+        if max(sample(x + ox, y + oy) for ox in offs for oy in offs) >= threshold:
+            hits += 1
+    return hits / n >= coverage
+
+
+def _passes_over_node(pa, pb, others, tol):
+    ax, ay = pa
+    bx, by = pb
+    dx, dy = bx - ax, by - ay
+    seg2 = dx * dx + dy * dy
+    if seg2 < 1e-12:
+        return True
+    for cx, cy in others:
+        t = ((cx - ax) * dx + (cy - ay) * dy) / seg2
+        if 0.02 < t < 0.98:
+            px, py = ax + t * dx, ay + t * dy
+            if (cx - px) ** 2 + (cy - py) ** 2 < tol * tol:
+                return True
+    return False
+
+
+def _anchors_connected(model, anchors):
+    used = {n for m in model.members for n in m}
+    return all(a in used for a in anchors)
+
+
+def _prune_members(model, anchors, frac):
+    """Greedily drop the lowest-force member while the truss stays stable and
+    every support/load remains attached — the ground-structure clean-up."""
+    while True:
+        try:
+            model.solve_fully_stressed()
+        except ValueError:
+            return
+        forces = model.forces or {}
+        fmax = max((abs(v) for v in forces.values()), default=0.0)
+        if fmax <= 0.0:
+            return
+        removed = False
+        for mem in sorted(model.members, key=lambda m: abs(forces.get(m, 0.0))):
+            if abs(forces.get(mem, 0.0)) >= frac * fmax:
+                break
+            saved_members = list(model.members)
+            saved_area = model.areas.get(mem)
+            model.members = [m for m in model.members if m != mem]
+            model.areas.pop(mem, None)
+            if is_stable(model) and _anchors_connected(model, anchors):
+                removed = True
+                break
+            model.members = saved_members
+            if saved_area is not None:
+                model.areas[mem] = saved_area
+        if not removed:
+            return
