@@ -333,6 +333,11 @@ class Route(BaseModel):
         # B.RT.05: 1 through 8 and X
         return _require_in(v, {str(n) for n in range(1, 9)} | {"X"}, "BRT05 Service Type")
 
+    @field_validator("BRT03")
+    @classmethod
+    def _route_direction(cls, v):
+        return _require_code(v, _SNBI_CODES["BRT03"], "BRT03 Route Direction")
+
 
 class Feature(BaseModel):
     """SNBI feature record (B.F / B.H / B.RR / B.N).
@@ -411,6 +416,26 @@ class Feature(BaseModel):
     def _nav_protection(cls, v):
         return _require_in(v, {str(n) for n in range(6)} | {"1-T"}, "BN06 Substructure Navigation Protection")
 
+    @field_validator("BF01")
+    @classmethod
+    def _feature_type_code(cls, v):
+        return _require_pattern_code(v, _PATTERN_CODES["BF01"], "BF01 Feature Type")
+
+    @field_validator("BF02")
+    @classmethod
+    def _feature_location(cls, v):
+        return _require_code(v, _SNBI_CODES["BF02"], "BF02 Feature Location")
+
+    @field_validator("BH01")
+    @classmethod
+    def _functional_class(cls, v):
+        return _require_code(v, _SNBI_CODES["BH01"], "BH01 Functional Classification")
+
+    @field_validator("BRR01")
+    @classmethod
+    def _railroad_service(cls, v):
+        return _require_code(v, _SNBI_CODES["BRR01"], "BRR01 Railroad Service Type")
+
     @model_validator(mode="after")
     def _feature_type_conditionals(self):
         ftype = (self.BF01 or "").upper()
@@ -474,6 +499,11 @@ class Inspection(BaseModel):
             raise ValueError("BIE06 Inspection Due Date is FHWA-calculated; do not report it")
         return v
 
+    @field_validator("BIE01")
+    @classmethod
+    def _inspection_type(cls, v):
+        return _require_code(v, _SNBI_CODES["BIE01"], "BIE01 Inspection Type")
+
 
 class PostingEvaluation(BaseModel):
     """SNBI load evaluation & posting record (B.EP)."""
@@ -488,6 +518,11 @@ class PostingEvaluation(BaseModel):
     def _legal_load_charset(cls, v):
         return _require_charset(v, _CHARSET_LOAD_CFG, "BEP01 Legal Load Configuration")
 
+    @field_validator("BEP03")
+    @classmethod
+    def _posting_type(cls, v):
+        return _require_code(v, _SNBI_CODES["BEP03"], "BEP03 Posting Type")
+
 
 class PostingStatus(BaseModel):
     """SNBI load posting status record (B.PS)."""
@@ -499,6 +534,11 @@ class PostingStatus(BaseModel):
     @classmethod
     def _change_date(cls, v):
         return _require_date(v, "BPS02 Posting Status Change Date")
+
+    @field_validator("BPS01")
+    @classmethod
+    def _posting_status(cls, v):
+        return _require_code(v, _SNBI_CODES["BPS01"], "BPS01 Load Posting Status")
 
 
 class SpanSet(BaseModel):
@@ -524,6 +564,18 @@ class SpanSet(BaseModel):
         # B.SP.05: 1 through 7 (+ temporary codes valid 2026-2027)
         return _require_in(v, {str(n) for n in range(1, 8)} | {"C-T", "7-T"}, "BSP05 Span Continuity")
 
+    @field_validator("BSP01")
+    @classmethod
+    def _span_designation(cls, v):
+        return _require_pattern_code(v, _PATTERN_CODES["BSP01"],
+                                     "BSP01 Span Configuration Designation")
+
+    @field_validator("BSP04", "BSP06", "BSP07", "BSP08", "BSP09", "BSP10",
+                     "BSP11", "BSP12", "BSP13")
+    @classmethod
+    def _span_codes(cls, v, info):
+        return _require_code(v, _SNBI_CODES[info.field_name], info.field_name)
+
 
 class SubstructureSet(BaseModel):
     """SNBI substructure set record (B.SB)."""
@@ -535,6 +587,17 @@ class SubstructureSet(BaseModel):
     BSB05: Optional[Annotated[str, StringConstraints(max_length=3, strip_whitespace=True)]] = None
     BSB06: Optional[Annotated[str, StringConstraints(max_length=3, strip_whitespace=True)]] = None
     BSB07: Optional[Annotated[str, StringConstraints(max_length=3, strip_whitespace=True)]] = None
+
+    @field_validator("BSB01")
+    @classmethod
+    def _substructure_designation(cls, v):
+        return _require_pattern_code(v, _PATTERN_CODES["BSB01"],
+                                     "BSB01 Substructure Configuration Designation")
+
+    @field_validator("BSB03", "BSB04", "BSB05", "BSB06", "BSB07")
+    @classmethod
+    def _substructure_codes(cls, v, info):
+        return _require_code(v, _SNBI_CODES[info.field_name], info.field_name)
 
 
 class Work(BaseModel):
@@ -570,9 +633,9 @@ class Bridge(BaseModel):
     # --- Classification (B.CL) -------------------------------------------------
     BCL01: Annotated[str, StringConstraints(max_length=4, min_length=1, strip_whitespace=True)]
     BCL02: Annotated[str, StringConstraints(max_length=4, min_length=1, strip_whitespace=True)]
-    BCL03: Optional[Annotated[str, StringConstraints(max_length=30, strip_whitespace=True)]] = None
-    BCL04: Optional[Annotated[str, StringConstraints(max_length=1, strip_whitespace=True)]] = None
-    BCL05: Optional[Annotated[str, StringConstraints(max_length=1, strip_whitespace=True)]] = None
+    BCL03: Annotated[str, StringConstraints(max_length=30, strip_whitespace=True)]  # Land Access (all bridges)
+    BCL04: Annotated[str, StringConstraints(max_length=1, strip_whitespace=True)]   # Historic (all bridges)
+    BCL05: Annotated[str, StringConstraints(max_length=1, strip_whitespace=True)]   # Toll (all bridges)
     BCL06: Optional[Annotated[str, StringConstraints(max_length=1, strip_whitespace=True)]] = None
 
     # --- Railings (B.RH) -------------------------------------------------------
@@ -582,18 +645,18 @@ class Bridge(BaseModel):
     # --- Geometry (B.G) --------------------------------------------------------
     BG01: Annotated[float, Field(ge=0, le=999999.9)]   # NBIS Bridge Length (> 20 ft to be NBIS)
     BG02: Annotated[float, Field(ge=0, le=999999.9)]   # Total Bridge Length
-    BG03: Optional[Annotated[float, Field(ge=0, le=9999.9)]] = None
+    BG03: Annotated[float, Field(gt=0, le=9999.9)]     # Max Span Length (> 0, all bridges)
     BG04: Optional[Annotated[float, Field(ge=0, le=9999.9)]] = None
     BG05: Annotated[float, Field(gt=0, le=999.9)]      # Width Out-to-Out (> 0)
-    BG06: Optional[Annotated[float, Field(ge=0, le=999.9)]] = None
-    BG07: Optional[Annotated[float, Field(ge=0, le=99.9)]] = None
-    BG08: Optional[Annotated[float, Field(ge=0, le=99.9)]] = None
+    BG06: Annotated[float, Field(gt=0, le=999.9)]      # Width Curb-to-Curb (> 0, all bridges)
+    BG07: Annotated[float, Field(ge=0, le=99.9)]       # Left curb/sidewalk width (all bridges)
+    BG08: Annotated[float, Field(ge=0, le=99.9)]       # Right curb/sidewalk width (all bridges)
     BG09: Annotated[float, Field(gt=0, le=999.9)]      # Approach Roadway Width (> 0)
-    BG10: Optional[Annotated[str, StringConstraints(max_length=1, strip_whitespace=True)]] = None
-    BG11: Optional[Annotated[int, Field(ge=0, le=99)]] = None
+    BG10: Annotated[str, StringConstraints(max_length=1, strip_whitespace=True)]   # Median (all bridges)
+    BG11: Annotated[int, Field(ge=0, le=99)]           # Skew (all bridges)
     BG12: Optional[Annotated[str, StringConstraints(max_length=2, strip_whitespace=True)]] = None
     BG13: Optional[Annotated[int, Field(ge=0, le=9999)]] = None
-    BG14: Optional[Annotated[str, StringConstraints(max_length=1, strip_whitespace=True)]] = None
+    BG14: Annotated[str, StringConstraints(max_length=1, strip_whitespace=True)]   # Sidehill (all bridges)
     BG15: Optional[Annotated[float, Field(ge=0, le=999999999.9)]] = None
     BG16: Optional[float] = None  # Calculated Deck Area - FHWA-CALCULATED, do not report
 
@@ -608,9 +671,9 @@ class Bridge(BaseModel):
     BLR08: Optional[Annotated[str, StringConstraints(max_length=1, strip_whitespace=True)]] = None
 
     # --- Inspection requirements (B.IR) ---------------------------------------
-    BIR01: Optional[Annotated[str, StringConstraints(max_length=1, strip_whitespace=True)]] = None
+    BIR01: Annotated[str, StringConstraints(max_length=1, strip_whitespace=True)]   # NSTM req'd (all bridges)
     BIR02: Optional[Annotated[str, StringConstraints(max_length=1, strip_whitespace=True)]] = None
-    BIR03: Optional[Annotated[str, StringConstraints(max_length=1, strip_whitespace=True)]] = None
+    BIR03: Annotated[str, StringConstraints(max_length=1, strip_whitespace=True)]   # Underwater req'd (all bridges)
     BIR04: Optional[Annotated[str, StringConstraints(max_length=1, strip_whitespace=True)]] = None
 
     # --- Condition (B.C) -------------------------------------------------------
@@ -631,11 +694,11 @@ class Bridge(BaseModel):
     BC15: Optional[Annotated[str, StringConstraints(max_length=1, strip_whitespace=True)]] = None
 
     # --- Appraisal (B.AP) ------------------------------------------------------
-    BAP01: Optional[Annotated[str, StringConstraints(max_length=1, strip_whitespace=True)]] = None
-    BAP02: Optional[Annotated[str, StringConstraints(max_length=5, strip_whitespace=True)]] = None
-    BAP03: Optional[Annotated[str, StringConstraints(max_length=5, strip_whitespace=True)]] = None
+    BAP01: Annotated[str, StringConstraints(max_length=1, strip_whitespace=True)]   # Approach alignment (all bridges)
+    BAP02: Annotated[str, StringConstraints(max_length=5, strip_whitespace=True)]   # Overtopping likelihood (all bridges)
+    BAP03: Annotated[str, StringConstraints(max_length=5, strip_whitespace=True)]   # Scour vulnerability (all bridges)
     BAP04: Optional[Annotated[str, StringConstraints(max_length=3, strip_whitespace=True)]] = None
-    BAP05: Optional[Annotated[str, StringConstraints(max_length=1, strip_whitespace=True)]] = None
+    BAP05: Annotated[str, StringConstraints(max_length=1, strip_whitespace=True)]   # Seismic vulnerability (all bridges)
 
     # --- Year built (B.W.01) ---------------------------------------------------
     BW01: Optional[Annotated[int, Field(ge=1000, le=9999)]] = None
@@ -740,10 +803,22 @@ class Bridge(BaseModel):
         # B.LR.08: A, B, C, or N
         return _require_in(v, {"A", "B", "C", "N"}, "BLR08 Routine Permit Loads")
 
-    @field_validator("BIR02", "BIR04")
+    @field_validator("BIR01", "BIR02", "BIR03", "BIR04")
     @classmethod
     def _yes_no(cls, v, info):
         return _require_in(v, {"Y", "N"}, info.field_name)
+
+    @field_validator("BCL01", "BCL02", "BG12", "BLR01", "BLR02", "BLR04",
+                     "BAP03", "BAP05")
+    @classmethod
+    def _bridge_coded_values(cls, v, info):
+        return _require_code(v, _SNBI_CODES[info.field_name], info.field_name)
+
+    @field_validator("BCL03")
+    @classmethod
+    def _land_access(cls, v):
+        return _require_multi_code(v, _LAND_ACCESS,
+                                   "BCL03 Federal or Tribal Land Access")
 
     @field_validator("BC01", "BC02", "BC03", "BC04", "BC05", "BC06", "BC07",
                      "BC08", "BC09", "BC10", "BC14", "BC15")

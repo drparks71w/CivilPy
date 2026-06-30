@@ -27,7 +27,7 @@ from civilpy.state.ohio.snbi import (
 
 
 def _features():
-    return [Feature(BF01="H", Routes=[Route(BRT01="R1")])]
+    return [Feature(BF01="H01", Routes=[Route(BRT01="R1")])]
 
 
 def _valid_kwargs(**overrides):
@@ -35,13 +35,16 @@ def _valid_kwargs(**overrides):
     data = dict(
         BID01="0100226",
         BL01=39, BL05=40.0, BL06=-82.0,
-        BCL01="1", BCL02="1",
-        BG01=100.0, BG02=110.0, BG05=40.0, BG09=36.0,
+        BCL01="S01", BCL02="S01", BCL03="N", BCL04="N", BCL05="N",
+        BG01=100.0, BG02=110.0, BG03=50.0, BG05=40.0, BG06=38.0,
+        BG07=2.0, BG08=2.0, BG09=36.0, BG10="0", BG11=0, BG14="N",
         BC01="7", BC02="6", BC03="6", BC04="N",
+        BIR01="N", BIR03="N",
+        BAP01="G", BAP02="0", BAP03="U", BAP05="N",
         Features=_features(),
-        PostingStatuses=[PostingStatus(BPS01="A")],
-        SpanSets=[SpanSet(BSP01="M", BSP06="G01")],
-        SubstructureSets=[SubstructureSet(BSB01="A1")],
+        PostingStatuses=[PostingStatus(BPS01="N")],
+        SpanSets=[SpanSet(BSP01="M01", BSP06="G01")],
+        SubstructureSets=[SubstructureSet(BSB01="A01")],
         Works=[Work(BW02=1985)],
     )
     data.update(overrides)
@@ -212,14 +215,14 @@ class TestRequiredDatasets:
 class TestFeatureConditionals:
     def test_highway_requires_route(self):
         with pytest.raises(ValidationError):
-            make_bridge(Features=[Feature(BF01="H")])
+            make_bridge(Features=[Feature(BF01="H01")])
 
     def test_waterway_requires_navigable_code(self):
         with pytest.raises(ValidationError):
-            make_bridge(Features=[Feature(BF01="W")])
+            make_bridge(Features=[Feature(BF01="W01")])
 
     def test_waterway_with_navigable_code_ok(self):
-        b = make_bridge(Features=[Feature(BF01="W", BN01="N")])
+        b = make_bridge(Features=[Feature(BF01="W01", BN01="N")])
         assert b.Features[0].BN01 == "N"
 
 
@@ -264,7 +267,7 @@ class TestSafety:
         with pytest.raises(ValidationError):
             make_bridge(
                 BLR07=0.8,
-                PostingStatuses=[PostingStatus(BPS01="A")],
+                PostingStatuses=[PostingStatus(BPS01="N")],
                 PostingEvaluations=[PostingEvaluation(BEP01="T")],
             )
 
@@ -318,3 +321,78 @@ class TestChildRequirements:
             Inspection()
         insp = Inspection(BIE01="2", BIE02="20240101")
         assert insp.BIE01 == "2"
+
+
+# --------------------------------------------------------------------------- #
+# Coded-value enumerations (newly wired from _SNBI_CODES / _PATTERN_CODES)
+# --------------------------------------------------------------------------- #
+class TestCodedValues:
+    def test_span_protective_system_invalid(self):
+        # BSP12 Deck Reinforcing Protective System: enum now enforced
+        with pytest.raises(ValidationError):
+            SpanSet(BSP01="M01", BSP12="ZZ")
+
+    def test_span_protective_system_valid(self):
+        s = SpanSet(BSP01="M01", BSP12="R01")
+        assert s.BSP12 == "R01"
+
+    def test_route_direction_invalid(self):
+        with pytest.raises(ValidationError):
+            Route(BRT01="R1", BRT03="QQ")
+
+    def test_route_direction_valid(self):
+        assert Route(BRT01="R1", BRT03="NB").BRT03 == "NB"
+
+    def test_feature_type_pattern_requires_two_digits(self):
+        # BF01 "H" (letter only) no longer accepted; needs e.g. "H01"
+        with pytest.raises(ValidationError):
+            Feature(BF01="H", Routes=[Route(BRT01="R1")])
+
+    def test_nstm_required_flag_invalid(self):
+        # BIR01 now enforced as Y/N
+        with pytest.raises(ValidationError):
+            make_bridge(BIR01="X")
+
+    def test_posting_status_code_invalid(self):
+        with pytest.raises(ValidationError):
+            PostingStatus(BPS01="ZZ")
+
+    def test_substructure_material_invalid(self):
+        with pytest.raises(ValidationError):
+            SubstructureSet(BSB01="A01", BSB03="ZZ")
+
+    def test_owner_agency_code_invalid(self):
+        with pytest.raises(ValidationError):
+            make_bridge(BCL01="ZZ")
+
+    def test_land_access_multivalue(self):
+        # BCL03 is pipe-delimited; every token must be valid
+        assert make_bridge(BCL03="BIA|NPS").BCL03 == "BIA|NPS"
+        with pytest.raises(ValidationError):
+            make_bridge(BCL03="BIA|NOPE")
+
+    def test_transition_code_accepted(self):
+        # "<base>-T" transition codes (valid 2026-2027) pass the enum check
+        # on a field whose max_length accommodates them (BEP03 is 17).
+        assert PostingEvaluation(BEP01="X", BEP03="G-T").BEP03 == "G-T"
+
+
+# --------------------------------------------------------------------------- #
+# Required for all bridges (FHWA "X is null ..." rules → now required fields)
+# --------------------------------------------------------------------------- #
+class TestRequiredForAllBridges:
+    @pytest.mark.parametrize("field", [
+        "BG06", "BG07", "BG08", "BG03", "BG10", "BG11", "BG14",
+        "BIR01", "BIR03", "BAP01", "BAP02", "BAP03", "BAP05",
+        "BCL03", "BCL04", "BCL05",
+    ])
+    def test_missing_required_field_raises(self, field):
+        kwargs = _valid_kwargs()
+        kwargs.pop(field)
+        with pytest.raises(ValidationError):
+            Bridge(**kwargs)
+
+    def test_curb_to_curb_must_be_positive(self):
+        # BG06 (1232 FHWA findings): "either null or not a value greater than 0"
+        with pytest.raises(ValidationError):
+            make_bridge(BG06=0)
