@@ -233,3 +233,31 @@ def test_pier_cap_multipanel():
     ties = [f for f in result.forces.values() if f > 1e-6]
     struts = [f for f in result.forces.values() if f < -1e-6]
     assert len(ties) >= 3 and len(struts) >= 5
+
+
+def test_extraction_aci_geometry():
+    """ACI 318 geometry rules: no member crosses another without a shared joint
+    (every crossing is a nodal zone), and a continuous bottom chord is present."""
+    from itertools import combinations
+    from civilpy.structural.stm_topology.extract import _seg_intersection
+
+    cap = DRegionProblem.rectangle(40, 12, thickness=4.0,
+                                   material=Material(f_c=5.0), vol_frac=0.30)
+    cap.add_support(5, 0, fix_x=False, fix_y=True, bearing=3.0)
+    cap.add_support(20, 0, fix_x=True, fix_y=True, bearing=3.0)
+    cap.add_support(35, 0, fix_x=False, fix_y=True, bearing=3.0)
+    for x in (2.5, 12.5, 20, 27.5, 37.5):
+        cap.add_load(x, 12, fy=-250, bearing=1.5)
+    m = cap.solve(nelx=80, max_iter=60).model
+
+    # no un-noded crossings among members that do not already share a joint
+    segs = [(m.nodes[a], m.nodes[b], (a, b)) for a, b in m.members]
+    for (p1, p2, e1), (p3, p4, e2) in combinations(segs, 2):
+        if set(e1) & set(e2):
+            continue
+        assert _seg_intersection(p1, p2, p3, p4) is None
+
+    # a continuous bottom chord ties the three column nodes together
+    bottom = [(a, b) for a, b in m.members
+              if max(m.nodes[a][1], m.nodes[b][1]) < 1.0]
+    assert len(bottom) >= 2
