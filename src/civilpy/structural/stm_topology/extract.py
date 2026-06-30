@@ -446,7 +446,9 @@ def layout_optimize_truss(model, density_result, *, keep: float = 0.02,
                           min_density: float = 0.12, search: float | None = None,
                           betweenness: float | None = None,
                           cluster_tol: float | None = None,
-                          symmetric: bool = True):
+                          symmetric: bool = True, boundary_chords: bool = True,
+                          boundary_discount: float = 0.3,
+                          max_crossing_iter: int = 3):
     """Extract a strut-and-tie model by LP plastic layout optimization.
 
     Uses ``model``'s joints (cleaned: clustered, and mirrored when the problem is
@@ -455,6 +457,18 @@ def layout_optimize_truss(model, density_result, *, keep: float = 0.02,
     Returns a new :class:`StrutAndTieModel` with member forces and reactions
     already populated, or ``None`` if the program is infeasible (caller falls
     back to the FSD refinement).
+
+    Two geometric rules give an ACI 318-detailable result:
+
+    * ``boundary_chords`` adds a *continuous* chord along each loaded edge
+      (adjacent supports along the bottom, adjacent loads along the top) and
+      keeps it even when lightly loaded — the conventional flexural tie / top
+      compression chord an engineer expects for detailing and crack control.
+    * intersecting members are never left un-noded: after each solve, a joint is
+      inserted at every crossing of two load-carrying members and the layout is
+      re-optimized (up to ``max_crossing_iter`` times), so every crossing is a
+      real nodal zone (ACI 318 Ch. 23) rather than two members sharing a point in
+      space.
     """
     mesh = density_result.mesh
     width = mesh.width
@@ -471,46 +485,94 @@ def layout_optimize_truss(model, density_result, *, keep: float = 0.02,
     if not anchors:
         return None
 
-    # 1. clean, optionally symmetric node set
-    raw = list(model.nodes.values()) + [a[1] for a in anchors]
     x0 = _detect_symmetry(anchors) if symmetric else None
+    raw = list(model.nodes.values()) + [a[1] for a in anchors]
+    nodes = _node_set(raw, anchors, x0, cluster_tol)
+    if len(nodes) < 3:
+        return None
+
+    params = dict(sample=sample, mesh=mesh, x0=x0, search=search,
+                  betweenness=betweenness, keep=keep, min_density=min_density,
+                  boundary_chords=boundary_chords,
+                  boundary_discount=boundary_discount)
+
+    sol = None
+    for _ in range(max(1, max_crossing_iter)):
+        sol = _solve_layout(nodes, anchors, **params)
+        if sol is None:
+            return None
+        members, meta, f, kept, load, _is_bnd = sol
+        crossings = _kept_crossings(nodes, members, kept)
+        if not crossings:
+            break
+        nodes = _node_set([tuple(p) for p in nodes] + crossings, anchors, x0,
+                          0.6)              # fold the new joints in symmetrically
+
+    members, meta, f, kept, load, _is_bnd = sol
+    if len(kept) < 3:
+        return None
+    return _assemble_model(nodes, members, meta, f, kept, anchors, load)
+
+
+def _node_set(raw, anchors, x0, cluster_tol):
+    """Cleaned node coordinates: cluster (optionally fold/mirror about ``x0``),
+    then snap the exact support/load coordinates back onto their nearest joint."""
     nodes = (_symmetrize(raw, x0, cluster_tol) if x0 is not None
              else _cluster_points(raw, cluster_tol))
     nodes = np.array(nodes, dtype=float)
-    for _, (px, py), _ in anchors:                    # snap exact anchor coords
-        nodes[int(np.argmin((nodes[:, 0] - px) ** 2 + (nodes[:, 1] - py) ** 2))] = (px, py)
-    nodes = np.array(_cluster_points(nodes, 1e-6), dtype=float)
+    for _, (px, py), _ in anchors:
+        nodes[int(np.argmin((nodes[:, 0] - px) ** 2
+                            + (nodes[:, 1] - py) ** 2))] = (px, py)
+    return np.array(_cluster_points(nodes, 1e-6), dtype=float)
+
+
+def _solve_layout(nodes, anchors, *, sample, mesh, x0, search, betweenness, keep,
+                  min_density, boundary_chords, boundary_discount):
+    """Build the ground structure and solve one LP.  Returns
+    ``(members, meta, forces, kept, load, is_boundary)`` or ``None``."""
     n = len(nodes)
-    if n < 3:
-        return None
+    members, meta, is_bnd = [], [], []
+    added = set()
 
-    mirror = {}
-    if x0 is not None:
-        for i, (x, y) in enumerate(nodes):
-            mirror[i] = int(np.argmin((nodes[:, 0] - (2 * x0 - x)) ** 2
-                                      + (nodes[:, 1] - y) ** 2))
-
-    # 2. ground structure of candidate members (betweenness + density filters)
-    members, meta = [], []
-    for i, j in combinations(range(n), 2):
+    def add(i, j, boundary=False):
         pa, pb = tuple(nodes[i]), tuple(nodes[j])
         length = float(np.hypot(pb[0] - pa[0], pb[1] - pa[1]))
         if length < 1e-6:
-            continue
-        others = [tuple(nodes[k]) for k in range(n) if k not in (i, j)]
-        if _passes_over_node(pa, pb, others, betweenness):
-            continue
+            return
         avg, mn = _line_density(sample, pa, pb, search, mesh.h)
-        if avg < min_density or mn < 0.02:
-            continue
-        w = 1.0 / (avg + 0.6)                          # gentle density weight
+        if boundary:
+            w = boundary_discount / (avg + 0.6)        # subsidized continuous chord
+        else:
+            others = [tuple(nodes[k]) for k in range(n) if k not in (i, j)]
+            if _passes_over_node(pa, pb, others, betweenness):
+                return
+            if avg < min_density or mn < 0.02:         # crosses a void
+                return
+            w = 1.0 / (avg + 0.6)                      # gentle density weight
         members.append((i, j))
         meta.append((length, w, (pb[0] - pa[0]) / length, (pb[1] - pa[1]) / length))
+        is_bnd.append(boundary)
+        added.add(frozenset((i, j)))
+
+    for i, j in combinations(range(n), 2):
+        add(i, j)
+    if boundary_chords:
+        ybot, ytop = mesh.y0, mesh.ytop
+        edges = {"bot": [], "top": []}
+        for i, (x, y) in enumerate(nodes):
+            if abs(y - ybot) < 0.5:
+                edges["bot"].append(i)
+            elif abs(y - ytop) < 0.5:
+                edges["top"].append(i)
+        for idx in edges.values():
+            idx.sort(key=lambda i: nodes[i, 0])
+            for a, b in zip(idx, idx[1:]):
+                if frozenset((a, b)) not in added:
+                    add(a, b, boundary=True)
     m = len(members)
     if m < 3:
         return None
 
-    # 3. equilibrium B (t - c) = -P over the free DOFs
     fixed = np.zeros((n, 2), dtype=bool)
     load = np.zeros((n, 2))
     for kind, (px, py), spec in anchors:
@@ -535,8 +597,10 @@ def layout_optimize_truss(model, density_result, *, keep: float = 0.02,
                     a_eq[rowi[(node, d)], k] += u[d]
                     a_eq[rowi[(node, d)], m + k] -= u[d]
 
-    # 4. symmetry equality constraints t_k == t_mirror, c_k == c_mirror
     if x0 is not None:
+        mirror = {i: int(np.argmin((nodes[:, 0] - (2 * x0 - nodes[i, 0])) ** 2
+                                   + (nodes[:, 1] - nodes[i, 1]) ** 2))
+                  for i in range(n)}
         key = {frozenset(mb): k for k, mb in enumerate(members)}
         seen, extra = set(), []
         for k, (i, j) in enumerate(members):
@@ -551,20 +615,44 @@ def layout_optimize_truss(model, density_result, *, keep: float = 0.02,
             a_eq = np.vstack([a_eq, np.vstack(extra)])
             b_eq = np.concatenate([b_eq, np.zeros(len(extra))])
 
-    # 5. minimize Michell volume sum L_k w_k (t_k + c_k)
     cost = np.array([meta[k][0] * meta[k][1] for k in range(m)])
     res = linprog(np.concatenate([cost, cost]), A_eq=a_eq, b_eq=b_eq,
                   bounds=[(0, None)] * (2 * m), method="highs")
     if not res.success:
         return None
-
     f = res.x[:m] - res.x[m:]
     fmax = float(np.abs(f).max()) or 1.0
-    kept = [k for k in range(m) if abs(f[k]) > keep * fmax]
-    if len(kept) < 3:
-        return None
+    # keep the load-carrying members plus every boundary chord (continuous chords
+    # for detailing, even when lightly loaded)
+    kept = [k for k in range(m) if abs(f[k]) > keep * fmax or is_bnd[k]]
+    return members, meta, f, kept, load, is_bnd
 
-    return _assemble_model(nodes, members, meta, f, kept, anchors, load)
+
+def _seg_intersection(p1, p2, p3, p4):
+    """Strict interior intersection of segments p1p2 and p3p4, else ``None``."""
+    x1, y1 = p1; x2, y2 = p2; x3, y3 = p3; x4, y4 = p4
+    d = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4)
+    if abs(d) < 1e-9:
+        return None
+    t = ((x1 - x3) * (y3 - y4) - (y1 - y3) * (x3 - x4)) / d
+    u = ((x1 - x3) * (y1 - y2) - (y1 - y3) * (x1 - x2)) / d
+    if 0.06 < t < 0.94 and 0.06 < u < 0.94:
+        return (x1 + t * (x2 - x1), y1 + t * (y2 - y1))
+    return None
+
+
+def _kept_crossings(nodes, members, kept):
+    """Intersection points of load-carrying members that do not share a joint."""
+    out = []
+    for a, b in combinations(kept, 2):
+        ia, ja = members[a]
+        ib, jb = members[b]
+        if len({ia, ja, ib, jb}) < 4:
+            continue
+        ip = _seg_intersection(nodes[ia], nodes[ja], nodes[ib], nodes[jb])
+        if ip is not None:
+            out.append(ip)
+    return out
 
 
 def _assemble_model(nodes, members, meta, f, kept, anchors, load):
