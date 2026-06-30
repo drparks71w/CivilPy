@@ -104,11 +104,17 @@ class TestStrutAndTie:
         assert stm.reactions["A"][1] == pytest.approx(50.0)
         assert stm.reactions["B"][1] == pytest.approx(50.0)
 
-    def test_indeterminate_raises(self):
+    def test_indeterminate_joints_raises_but_auto_solves(self):
         stm = self._deep_beam()
-        stm.add_support("C", fix_x=True)  # extra restraint
+        stm.add_support("C", fix_x=True)  # extra restraint -> indeterminate
+        assert stm.degree_of_indeterminacy() > 0
+        # the method of joints cannot handle a redundant truss ...
         with pytest.raises(ValueError):
-            stm.solve()
+            stm.solve(method="joints")
+        # ... but auto-solve falls through to the direct-stiffness method
+        stm.solve()
+        ry = sum(v[1] for v in stm.reactions.values())
+        assert ry == pytest.approx(100.0, abs=1e-6)
 
     def test_unknown_node_raises(self):
         stm = StrutAndTieModel()
