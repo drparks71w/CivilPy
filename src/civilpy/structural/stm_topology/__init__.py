@@ -44,6 +44,9 @@ from .pipeline import optimize_to_stm, STMResult
 from .design import (
     optimize_pier_cap, PierCapDesign, DepthCandidate, governing_strut_angle,
 )
+from .cost import (
+    set_price_provider, resolve_prices, DEFAULT_PRICES, estimate_cost,
+)
 
 __all__ = [
     "DRegionProblem", "Material", "Support", "Load",
@@ -52,4 +55,5 @@ __all__ = [
     "optimize_to_stm", "STMResult",
     "optimize_pier_cap", "PierCapDesign", "DepthCandidate",
     "governing_strut_angle",
+    "set_price_provider", "resolve_prices", "DEFAULT_PRICES", "estimate_cost",
 ]
