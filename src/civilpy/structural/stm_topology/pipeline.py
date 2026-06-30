@@ -29,7 +29,7 @@ import numpy as np
 
 from .mesh import GroundMesh
 from .simp import optimize_density, DensityResult
-from .extract import extract_truss
+from .extract import extract_truss, refine_truss, is_stable
 from . import cost as _cost
 
 
@@ -125,27 +125,30 @@ def optimize_to_stm(problem, *, nelx: int = 120, threshold: float = 0.3,
 
 
 def _extract_stable(density, threshold, merge, verbose):
-    """Extract a truss, escalating the node-merge tolerance until it solves."""
+    """Extract a skeleton truss and complete it into a stable strut-and-tie
+    model with the ground-structure refinement.
+
+    Skeleton tracing finds the struts but misses the tension chords, so the raw
+    truss is usually a mechanism.  Instead of merging joints until it collapses,
+    :func:`~civilpy.structural.stm_topology.extract.refine_truss` lays in the
+    members that run through solid material and prunes the dead ones.  A couple
+    of coarser merges are tried only as a fallback if that still leaves a
+    mechanism.
+    """
     base = merge if merge is not None else max(3.0, 0.05 * density.mesh.nelx)
-    candidates = [base] if merge is not None else \
-        [base * f for f in (1.0, 1.5, 2.0, 3.0, 4.0)]
+    candidates = [base] if merge is not None else [base * f for f in (1.0, 1.5, 2.0)]
     last = None
     for mg in candidates:
         model = extract_truss(density, threshold=threshold, merge=mg)
+        if len(model.nodes) >= 3:
+            refine_truss(model, density)
         last = (model, mg)
-        if len(model.nodes) < 3 or len(model.members) < 3:
-            continue
-        if model.degree_of_indeterminacy() < 0:
+        if is_stable(model):
             if verbose:
-                print(f"  merge={mg:.1f}: DoI<0, escalating")
-            continue
-        try:
-            model.solve(method="auto")
-        except ValueError as exc:
-            if verbose:
-                print(f"  merge={mg:.1f}: {exc}; escalating")
-            continue
-        return model, mg, True
-    # nothing fully stable — return the last attempt, flagged
+                print(f"  merge={mg:.1f}: refined to {len(model.nodes)} nodes, "
+                      f"{len(model.members)} members (stable)")
+            return model, mg, True
+        if verbose:
+            print(f"  merge={mg:.1f}: still a mechanism, escalating")
     model, mg = last
     return model, mg, False
