@@ -29,6 +29,7 @@ dependencies = [
     "pandas>=2.0",
     "sympy>=1.10",
     "matplotlib>=3.7",
+    "plotly>=5.0",
     "scipy>=1.11",
     "Pint>=0.20",
     "requests>=2.28",
@@ -77,12 +78,21 @@ validation = [
 cande = [
     "cande-wrapper>=0.1",
 ]
+rhino = [
+    "rhino3dm>=8.0",
+]
+fem = [
+    "pygmsh>=7.1",
+    "scikit-fem>=8.0",
+    "scikit-image>=0.21",
+    "networkx>=3.0",
+]
 test = [
     "pytest>=7.0",
     "pytest-cov>=4.0",
 ]
 full = [
-    "civilpy[db,pdf,geo,web,jupyter,validation]",
+    "civilpy[db,pdf,geo,web,jupyter,validation,rhino,fem]",
     "FreeSimpleGUI>=5.0",
 ]
 
