@@ -111,6 +111,8 @@ class TestStrutAndTie:
         # auto-dispatch now handles indeterminate trusses (direct stiffness)
         forces = stm.solve()
         assert forces is not None
+        ry = sum(v[1] for v in stm.reactions.values())
+        assert ry == pytest.approx(100.0, abs=1e-6)
         # but explicitly forcing the method of joints still rejects it
         with pytest.raises(ValueError):
             stm.solve(method="joints")
