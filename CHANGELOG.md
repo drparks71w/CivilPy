@@ -5,6 +5,22 @@ Versions follow [Semantic Versioning](https://semver.org/) (major.minor.patch).
 
 ---
 
+## [0.3.3] - 2026-06-30
+
+- **SNBI validation — calibration against FHWA** (`state.ohio.snbi`). The first
+  full NBIS run against FHWA's processing report showed 0.3.2 over-reported, so
+  this release dials the rules back to match FHWA's actual finding rates:
+  - Reverted to optional (FHWA tolerates the null far more than our data omits
+    it): BG03, BG07, BG08, BG10, BG11, BIR01, BIR03, BAP01, BAP02, BAP03, Route
+    BRT03/04/05; BSP12 no longer forced on decked spans. Kept the items that
+    matched FHWA (BG06, BG14, BAP05, BCL03/04/05, the highway BH set, BN02/04/06,
+    BSP02/04/05/06/09).
+  - Removed enum checks that rejected valid codes FHWA accepts: BCL01/BCL02,
+    BF01 pattern, BEP03, BSP07/08/10/11/13, BSB05/06/07.
+  - Relaxed BG05 > BG06 to BG05 ≥ BG06 (equal widths allowed).
+
+---
+
 ## [0.3.2] - 2026-06-30
 
 - **SNBI validation — FHWA agreement build-out** (`state.ohio.snbi`). Closes

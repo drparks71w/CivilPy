@@ -318,11 +318,13 @@ class Route(BaseModel):
     """SNBI route record (B.RT). Required for every 'highway' feature."""
 
     BRT01: Annotated[str, StringConstraints(max_length=3, min_length=1, strip_whitespace=True)]
-    # B.RT.02-05 are reported for every route (FHWA flags each as null).
+    # B.RT.02 (route number) is reported for every route. BRT03/04/05 are
+    # back to optional + enum-checked: FHWA flags their nulls far less often
+    # than our API data omits them (see the BG03 note above).
     BRT02: Annotated[str, StringConstraints(max_length=15, strip_whitespace=True)]
-    BRT03: Annotated[str, StringConstraints(max_length=3, strip_whitespace=True)]
-    BRT04: Annotated[str, StringConstraints(max_length=1, strip_whitespace=True)]
-    BRT05: Annotated[str, StringConstraints(max_length=1, strip_whitespace=True)]
+    BRT03: Optional[Annotated[str, StringConstraints(max_length=3, strip_whitespace=True)]] = None
+    BRT04: Optional[Annotated[str, StringConstraints(max_length=1, strip_whitespace=True)]] = None
+    BRT05: Optional[Annotated[str, StringConstraints(max_length=1, strip_whitespace=True)]] = None
 
     @field_validator("BRT01")
     @classmethod
@@ -432,11 +434,9 @@ class Feature(BaseModel):
     def _nav_protection(cls, v):
         return _require_in(v, {str(n) for n in range(6)} | {"1-T"}, "BN06 Substructure Navigation Protection")
 
-    @field_validator("BF01")
-    @classmethod
-    def _feature_type_code(cls, v):
-        return _require_pattern_code(v, _PATTERN_CODES["BF01"], "BF01 Feature Type")
-
+    # BF01 (feature type) is required + used by the conditional validators below
+    # via its leading letter, but NOT pattern-checked: the strict 'letter + two
+    # digits' pattern rejected valid Ohio feature codes FHWA accepts.
     @field_validator("BF02")
     @classmethod
     def _feature_location(cls, v):
@@ -569,11 +569,8 @@ class PostingEvaluation(BaseModel):
     def _legal_load_charset(cls, v):
         return _require_charset(v, _CHARSET_LOAD_CFG, "BEP01 Legal Load Configuration")
 
-    @field_validator("BEP03")
-    @classmethod
-    def _posting_type(cls, v):
-        return _require_code(v, _SNBI_CODES["BEP03"], "BEP03 Posting Type")
-
+    # BEP03 (posting type) is not enum-checked (Ohio reports codes beyond the
+    # published table); its value is still used by the cross-field rule below.
     @model_validator(mode="after")
     def _posting_value_not_reported(self):
         # B.EP.04: do not report a posting value for posting types that carry
@@ -631,8 +628,9 @@ class SpanSet(BaseModel):
         return _require_pattern_code(v, _PATTERN_CODES["BSP01"],
                                      "BSP01 Span Configuration Designation")
 
-    @field_validator("BSP04", "BSP06", "BSP07", "BSP08", "BSP09", "BSP10",
-                     "BSP11", "BSP12", "BSP13")
+    # Enum-check only the span codes FHWA actually flags as invalid; the others
+    # (BSP07/08/10/11/13) rejected valid Ohio codes FHWA accepts.
+    @field_validator("BSP04", "BSP06", "BSP09", "BSP12")
     @classmethod
     def _span_codes(cls, v, info):
         return _require_code(v, _SNBI_CODES[info.field_name], info.field_name)
@@ -645,15 +643,13 @@ class SpanSet(BaseModel):
         if missing:
             raise ValueError(
                 "Span set must report " + ", ".join(missing))
-        # Deck items apply only to spans that carry a deck (not pipe culverts).
+        # Deck material applies only to spans that carry a deck (not pipe
+        # culverts). BSP12 (deck reinforcing protective system) is NOT forced
+        # here -- FHWA flags its nulls far less often than our data omits it --
+        # but it is still enum-checked when present.
         is_pipe_culvert = (self.BSP06 or "").upper() in {"P01", "P02"}
-        if not is_pipe_culvert:
-            deck_missing = [f for f in ("BSP09", "BSP12")
-                            if getattr(self, f) is None]
-            if deck_missing:
-                raise ValueError(
-                    "A span set with a deck must report "
-                    + ", ".join(deck_missing))
+        if not is_pipe_culvert and self.BSP09 is None:
+            raise ValueError("A span set with a deck must report BSP09")
         # B.SP.03-2: zero beam lines is only valid for slab/pipe spans (P01/P02).
         if self.BSP03 == 0 and not is_pipe_culvert:
             raise ValueError(
@@ -679,7 +675,9 @@ class SubstructureSet(BaseModel):
         return _require_pattern_code(v, _PATTERN_CODES["BSB01"],
                                      "BSB01 Substructure Configuration Designation")
 
-    @field_validator("BSB03", "BSB04", "BSB05", "BSB06", "BSB07")
+    # BSB05/06/07 rejected valid Ohio codes FHWA accepts, so only BSB03/04 are
+    # enum-checked.
+    @field_validator("BSB03", "BSB04")
     @classmethod
     def _substructure_codes(cls, v, info):
         return _require_code(v, _SNBI_CODES[info.field_name], info.field_name)
@@ -730,15 +728,19 @@ class Bridge(BaseModel):
     # --- Geometry (B.G) --------------------------------------------------------
     BG01: Annotated[float, Field(ge=0, le=999999.9)]   # NBIS Bridge Length (> 20 ft to be NBIS)
     BG02: Annotated[float, Field(ge=0, le=999999.9)]   # Total Bridge Length
-    BG03: Annotated[float, Field(gt=0, le=9999.9)]     # Max Span Length (> 0, all bridges)
+    # NOTE: BG03/BG07/BG08/BG10/BG11 were briefly made required to match FHWA's
+    # "null" findings, but the FHWA processing report flags those nulls far less
+    # often than ODOT's API data omits them (FHWA's "export FHWA data" feed
+    # differs from our API read), so they are back to optional + range-checked.
+    BG03: Optional[Annotated[float, Field(ge=0, le=9999.9)]] = None
     BG04: Optional[Annotated[float, Field(ge=0, le=9999.9)]] = None
     BG05: Annotated[float, Field(gt=0, le=999.9)]      # Width Out-to-Out (> 0)
     BG06: Annotated[float, Field(gt=0, le=999.9)]      # Width Curb-to-Curb (> 0, all bridges)
-    BG07: Annotated[float, Field(ge=0, le=99.9)]       # Left curb/sidewalk width (all bridges)
-    BG08: Annotated[float, Field(ge=0, le=99.9)]       # Right curb/sidewalk width (all bridges)
+    BG07: Optional[Annotated[float, Field(ge=0, le=99.9)]] = None
+    BG08: Optional[Annotated[float, Field(ge=0, le=99.9)]] = None
     BG09: Annotated[float, Field(gt=0, le=999.9)]      # Approach Roadway Width (> 0)
-    BG10: Annotated[str, StringConstraints(max_length=1, strip_whitespace=True)]   # Median (all bridges)
-    BG11: Annotated[int, Field(ge=0, le=99)]           # Skew (all bridges)
+    BG10: Optional[Annotated[str, StringConstraints(max_length=1, strip_whitespace=True)]] = None
+    BG11: Optional[Annotated[int, Field(ge=0, le=99)]] = None
     BG12: Optional[Annotated[str, StringConstraints(max_length=2, strip_whitespace=True)]] = None
     BG13: Optional[Annotated[int, Field(ge=0, le=9999)]] = None
     BG14: Annotated[str, StringConstraints(max_length=1, strip_whitespace=True)]   # Sidehill (all bridges)
@@ -756,9 +758,9 @@ class Bridge(BaseModel):
     BLR08: Optional[Annotated[str, StringConstraints(max_length=1, strip_whitespace=True)]] = None
 
     # --- Inspection requirements (B.IR) ---------------------------------------
-    BIR01: Annotated[str, StringConstraints(max_length=1, strip_whitespace=True)]   # NSTM req'd (all bridges)
+    BIR01: Optional[Annotated[str, StringConstraints(max_length=1, strip_whitespace=True)]] = None
     BIR02: Optional[Annotated[str, StringConstraints(max_length=1, strip_whitespace=True)]] = None
-    BIR03: Annotated[str, StringConstraints(max_length=1, strip_whitespace=True)]   # Underwater req'd (all bridges)
+    BIR03: Optional[Annotated[str, StringConstraints(max_length=1, strip_whitespace=True)]] = None
     BIR04: Optional[Annotated[str, StringConstraints(max_length=1, strip_whitespace=True)]] = None
 
     # --- Condition (B.C) -------------------------------------------------------
@@ -779,9 +781,9 @@ class Bridge(BaseModel):
     BC15: Optional[Annotated[str, StringConstraints(max_length=1, strip_whitespace=True)]] = None
 
     # --- Appraisal (B.AP) ------------------------------------------------------
-    BAP01: Annotated[str, StringConstraints(max_length=1, strip_whitespace=True)]   # Approach alignment (all bridges)
-    BAP02: Annotated[str, StringConstraints(max_length=5, strip_whitespace=True)]   # Overtopping likelihood (all bridges)
-    BAP03: Annotated[str, StringConstraints(max_length=5, strip_whitespace=True)]   # Scour vulnerability (all bridges)
+    BAP01: Optional[Annotated[str, StringConstraints(max_length=1, strip_whitespace=True)]] = None
+    BAP02: Optional[Annotated[str, StringConstraints(max_length=5, strip_whitespace=True)]] = None
+    BAP03: Optional[Annotated[str, StringConstraints(max_length=5, strip_whitespace=True)]] = None
     BAP04: Optional[Annotated[str, StringConstraints(max_length=3, strip_whitespace=True)]] = None
     BAP05: Annotated[str, StringConstraints(max_length=1, strip_whitespace=True)]   # Seismic vulnerability (all bridges)
 
@@ -898,8 +900,10 @@ class Bridge(BaseModel):
     def _yes_no(cls, v, info):
         return _require_in(v, {"Y", "N"}, info.field_name)
 
-    @field_validator("BCL01", "BCL02", "BG12", "BLR01", "BLR02", "BLR04",
-                     "BAP03", "BAP05")
+    # BCL01/BCL02 (owner / maintenance responsibility) are NOT enum-checked:
+    # FHWA accepts agency codes beyond the published table, so enforcing the
+    # table produced false positives FHWA never reports.
+    @field_validator("BG12", "BLR01", "BLR02", "BLR04", "BAP03", "BAP05")
     @classmethod
     def _bridge_coded_values(cls, v, info):
         return _require_code(v, _SNBI_CODES[info.field_name], info.field_name)
@@ -1045,10 +1049,10 @@ class Bridge(BaseModel):
             self.BG05 is not None
             and self.BG06 is not None
             and (self.BG14 or "").upper() != "Y"
-            and self.BG05 <= self.BG06
+            and self.BG05 < self.BG06
         ):
             raise ValueError(
-                "BG05 Bridge Width Out-to-Out must be greater than BG06 Bridge "
+                "BG05 Bridge Width Out-to-Out must not be less than BG06 Bridge "
                 "Width Curb-to-Curb (except on a Sidehill Bridge)")
         return self
 
