@@ -68,45 +68,56 @@ flagging is section B.) Fixtures using lenient shorthand (`BF01="H"`,
 - ☑ BCL03 (28) Land Access · BCL04 (9) Historic · BCL05 (33) Toll
 - ☑ BIR01 (159) NSTM req'd · BIR03 (65) Underwater req'd
 
-**B2 — Conditional (need model_validators, NOT plain required) — ☐ TODO.**
-These live on child models / apply only in context; forcing them required
-would reject inapplicable records (e.g. a waterway feature has no `BH*`):
-- ☐ BH06 (147) LRS Route ID · BH09 (98) AADT · BH11 (95) AADT year ·
-  BH13 (95) min vert clearance · BH17 (122) bypass detour — **highway
-  features only** (BF01 starts "H") → conditional on `Feature`
-- ☐ BRT02 (83) Route Number — required per `Route`
-- ☐ BSP02 (67) Number of Spans — required per `SpanSet`
-- ☐ BLR05 (26) / BLR06 (26) rating factors — when load-rated
+**B2 — Conditional requiredness via model_validators.** These live on child
+models / apply only in context (forcing plain-required would reject
+inapplicable records, e.g. a waterway feature has no `BH*`).
+- ☑ BH06 (147) · BH09 (98) · BH11 (95) · BH13 (95) · BH17 (122) — required on
+  **highway features** (BF01 starts "H"), via `Feature._feature_type_conditionals`
+- ☑ BRT02 (83) / BRT03 (71) / BRT04 (18) / BRT05 (18) — required per `Route`
+- ☑ BSP02 (67) / BSP04 (12) / BSP05 (17) / BSP06 (17) — required per `SpanSet`;
+  BSP09 (58) / BSP12 (390) required for non-pipe-culvert spans (have a deck)
+- ☐ BLR05 (26) / BLR06 (26) rating factors — when load-rated *(TODO)*
 - ☐ BF03 (80) Feature Name · BE03 (3) Element total · BIE05 (1) interval ·
-  BL03 (2) Place · BL07 (25) border (conditional)
+  BL03 (2) Place · BL07 (25) border *(TODO — lower freq)*
 
-### C. Numeric format (one decimal place)
-- ☐ BG15 (358, E) Irregular Deck Area
-- ☐ BH16 (346, E) Highway Maximum Usable Surface Width
+### C. Numeric format (one decimal place) — ✅ DONE
+Via `_one_decimal` (float can't distinguish 12 from 12.0, so enforces ≤1
+fractional digit; rejects 12.55).
+- ☑ BG15 (358, E) Irregular Deck Area
+- ☑ BH16 (346, E) Highway Maximum Usable Surface Width
 
 ### D. Cross-field / conditional rules
-- ☐ BSP01 (211, E)  Culvert-definition consistency (coding vs. SNBI culvert def)
-- ☐ BEP04 (197, E)  Do not report when BEP03 ∈ {C,S,L,V}
-- ☐ BC09 (86, E)     Channel rating: N when no waterway feature, else 0-9
-- ☐ BG05 (21, E)     Out-to-out must exceed curb-to-curb (unless sidehill)
-- ☐ BW03 (50, F)     Work-performed code consistency
-- ☐ BH18 (29, E)     Crossing bridge number ≠ BID01
-- ☐ BSP03 (8)        Beam-line count vs. span type P01/P02
-- ☐ BN02/04/06/03    Navigation sub-items (conditional on waterway + movable)
-- ☐ BW02 (11, F)     Year work performed ≥ year built
-- ☐ BE01 (10, F) · BC02/03/04 flags (no super/sub/culvert present)
-- ☐ Border-bridge "do not report" flags (BH01/04/05/08/10/12/13/16/17, low)
+- ☑ BEP04 (197, E)  Do not report when BEP03 ∈ {C,S,L,V}
+- ☑ BC09 (86, E)     Channel rating: N when no waterway feature, else 0-9
+- ☑ BG05 (21, E)     Out-to-out must exceed curb-to-curb (unless sidehill)
+- ☑ BH18 (29, E)     Crossing bridge number ≠ BID01
+- ☑ BSP03 (8)        Zero beam lines only valid for pipe/slab span (P01/P02)
+- ☑ BN02/04/06       Navigation clearances required when BN01 = 'Y'
+- ☑ BW02 (11, F)     Year work performed ≥ year built
+- ☐ BSP01 (211, E)  Culvert-definition consistency — **deferred** (complex
+  semantic rule: coding vs. the full SNBI culvert definition)
+- ☐ BW03 (50, F)     Work-performed code consistency — **deferred** (many
+  interacting sub-rules)
+- ☐ BE01 (10, F) · BC02/03/04 flags (no super/sub/culvert present) —
+  **deferred** (needs span material/presence reasoning)
+- ☐ BIR02 (2085, F) fatigue details on non-steel — **deferred** (Flag advisory)
+- ☐ Border-bridge "do not report" flags — **deferred** (low freq)
 
-### E. New enum table needed
-- ☐ BH02 (899, E) Urban Code — 5-digit Census UACE or 99999 (no table yet)
+### E. Urban code (BH02) — ✅ partial
+- ☑ BH02 (899, E) required on highway features + numeric format check. Full
+  Census UACE code-table validation **deferred** (table not reproduced here;
+  catches the null/format bulk, not "code is not a real UACE").
 
 ### F. Done already (FHWA-calculated, must-not-report)
 - ☑ BG16, BC12, BC13, BIE06
 
-## Open design decision (blocks section B)
-How to enforce "must report for all bridges":
-- **A — make fields required in the base model** (matches FHWA; rejects any
-  submission missing them; changes the library's lenient contract).
-- **B — add a separate "completeness" pass / strict flag** that flags nulls
-  without making the base model reject (preserves generic use).
-- **C — enum-only now**, defer requiredness.
+## Decision record
+"Must report for all bridges" enforcement: **Option A — make fields required
+in the base model** (chosen 2026-06-30; single-developer library, no external
+consumers, so the stricter contract is acceptable and matches FHWA directly).
+
+## Verification still owed
+Fresh `validate_snbi` run + re-compare vs FHWA to confirm these rules raise
+agreement **without** over-flagging (e.g. requiring a `BH*`/`Route`/`SpanSet`
+item more broadly than FHWA's actual rule scope, or enum tables narrower than
+FHWA's). Needs warehouse DB access.
