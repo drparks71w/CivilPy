@@ -44,6 +44,7 @@ from dataclasses import dataclass, field
 import numpy as np
 
 from .problem import DRegionProblem, Material
+from .cost import resolve_prices
 
 
 @dataclass
@@ -152,8 +153,8 @@ def optimize_pier_cap(loads, load_xs, column_xs, *, f_c: float = 5.0,
                       vol_frac: float = 0.30, nelx: int = 72,
                       column_bearing: float = 2.0, load_bearing: float = 1.0,
                       min_strut_angle: float = 25.0,
-                      price_concrete_cy: float = 850.0,
-                      price_steel_lb: float = 1.20,
+                      price_concrete_cy: float | None = None,
+                      price_steel_lb: float | None = None, prices=None,
                       pin_column: int | None = None) -> PierCapDesign:
     """Find the most economical pier-cap depth for a set of girder reactions.
 
@@ -184,6 +185,11 @@ def optimize_pier_cap(loads, load_xs, column_xs, *, f_c: float = 5.0,
     :class:`PierCapDesign` whose ``optimal`` is the shallowest feasible depth.
     """
     loads = [abs(P) for P in loads]
+    # resolve unit prices once: explicit args > prices mapping > registered ODOT
+    # provider > civilpy defaults (see civilpy...cost.set_price_provider)
+    book = resolve_prices(prices)
+    pcc = book["concrete_cy"] if price_concrete_cy is None else float(price_concrete_cy)
+    psl = book["steel_lb"] if price_steel_lb is None else float(price_steel_lb)
     xs = list(load_xs) + list(column_xs)
     x_lo, x_hi = min(xs) - edge, max(xs) + edge
     span = x_hi - x_lo
@@ -208,12 +214,11 @@ def optimize_pier_cap(loads, load_xs, column_xs, *, f_c: float = 5.0,
         # a slender cap needs more columns to keep enough mesh rows for a
         # reliable extraction; cap it so the sweep stays quick
         nelx_d = min(150, max(nelx, int(math.ceil(16.0 * span / depth))))
-        res = prob.solve(nelx=nelx_d, price_concrete_cy=price_concrete_cy,
-                         price_steel_lb=price_steel_lb)
+        res = prob.solve(nelx=nelx_d, prices=book)
 
-        concrete_cost = (span * depth * thickness / 27.0) * price_concrete_cy
+        concrete_cost = (span * depth * thickness / 27.0) * pcc
         steel_lb = res.report.cost.steel_lb if res.report.cost else 0.0
-        cost = concrete_cost + steel_lb * price_steel_lb
+        cost = concrete_cost + steel_lb * psl
         angle = governing_strut_angle(load_xs, column_xs, depth)
         checks = res.report.node_checks or []
         node_ratio = min((c.ratio for c in checks), default=float("inf"))

@@ -37,6 +37,44 @@ from civilpy.structural.steel import Rebar
 STEEL_DENSITY_PCF = 490.0   # lb/ft^3
 
 
+# ── unit-price resolution ────────────────────────────────────────────────────
+# civilpy ships order-of-magnitude ODOT-style defaults so the take-off works
+# stand-alone.  A host application — e.g. the private snbi_ui ODOT estimator,
+# which queries the DOT bid-data warehouse — registers a live provider with
+# ``set_price_provider``.  civilpy never imports that engine, so the public
+# package stays free of warehouse/bid data; if no provider is registered (or it
+# is off-network and returns nothing) the defaults below are used.
+
+DEFAULT_PRICES = {"concrete_cy": 850.0, "steel_lb": 1.20, "source": "civilpy-default"}
+_PRICE_PROVIDER = None
+
+
+def set_price_provider(provider):
+    """Register a zero-argument callable that returns a unit-price mapping with
+    keys ``concrete_cy`` ($/cy) and ``steel_lb`` ($/lb) — and optionally
+    ``source``.  It is consulted whenever a take-off is requested without an
+    explicit ``prices`` argument.  civilpy falls back to :data:`DEFAULT_PRICES`
+    if the provider is unset, returns nothing, or raises.  Returns the previous
+    provider (pass ``None`` to clear)."""
+    global _PRICE_PROVIDER
+    prev, _PRICE_PROVIDER = _PRICE_PROVIDER, provider
+    return prev
+
+
+def resolve_prices(prices=None) -> dict:
+    """Resolve unit prices in priority order: explicit ``prices`` mapping > the
+    registered provider > :data:`DEFAULT_PRICES`."""
+    book = dict(DEFAULT_PRICES)
+    if prices is None and _PRICE_PROVIDER is not None:
+        try:
+            prices = _PRICE_PROVIDER()
+        except Exception:
+            prices = None
+    if prices:
+        book.update({k: v for k, v in dict(prices).items() if v is not None})
+    return book
+
+
 @dataclass
 class TieDesign:
     member: tuple
@@ -122,17 +160,25 @@ def material_takeoff(density_result, problem, ties, *, threshold: float = 0.3):
     return concrete_cf, steel_cf
 
 
-def estimate_cost(concrete_cf, steel_cf, *, price_concrete_cy: float = 850.0,
-                  price_steel_lb: float = 1.20) -> CostEstimate:
-    """ODOT-style cost: concrete by the cubic yard, reinforcing by the pound."""
+def estimate_cost(concrete_cf, steel_cf, *, price_concrete_cy: float | None = None,
+                  price_steel_lb: float | None = None, prices=None) -> CostEstimate:
+    """ODOT-style cost: concrete by the cubic yard, reinforcing by the pound.
+
+    Unit prices come from (highest priority first) the explicit ``price_*``
+    arguments, then the ``prices`` mapping, then the registered price provider,
+    then :data:`DEFAULT_PRICES` (see :func:`set_price_provider`)."""
+    book = resolve_prices(prices)
+    pcc = book["concrete_cy"] if price_concrete_cy is None else float(price_concrete_cy)
+    psl = book["steel_lb"] if price_steel_lb is None else float(price_steel_lb)
     concrete_cy = concrete_cf / 27.0
     steel_lb = steel_cf * STEEL_DENSITY_PCF
-    c_cost = concrete_cy * price_concrete_cy
-    s_cost = steel_lb * price_steel_lb
+    c_cost = concrete_cy * pcc
+    s_cost = steel_lb * psl
     return CostEstimate(
         concrete_cy=concrete_cy, steel_lb=steel_lb,
         concrete_cost=c_cost, steel_cost=s_cost, total=c_cost + s_cost,
-        unit_prices={"concrete_cy": price_concrete_cy, "steel_lb": price_steel_lb},
+        unit_prices={"concrete_cy": pcc, "steel_lb": psl,
+                     "source": book.get("source", "civilpy-default")},
     )
 
 
