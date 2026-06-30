@@ -29,8 +29,10 @@ dependency is required.
 from __future__ import annotations
 
 import string
+from itertools import combinations
 
 import numpy as np
+from scipy.optimize import linprog
 
 from civilpy.structural.strut_and_tie import StrutAndTieModel
 
@@ -399,31 +401,276 @@ def is_stable(model, tol: float = 1e-8) -> bool:
     return bool(s[-1] > tol * s[0])
 
 
-def refine_truss(model, density_result, *, search: float | None = None,
-                 passover_tol: float | None = None, threshold: float = 0.25,
-                 coverage: float = 0.8, prune_frac: float = 0.04):
-    """Complete a raw skeleton truss into a stable, fully-stressed strut-and-tie
-    model by the ground-structure method, in place.
+def refine_truss(model, density_result, *, method: str = "lp", **kwargs):
+    """Turn a raw skeleton truss into a clean, solved strut-and-tie model.
 
-    Parameters
-    ----------
-    search:
-        Perpendicular half-width (model units) used when testing whether a
-        candidate member runs through solid material — it bridges SIMP's smeared
-        density band so a chord sitting on the member face still registers.
-        Defaults to a few mesh cells.
-    passover_tol:
-        A candidate is rejected if a third joint lies within this distance of it
-        (the member would pass straight over an existing node); keeps only
-        adjacent connections so chords come out as a clean run, not a spanning
-        bundle.
-    threshold, coverage:
-        A candidate counts as solid when at least ``coverage`` of the points
-        sampled along it reach density ``threshold``.
-    prune_frac:
-        Members carrying less than this fraction of the largest force are
-        removed when doing so leaves the truss stable.
+    ``method="lp"`` (default) runs :func:`layout_optimize_truss` — a single
+    global plastic truss layout optimization that is inherently symmetric for a
+    symmetric problem.  It returns a *new* model.  ``method="fsd"`` (or an ``lp``
+    failure) falls back to the in-place ground-structure fully-stressed-design
+    refinement :func:`_refine_fsd`.
+
+    Returns the model to use (possibly a new object), so callers must use the
+    return value rather than assuming in-place mutation.
     """
+    if method == "lp":
+        lp = layout_optimize_truss(model, density_result,
+                                   **{k: kwargs[k] for k in kwargs
+                                      if k in _LP_KW})
+        if lp is not None and len(lp.members) >= 3:
+            return lp
+    _refine_fsd(model, density_result,
+                **{k: kwargs[k] for k in kwargs if k in _FSD_KW})
+    return model
+
+
+_LP_KW = {"keep", "min_density", "search", "betweenness", "cluster_tol",
+          "symmetric"}
+_FSD_KW = {"search", "passover_tol", "threshold", "coverage", "prune_frac"}
+
+
+# ── method 1: plastic truss layout optimization (LP) ─────────────────────────
+#
+# The principled extractor.  Skeleton tracing only fixes the node *positions*;
+# the discrete load path is then chosen by a linear program that minimizes the
+# Michell structural volume ``sum |F_i| L_i w_i`` subject to nodal equilibrium
+# ``B F = P`` over a ground structure of candidate members.  Because an LP finds
+# the global optimum, a symmetric problem yields a symmetric truss — no
+# path-dependent, symmetry-breaking greedy pruning.  Each member is split into a
+# tension part ``t>=0`` and a compression part ``c>=0`` so ties and struts share
+# one linear model; ``w_i`` is a gentle density weight (members down dense bands
+# are cheaper) and candidates that cross a void are filtered out entirely.
+
+
+def layout_optimize_truss(model, density_result, *, keep: float = 0.02,
+                          min_density: float = 0.12, search: float | None = None,
+                          betweenness: float | None = None,
+                          cluster_tol: float | None = None,
+                          symmetric: bool = True):
+    """Extract a strut-and-tie model by LP plastic layout optimization.
+
+    Uses ``model``'s joints (cleaned: clustered, and mirrored when the problem is
+    symmetric) as the node set, lays a density-filtered ground structure between
+    them, and solves a single LP for the minimum-volume equilibrium load path.
+    Returns a new :class:`StrutAndTieModel` with member forces and reactions
+    already populated, or ``None`` if the program is infeasible (caller falls
+    back to the FSD refinement).
+    """
+    mesh = density_result.mesh
+    width = mesh.width
+    if search is None:
+        search = max(3.0 * mesh.h, 0.02 * width)
+    if betweenness is None:
+        betweenness = 0.04 * width
+    if cluster_tol is None:
+        cluster_tol = 0.055 * width
+    sample = _density_sampler(mesh, density_result.density)
+
+    anchors = ([("support", model.nodes[l], model.supports[l]) for l in model.supports]
+               + [("load", model.nodes[l], tuple(model.loads[l])) for l in model.loads])
+    if not anchors:
+        return None
+
+    # 1. clean, optionally symmetric node set
+    raw = list(model.nodes.values()) + [a[1] for a in anchors]
+    x0 = _detect_symmetry(anchors) if symmetric else None
+    nodes = (_symmetrize(raw, x0, cluster_tol) if x0 is not None
+             else _cluster_points(raw, cluster_tol))
+    nodes = np.array(nodes, dtype=float)
+    for _, (px, py), _ in anchors:                    # snap exact anchor coords
+        nodes[int(np.argmin((nodes[:, 0] - px) ** 2 + (nodes[:, 1] - py) ** 2))] = (px, py)
+    nodes = np.array(_cluster_points(nodes, 1e-6), dtype=float)
+    n = len(nodes)
+    if n < 3:
+        return None
+
+    mirror = {}
+    if x0 is not None:
+        for i, (x, y) in enumerate(nodes):
+            mirror[i] = int(np.argmin((nodes[:, 0] - (2 * x0 - x)) ** 2
+                                      + (nodes[:, 1] - y) ** 2))
+
+    # 2. ground structure of candidate members (betweenness + density filters)
+    members, meta = [], []
+    for i, j in combinations(range(n), 2):
+        pa, pb = tuple(nodes[i]), tuple(nodes[j])
+        length = float(np.hypot(pb[0] - pa[0], pb[1] - pa[1]))
+        if length < 1e-6:
+            continue
+        others = [tuple(nodes[k]) for k in range(n) if k not in (i, j)]
+        if _passes_over_node(pa, pb, others, betweenness):
+            continue
+        avg, mn = _line_density(sample, pa, pb, search, mesh.h)
+        if avg < min_density or mn < 0.02:
+            continue
+        w = 1.0 / (avg + 0.6)                          # gentle density weight
+        members.append((i, j))
+        meta.append((length, w, (pb[0] - pa[0]) / length, (pb[1] - pa[1]) / length))
+    m = len(members)
+    if m < 3:
+        return None
+
+    # 3. equilibrium B (t - c) = -P over the free DOFs
+    fixed = np.zeros((n, 2), dtype=bool)
+    load = np.zeros((n, 2))
+    for kind, (px, py), spec in anchors:
+        i = int(np.argmin((nodes[:, 0] - px) ** 2 + (nodes[:, 1] - py) ** 2))
+        if kind == "support":
+            fixed[i, 0] |= bool(spec[0])
+            fixed[i, 1] |= bool(spec[1])
+        else:
+            load[i, 0] += spec[0]
+            load[i, 1] += spec[1]
+    free = [(i, d) for i in range(n) for d in range(2) if not fixed[i, d]]
+    rowi = {fd: r for r, fd in enumerate(free)}
+    a_eq = np.zeros((len(free), 2 * m))
+    b_eq = np.zeros(len(free))
+    for (i, d), r in rowi.items():
+        b_eq[r] = -load[i, d]
+    for k, (i, j) in enumerate(members):
+        _, _, cx, cy = meta[k]
+        for node, u in ((i, (cx, cy)), (j, (-cx, -cy))):
+            for d in range(2):
+                if (node, d) in rowi:
+                    a_eq[rowi[(node, d)], k] += u[d]
+                    a_eq[rowi[(node, d)], m + k] -= u[d]
+
+    # 4. symmetry equality constraints t_k == t_mirror, c_k == c_mirror
+    if x0 is not None:
+        key = {frozenset(mb): k for k, mb in enumerate(members)}
+        seen, extra = set(), []
+        for k, (i, j) in enumerate(members):
+            kk = key.get(frozenset((mirror[i], mirror[j])))
+            if kk is None or kk == k or (k, kk) in seen:
+                continue
+            seen.add((k, kk))
+            seen.add((kk, k))
+            rt = np.zeros(2 * m); rt[k] = 1; rt[kk] = -1; extra.append(rt)
+            rc = np.zeros(2 * m); rc[m + k] = 1; rc[m + kk] = -1; extra.append(rc)
+        if extra:
+            a_eq = np.vstack([a_eq, np.vstack(extra)])
+            b_eq = np.concatenate([b_eq, np.zeros(len(extra))])
+
+    # 5. minimize Michell volume sum L_k w_k (t_k + c_k)
+    cost = np.array([meta[k][0] * meta[k][1] for k in range(m)])
+    res = linprog(np.concatenate([cost, cost]), A_eq=a_eq, b_eq=b_eq,
+                  bounds=[(0, None)] * (2 * m), method="highs")
+    if not res.success:
+        return None
+
+    f = res.x[:m] - res.x[m:]
+    fmax = float(np.abs(f).max()) or 1.0
+    kept = [k for k in range(m) if abs(f[k]) > keep * fmax]
+    if len(kept) < 3:
+        return None
+
+    return _assemble_model(nodes, members, meta, f, kept, anchors, load)
+
+
+def _assemble_model(nodes, members, meta, f, kept, anchors, load):
+    out = StrutAndTieModel()
+    used = sorted({nd for k in kept for nd in members[k]})
+    labeler = _labeler()
+    label = {i: labeler() for i in used}
+    for i in used:
+        out.add_node(label[i], float(nodes[i, 0]), float(nodes[i, 1]))
+    forces = {}
+    for k in kept:
+        i, j = members[k]
+        out.add_member(label[i], label[j])
+        forces[(label[i], label[j])] = float(f[k])
+    out.forces = forces
+
+    reactions = {}
+    for kind, (px, py), spec in anchors:
+        i = int(np.argmin((nodes[:, 0] - px) ** 2 + (nodes[:, 1] - py) ** 2))
+        if i not in label:
+            continue
+        lab = label[i]
+        if kind == "support":
+            out.add_support(lab, fix_x=bool(spec[0]), fix_y=bool(spec[1]))
+            rx = ry = 0.0
+            for k in kept:
+                a, b = members[k]
+                if i in (a, b):
+                    _, _, cx, cy = meta[k]
+                    u = (cx, cy) if a == i else (-cx, -cy)
+                    rx -= u[0] * f[k]
+                    ry -= u[1] * f[k]
+            reactions[lab] = [rx - load[i, 0], ry - load[i, 1]]
+        else:
+            out.add_load(lab, fx=spec[0], fy=spec[1])
+    out.reactions = reactions
+    return out
+
+
+# ── node-set helpers (clustering + symmetry) ─────────────────────────────────
+
+def _cluster_points(pts, tol):
+    """Greedy single-link clustering: collapse points within ``tol`` to their
+    centroid (cleans noisy skeleton joints into single geometric centers)."""
+    pts = [tuple(float(c) for c in p) for p in pts]
+    out = []
+    while pts:
+        seed = pts.pop()
+        group, rest = [seed], []
+        for p in pts:
+            (group if np.hypot(p[0] - seed[0], p[1] - seed[1]) <= tol
+             else rest).append(p)
+        pts = rest
+        out.append((float(np.mean([g[0] for g in group])),
+                    float(np.mean([g[1] for g in group]))))
+    return out
+
+
+def _detect_symmetry(anchors, tol=0.5):
+    """Vertical mirror axis ``x0`` if every support/load has a mirror partner in
+    the anchor set, else ``None``."""
+    xs = [a[1][0] for a in anchors]
+    x0 = (min(xs) + max(xs)) / 2.0
+    pts = [a[1] for a in anchors]
+    for x, y in pts:
+        mx = 2 * x0 - x
+        if not any(abs(mx - px) < tol and abs(y - py) < tol for px, py in pts):
+            return None
+    return x0
+
+
+def _symmetrize(pts, x0, tol):
+    """Fold points across ``x0``, cluster the half-plane, then unfold — yielding
+    an exactly mirror-symmetric node set (axis points land on ``x0``)."""
+    left = [(x if x <= x0 else 2 * x0 - x, y) for x, y in pts]
+    out = []
+    for cx, cy in _cluster_points(left, tol):
+        if abs(cx - x0) <= 0.5 * tol:
+            out.append((x0, cy))
+        else:
+            out.append((cx, cy))
+            out.append((2 * x0 - cx, cy))
+    return _cluster_points(out, 1e-6)
+
+
+def _line_density(sample, pa, pb, search, h, n=25):
+    """Mean and min density along a member, searching ``search`` perpendicular
+    (a line integral of the density field, per the literature's recommendation
+    to weight members by the material they actually run through)."""
+    offs = np.linspace(-search, search, max(3, int(2 * search / h) + 1))
+    vals = []
+    for t in np.linspace(0.0, 1.0, n):
+        x = pa[0] + t * (pb[0] - pa[0])
+        y = pa[1] + t * (pb[1] - pa[1])
+        vals.append(max(sample(x + ox, y + oy) for ox in offs for oy in offs))
+    return float(np.mean(vals)), float(np.min(vals))
+
+
+# ── method 2: ground-structure fully-stressed design (fallback) ──────────────
+
+def _refine_fsd(model, density_result, *, search: float | None = None,
+                passover_tol: float | None = None, threshold: float = 0.25,
+                coverage: float = 0.8, prune_frac: float = 0.04):
+    """Fallback completion: add every solid-supported candidate member, size by
+    a fully-stressed solve, then prune the dead ones (in place).  Used when the
+    LP layout optimization is infeasible."""
     mesh = density_result.mesh
     if search is None:
         search = max(3.0 * mesh.h, 0.02 * mesh.width)

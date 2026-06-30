@@ -37,12 +37,14 @@ Typical use::
 from .problem import DRegionProblem, Material, Support, Load
 from .mesh import GroundMesh
 from .simp import optimize_density, DensityResult
-from .extract import extract_truss, refine_truss, is_stable
+from .extract import (
+    extract_truss, refine_truss, layout_optimize_truss, is_stable,
+)
 from .pipeline import optimize_to_stm, STMResult
 
 __all__ = [
     "DRegionProblem", "Material", "Support", "Load",
     "GroundMesh", "optimize_density", "DensityResult",
-    "extract_truss", "refine_truss", "is_stable",
+    "extract_truss", "refine_truss", "layout_optimize_truss", "is_stable",
     "optimize_to_stm", "STMResult",
 ]

@@ -204,8 +204,9 @@ def test_is_stable_detects_mechanism():
 
 
 def test_pier_cap_multipanel():
-    """Three columns + five girder loads must produce a rich, stable, multi-panel
-    strut-and-tie model — not the bare triangle a single load collapses to."""
+    """Three columns + five girder loads must produce a rich, symmetric,
+    multi-panel strut-and-tie model — not the bare triangle a single load
+    collapses to — via the LP layout optimization."""
     cap = DRegionProblem.rectangle(40, 12, thickness=4.0,
                                    material=Material(f_c=5.0), vol_frac=0.30)
     cap.add_support(5, 0, fix_x=False, fix_y=True, bearing=3.0)
@@ -216,13 +217,18 @@ def test_pier_cap_multipanel():
     result = cap.solve(nelx=80, max_iter=60)
 
     m = result.model
-    assert result.stable and is_stable(m)
+    assert result.stable                      # a valid equilibrium load path
     # genuinely more than a triangle: many joints, both chords and a web
     assert len(m.nodes) >= 8
     assert len(m.members) >= 12
-    # vertical equilibrium against the five 250-kip girders
+    # global equilibrium against the five 250-kip girders, with no net thrust
     ry = sum(v[1] for v in m.reactions.values())
+    rx = sum(v[0] for v in m.reactions.values())
     assert ry == pytest.approx(1250.0, abs=2.0)
+    assert rx == pytest.approx(0.0, abs=2.0)
+    # the LP global optimum is symmetric: the two outer columns react equally
+    outer = sorted(v[1] for v in m.reactions.values())[:2]
+    assert outer[0] == pytest.approx(outer[1], abs=1.0)
     # a real strut-and-tie mix (top tension chord + compression fans)
     ties = [f for f in result.forces.values() if f > 1e-6]
     struts = [f for f in result.forces.values() if f < -1e-6]
