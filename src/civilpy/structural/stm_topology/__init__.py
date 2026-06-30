@@ -41,10 +41,15 @@ from .extract import (
     extract_truss, refine_truss, layout_optimize_truss, is_stable,
 )
 from .pipeline import optimize_to_stm, STMResult
+from .design import (
+    optimize_pier_cap, PierCapDesign, DepthCandidate, governing_strut_angle,
+)
 
 __all__ = [
     "DRegionProblem", "Material", "Support", "Load",
     "GroundMesh", "optimize_density", "DensityResult",
     "extract_truss", "refine_truss", "layout_optimize_truss", "is_stable",
     "optimize_to_stm", "STMResult",
+    "optimize_pier_cap", "PierCapDesign", "DepthCandidate",
+    "governing_strut_angle",
 ]
