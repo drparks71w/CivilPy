@@ -83,16 +83,20 @@ TIME_EFFECT_CLAMBDA = {
 }
 
 
+_CLAMBDA_BY_KEY = {key.lower(): value for key, value in TIME_EFFECT_CLAMBDA.items()}
+
+
 @article("8.4.4.9", "Time Effect Factor Clambda")
 def time_effect_clambda(limit_state: str = "Strength I") -> float:
     """Clambda (Table 8.4.4.9-1) by limit state."""
-    # Normalizes strings like "strength i" to "Strength I"
-    normalized_state = limit_state.title()
-    if normalized_state not in TIME_EFFECT_CLAMBDA:
+    # Case-insensitive lookup; ``str.title()`` can't be used because it
+    # corrupts the Roman numerals (e.g. "Strength II" -> "Strength Ii").
+    value = _CLAMBDA_BY_KEY.get(limit_state.strip().lower())
+    if value is None:
         valid_states = ", ".join(TIME_EFFECT_CLAMBDA.keys())
         raise ValueError(f"Invalid limit_state. Must be one of: {valid_states}")
 
-    return TIME_EFFECT_CLAMBDA[normalized_state]
+    return value
 
 
 @article("8.6.2", "Beam Stability Factor CL")
