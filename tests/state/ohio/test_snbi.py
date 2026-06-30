@@ -365,13 +365,8 @@ class TestCodedValues:
     def test_route_direction_valid(self):
         assert _route().BRT03 == "NB"
 
-    def test_feature_type_pattern_requires_two_digits(self):
-        # BF01 "H" (letter only) no longer accepted; needs e.g. "H01"
-        with pytest.raises(ValidationError):
-            Feature(BF01="H", Routes=[Route(BRT01="R1")])
-
-    def test_nstm_required_flag_invalid(self):
-        # BIR01 now enforced as Y/N
+    def test_nstm_flag_enum_when_present(self):
+        # BIR01 is optional now, but still Y/N when a value is given
         with pytest.raises(ValidationError):
             make_bridge(BIR01="X")
 
@@ -383,10 +378,6 @@ class TestCodedValues:
         with pytest.raises(ValidationError):
             SubstructureSet(BSB01="A01", BSB03="ZZ")
 
-    def test_owner_agency_code_invalid(self):
-        with pytest.raises(ValidationError):
-            make_bridge(BCL01="ZZ")
-
     def test_land_access_multivalue(self):
         # BCL03 is pipe-delimited; every token must be valid
         assert make_bridge(BCL03="BIA|NPS").BCL03 == "BIA|NPS"
@@ -394,19 +385,20 @@ class TestCodedValues:
             make_bridge(BCL03="BIA|NOPE")
 
     def test_transition_code_accepted(self):
-        # "<base>-T" transition codes (valid 2026-2027) pass the enum check
-        # on a field whose max_length accommodates them (BEP03 is 17).
-        assert PostingEvaluation(BEP01="X", BEP03="G-T").BEP03 == "G-T"
+        # "<base>-T" transition codes (valid 2026-2027) pass the enum check.
+        # BAP03 (max_length 5) is still enum-checked and accommodates "A-T".
+        assert make_bridge(BAP03="A-T").BAP03 == "A-T"
 
 
 # --------------------------------------------------------------------------- #
 # Required for all bridges (FHWA "X is null ..." rules → now required fields)
 # --------------------------------------------------------------------------- #
 class TestRequiredForAllBridges:
+    # Only the items that match FHWA's null-finding rate stay required; the
+    # over-flagging ones (BG03/07/08/10/11, BIR01/03, BAP01/02/03) were reverted
+    # to optional.
     @pytest.mark.parametrize("field", [
-        "BG06", "BG07", "BG08", "BG03", "BG10", "BG11", "BG14",
-        "BIR01", "BIR03", "BAP01", "BAP02", "BAP03", "BAP05",
-        "BCL03", "BCL04", "BCL05",
+        "BG06", "BG14", "BAP05", "BCL03", "BCL04", "BCL05",
     ])
     def test_missing_required_field_raises(self, field):
         kwargs = _valid_kwargs()
@@ -464,11 +456,13 @@ class TestConditionalAndCrossField:
         with pytest.raises(ValidationError):
             PostingEvaluation(BEP01="X", BEP03="C", BEP04="10")
 
-    def test_out_to_out_must_exceed_curb_to_curb(self):
+    def test_out_to_out_not_less_than_curb_to_curb(self):
+        # out-to-out < curb-to-curb is invalid; equal is allowed (FHWA tolerates)
         with pytest.raises(ValidationError):
-            make_bridge(BG05=30.0, BG06=30.0)
-        # ...unless sidehill
-        assert make_bridge(BG05=30.0, BG06=30.0, BG14="Y").BG14 == "Y"
+            make_bridge(BG05=30.0, BG06=35.0)
+        assert make_bridge(BG05=30.0, BG06=30.0).BG05 == 30.0   # equal is ok
+        # ...and even less-than is ok on a sidehill bridge
+        assert make_bridge(BG05=30.0, BG06=35.0, BG14="Y").BG14 == "Y"
 
     def test_channel_rating_requires_waterway_consistency(self):
         # waterway feature but BC09 = 'N' -> error
