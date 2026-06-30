@@ -300,3 +300,34 @@ def test_optimize_pier_cap_picks_shallowest_feasible():
     assert len(m.loads) == 5 and len(m.supports) == 3
     ry = sum(v[1] for v in m.reactions.values())
     assert ry == pytest.approx(1250.0, rel=0.02)
+
+
+# ── pluggable unit-price provider (ODOT estimator tie-in) ─────────────────────
+
+def test_price_provider_injection_and_fallback():
+    """estimate_cost resolves prices: explicit > registered provider > defaults,
+    and falls back gracefully when the provider is absent or raises."""
+    from civilpy.structural.stm_topology import (
+        set_price_provider, resolve_prices, estimate_cost, DEFAULT_PRICES,
+    )
+    try:
+        # no provider -> civilpy defaults
+        assert resolve_prices()["concrete_cy"] == DEFAULT_PRICES["concrete_cy"]
+        # an explicit mapping always wins
+        assert resolve_prices({"concrete_cy": 1000.0})["concrete_cy"] == 1000.0
+        # a registered provider (e.g. the ODOT warehouse) is used by default
+        set_price_provider(lambda: {"concrete_cy": 912.0, "steel_lb": 1.05,
+                                     "source": "odot_warehouse"})
+        assert resolve_prices()["concrete_cy"] == 912.0
+        est = estimate_cost(27.0, 0.0)            # 1 cy concrete, no steel
+        assert est.concrete_cost == pytest.approx(912.0)
+        assert est.unit_prices["source"] == "odot_warehouse"
+        # explicit args still override the provider
+        assert resolve_prices({"concrete_cy": 500.0})["concrete_cy"] == 500.0
+        # a provider that raises must not crash the take-off
+        def _boom():
+            raise RuntimeError("warehouse offline")
+        set_price_provider(_boom)
+        assert resolve_prices()["concrete_cy"] == DEFAULT_PRICES["concrete_cy"]
+    finally:
+        set_price_provider(None)
