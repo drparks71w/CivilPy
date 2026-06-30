@@ -116,8 +116,28 @@ fractional digit; rejects 12.55).
 in the base model** (chosen 2026-06-30; single-developer library, no external
 consumers, so the stricter contract is acceptable and matches FHWA directly).
 
-## Verification still owed
-Fresh `validate_snbi` run + re-compare vs FHWA to confirm these rules raise
-agreement **without** over-flagging (e.g. requiring a `BH*`/`Route`/`SpanSet`
-item more broadly than FHWA's actual rule scope, or enum tables narrower than
-FHWA's). Needs warehouse DB access.
+## Calibration round 1 (0.3.3, against the 6-30-2026 NBIS run)
+First real `validate_snbi --nbis` run vs FHWA (28,045 bridges) raised item
+coverage 12% → 37% (BOTH 8 → 25) but also over-reported ~5.5×. Per-item ratios
+(attributing model-level errors to the items named in their messages) showed
+two over-reach patterns, now corrected:
+
+- **Reverted required → optional** (FHWA flags their nulls far less often than
+  our API data omits them): BG03, BG07, BG08, BG10, BG11, BIR01, BIR03, BAP01,
+  BAP02, BAP03; Route BRT03/04/05; dropped BSP12 from the span deck-required
+  set. Kept the items that matched (~1×): BG06, BG14, BAP05, BCL03/04/05, the
+  highway `BH*` set, BN02/04/06, BSP02/04/05/06/09.
+- **Dropped enum checks that rejected valid Ohio codes** (FHWA flagged 0):
+  BCL01/BCL02 owner/maint, BF01 pattern, BEP03, BSP07/08/10/11/13, BSB05/06/07.
+- **Relaxed** BG05 > BG06 to BG05 ≥ BG06 (equal allowed; FHWA flagged 21 vs our
+  1,627).
+
+> Caveat (per the data owner): AssetWise's "export FHWA data" feed is what FHWA
+> validated, and it can differ from our REST API read — so some residual
+> over/under counts (e.g. BG02/BG09 required-but-FHWA-0, BRT01 "highway has no
+> route") may be **data-source** differences, not rule bugs. Confirm against the
+> export before tightening/loosening those further.
+
+## Still owed
+Re-run + re-compare after 0.3.3 to confirm the dial-back landed; then revisit
+deferred section-D rules and the suspected Route-mapping/data-source gap.
