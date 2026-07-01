@@ -228,9 +228,13 @@ class TestRequiredDatasets:
 # Feature-type conditional rules
 # --------------------------------------------------------------------------- #
 class TestFeatureConditionals:
-    def test_highway_requires_route(self):
-        with pytest.raises(ValidationError):
-            make_bridge(Features=[Feature(BF01="H01")])
+    def test_highway_without_route_is_tolerated(self):
+        # A highway feature that came back from the API with no Route dataset
+        # also came back without its BH* detail block; that is a data-source gap
+        # (FHWA's export carries it, the REST read does not), not a coding error,
+        # so it must NOT raise -- otherwise we re-report the gap thousands of times.
+        b = make_bridge(Features=[Feature(BF01="H01")])
+        assert b.Features[0].BF01 == "H01"
 
     def test_waterway_requires_navigable_code(self):
         with pytest.raises(ValidationError):
