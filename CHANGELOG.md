@@ -5,6 +5,28 @@ Versions follow [Semantic Versioning](https://semver.org/) (major.minor.patch).
 
 ---
 
+## [0.3.6] - 2026-07-01
+
+- **AASHTO 6.13.6.1 bolted field-splice designer** (`structural.aashto.lrfd`). New
+  `bolted_field_splice` module: `design_splice(SpliceInput) -> SpliceDesign` sizes
+  the flange and web bolt groups, lays out the bolt pattern (gage / pitch / edge /
+  end), sizes the splice plates, and runs the limit-state checks by feeding the
+  existing `steel`/`splices` primitives. Exported from the `lrfd` package.
+  - Extended `splices.py` with the remaining article functions: splice-plate
+    design-force apportioning (C6.13.6.1.3b), filler-plate reduction R
+    (6.13.6.1.4), net-section limit An ≤ 0.85·Ag (6.13.5.2), composite slab
+    crushing (D6.1), flange moment resistance, and bolt spacing/edge limits
+    (6.13.2.6).
+  - `steel.bolt_shear_resistance` gained a `design_year` switch selecting the
+    0.56/0.45 shear coefficient (2017+) vs the legacy 0.48/0.38 (6.13.2.7); the
+    default is unchanged.
+  - Validated to the cent against two independently worked plate-girder splices
+    (bolt counts, layout, plate sizes, block-shear modes, bearing, slab crushing);
+    `tests/structural/test_bolted_field_splice.py`. Known limitation: the web
+    moment-couple Huw for the inadequate-flange case (needs elastic flange
+    stresses) is surfaced through the failing flange checks rather than by
+    enlarging the web group.
+
 ## [0.3.5] - 2026-07-01
 
 - **SNBI validation — B.RT.01 optional** (`state.ohio.snbi`). AssetWise reports a
