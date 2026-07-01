@@ -5,6 +5,23 @@ Versions follow [Semantic Versioning](https://semver.org/) (major.minor.patch).
 
 ---
 
+## [0.3.7] - 2026-07-01
+
+- **Bolted field splice — web horizontal force Hw** (`structural.aashto.lrfd`).
+  The web bolt group is now sized for the AASHTO 6.13.6.1.3c moment couple: when
+  the flanges cannot resist the full splice moment, the excess is delivered to
+  the web as `Hw = (|Mu| - Mflange)/(D/4)` and the web bolts are designed for the
+  resultant of Hw and the design shear. The controlling ± Hw combines with each
+  composite service shear case; deck casting keeps its own. Reproduces the second
+  worked example's 66-bolt web exactly (previously governed only by the
+  maximum-pitch layout).
+  - Fixed the Strength I permanent-load factor in `_factor_loads`: gamma_p is now
+    chosen (max 1.25/1.50 vs min 0.90/0.65) to maximize the moment in the
+    direction checked, per AASHTO 3.4.1 — required for splices whose dead-load
+    moment is negative at the splice.
+  - Web checks now include a Service II slip check and bearing against the
+    shear-plus-Hw resultant.
+
 ## [0.3.6] - 2026-07-01
 
 - **AASHTO 6.13.6.1 bolted field-splice designer** (`structural.aashto.lrfd`). New

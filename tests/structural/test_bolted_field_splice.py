@@ -124,6 +124,14 @@ class TestDesignOne:
         assert w.gage_groups == pytest.approx(4.75)
         assert w.design_force == pytest.approx(467.91, rel=1e-3)  # phi*Vn
 
+    def test_web_has_no_moment_force(self):
+        # The flanges carry the full splice moment here, so Hw = 0 and the web
+        # is governed by the maximum-pitch layout (26 bolts).
+        assert self.d.web.extra["hw_strength"] == pytest.approx(0.0)
+        assert self.d.web.extra["hw_service"] == pytest.approx(0.0)
+        assert self.d.web.total_bolts == 26
+        assert self.d.web.strength_bolts == 10
+
     def test_all_checks_pass(self):
         assert self.d.ok
         top = {c.name: c for c in self.d.top_flange.checks}
@@ -141,9 +149,11 @@ class TestDesignOne:
 
 # ---------------------------------------------------------------------------
 # Worked design 2 — deeper girder, unstiffened left web, moment-critical.
-# The flanges are over-stressed at Service II: the negative-moment slip check
-# is expected to fail (mirrors the reference NOTICE), so the overall design is
-# not "ok".  Bolt sizing and layout still match the reference.
+# The flanges cannot carry the full negative splice moment, so the excess is
+# delivered to the web as a horizontal force Hw (6.13.6.1.3c) that drives the
+# web bolt count to 66.  The flanges are also over-stressed at Service II: the
+# negative-moment slip check fails (mirrors the reference NOTICE), so the
+# overall design is not "ok".  Bolt sizing and layout match the reference.
 # ---------------------------------------------------------------------------
 
 def _design_two():
@@ -191,6 +201,24 @@ class TestDesignTwo:
         assert self.d.top_flange.total_bolts == 20
         assert self.d.top_flange.strength_bolts == 20
         assert self.d.bottom_flange.total_bolts == 28
+
+    def test_factored_strength_moments(self):
+        # Dead load is negative here, so Strength I uses the maximum gamma_p
+        # (1.25/1.50) for the negative moment: reference -15184.75 kip-ft.
+        m = self.d.factored_moments
+        assert m["strength_neg"] == pytest.approx(-15184.75, rel=1e-6)
+        assert m["strength_pos"] == pytest.approx(8017.1, rel=1e-5)
+
+    def test_web_moment_force_governs(self):
+        # Excess of the negative Strength moment over the flange moment
+        # resistance is delivered to the web: Hw ~ 3319 kip (D/4 lever arm),
+        # driving the web to 66 bolts.
+        w = self.d.web
+        assert w.extra["hw_strength"] == pytest.approx(3319.0, rel=0.01)
+        assert w.total_bolts == 66
+        assert w.strength_bolts == 66
+        assert w.pitch == pytest.approx(3.125)
+        assert w.plate_length == pytest.approx(103.5)
 
     def test_flange_layout_and_plates(self):
         t = self.d.top_flange
