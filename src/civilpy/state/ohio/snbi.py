@@ -224,8 +224,9 @@ _SNBI_CODES = {
               | _seq("S", 1, 3)),
     "BSB07": ({"0"} | _seq("A", 1, 5) | {"AX"} | _seq("C", 1, 3) | {"CX"}
               | {"E01", "EX", "P01", "S01", "S02", "SX", "T01", "U", "X"}),
-    # Appraisal
-    "BAP03": {"0", "A", "B", "C", "D", "E", "U"},
+    # Appraisal. Ohio reports "N" (not applicable / not scour-critical) on ~6,000
+    # bridges and FHWA accepts it (flags 0), so it is a valid code here.
+    "BAP03": {"0", "N", "A", "B", "C", "D", "E", "U"},
     "BAP05": {"0", "N", "A", "B", "C", "D"},
 }
 
@@ -474,13 +475,15 @@ class Feature(BaseModel):
         ftype = (self.BF01 or "").upper()
         # Highway sub-items reported for every highway feature (FHWA flags null)
         highway_required = ("BH02", "BH06", "BH09", "BH11", "BH13", "BH16", "BH17")
-        # B.RT.01 (Critical): highway features must carry at least one route
-        if ftype.startswith("H"):
-            if not self.Routes or not any(r.BRT01 for r in self.Routes):
-                raise ValueError(
-                    "A highway feature (BF01 begins with 'H') must report at "
-                    "least one Route dataset with BRT01"
-                )
+        # NOTE: SNBI makes B.RT.01 (a Route dataset) critical for every highway
+        # feature, but FHWA's processing report flags it 0 times while our API
+        # read omits the Route sub-datasets on ~7,300 bridges (the "export FHWA
+        # data" feed carries them, the REST read does not). A highway feature that
+        # came back without a Route also came back without its BH* detail block,
+        # so we only enforce the highway sub-item requiredness on features that
+        # were fully retrieved (have a Route with BRT01). Otherwise we would just
+        # re-report the one data-source gap thousands of times across BH02/06/... .
+        if ftype.startswith("H") and self.Routes and any(r.BRT01 for r in self.Routes):
             missing = [f for f in highway_required if getattr(self, f) is None]
             if missing:
                 raise ValueError(
@@ -714,8 +717,11 @@ class Bridge(BaseModel):
     BL12: Optional[Annotated[str, StringConstraints(max_length=300, strip_whitespace=True)]] = None
 
     # --- Classification (B.CL) -------------------------------------------------
-    BCL01: Annotated[str, StringConstraints(max_length=4, min_length=1, strip_whitespace=True)]
-    BCL02: Annotated[str, StringConstraints(max_length=4, min_length=1, strip_whitespace=True)]
+    # BCL01/BCL02 (owner / maintenance responsibility): SNBI reports them for all
+    # bridges, but FHWA flags their null 0 times while our API read omits them on
+    # ~260 records (data-source gap), so they are optional rather than required.
+    BCL01: Optional[Annotated[str, StringConstraints(max_length=4, strip_whitespace=True)]] = None
+    BCL02: Optional[Annotated[str, StringConstraints(max_length=4, strip_whitespace=True)]] = None
     BCL03: Annotated[str, StringConstraints(max_length=30, strip_whitespace=True)]  # Land Access (all bridges)
     BCL04: Annotated[str, StringConstraints(max_length=1, strip_whitespace=True)]   # Historic (all bridges)
     BCL05: Annotated[str, StringConstraints(max_length=1, strip_whitespace=True)]   # Toll (all bridges)
@@ -727,18 +733,26 @@ class Bridge(BaseModel):
 
     # --- Geometry (B.G) --------------------------------------------------------
     BG01: Annotated[float, Field(ge=0, le=999999.9)]   # NBIS Bridge Length (> 20 ft to be NBIS)
-    BG02: Annotated[float, Field(ge=0, le=999999.9)]   # Total Bridge Length
+    # BG02 Total Bridge Length: FHWA flags its null 0 times but our API read omits
+    # it on ~600 records (data-source gap), so optional + range-checked, not required.
+    BG02: Optional[Annotated[float, Field(ge=0, le=999999.9)]] = None
     # NOTE: BG03/BG07/BG08/BG10/BG11 were briefly made required to match FHWA's
     # "null" findings, but the FHWA processing report flags those nulls far less
     # often than ODOT's API data omits them (FHWA's "export FHWA data" feed
     # differs from our API read), so they are back to optional + range-checked.
     BG03: Optional[Annotated[float, Field(ge=0, le=9999.9)]] = None
     BG04: Optional[Annotated[float, Field(ge=0, le=9999.9)]] = None
-    BG05: Annotated[float, Field(gt=0, le=999.9)]      # Width Out-to-Out (> 0)
+    # BG05 Width Out-to-Out: FHWA flags its null 0 times (it only appears in the
+    # cross-field out-to-out >= curb-to-curb rule, 21x) while our API read omits it
+    # on ~1,600 records, so optional + range-checked, not required. (BG06
+    # curb-to-curb stays required -- FHWA does flag its nulls.)
+    BG05: Optional[Annotated[float, Field(gt=0, le=999.9)]] = None
     BG06: Annotated[float, Field(gt=0, le=999.9)]      # Width Curb-to-Curb (> 0, all bridges)
     BG07: Optional[Annotated[float, Field(ge=0, le=99.9)]] = None
     BG08: Optional[Annotated[float, Field(ge=0, le=99.9)]] = None
-    BG09: Annotated[float, Field(gt=0, le=999.9)]      # Approach Roadway Width (> 0)
+    # BG09 Approach Roadway Width: FHWA flags its null 0 times but our API read
+    # omits it on ~880 records (data-source gap), so optional + range-checked.
+    BG09: Optional[Annotated[float, Field(gt=0, le=999.9)]] = None
     BG10: Optional[Annotated[str, StringConstraints(max_length=1, strip_whitespace=True)]] = None
     BG11: Optional[Annotated[int, Field(ge=0, le=99)]] = None
     BG12: Optional[Annotated[str, StringConstraints(max_length=2, strip_whitespace=True)]] = None
@@ -944,10 +958,8 @@ class Bridge(BaseModel):
     def _overtopping(cls, v):
         return _require_in(v, {str(n) for n in range(7)} | {"VLM-T", "HVH-T"}, "BAP02 Overtopping Likelihood")
 
-    @field_validator("BAP04")
-    @classmethod
-    def _scour_poa(cls, v):
-        return _require_in(v, {"0", "Y", "N"}, "BAP04 Scour Plan of Action")
+    # BAP04 (Scour Plan of Action) is not enum-checked: Ohio reports codes beyond
+    # {0, Y, N} and FHWA flags them 0 times (data-source gap), so we accept as-is.
 
     # === Cross-field model validators =========================================
     @model_validator(mode="after")

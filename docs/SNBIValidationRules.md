@@ -138,6 +138,45 @@ two over-reach patterns, now corrected:
 > route") may be **data-source** differences, not rule bugs. Confirm against the
 > export before tightening/loosening those further.
 
+## Calibration round 2 (0.3.4, against the 7-1-2026 NBIS run)
+First run against the **local** DB (full 46,355-bridge AssetWise `--snbi-only`
+sync; 28,045 NBIS). Started at 22,534 errors (5.5× FHWA's 8,301) and dialled
+down to **5,929 (0.71×)** by removing the pathological over-reporters — each one
+an item FHWA's own report flags **0 times** while our REST read trips it in bulk
+(the "export FHWA data" feed carries data the API read omits). Attributing
+model-level errors to the items named in their messages, per-item ratios landed
+in the FHWA band (BH02 0.8×, BH06 0.5×, BH09/11 1.4×, BAP05 1.2×, BSP02 1.1×).
+
+Principle applied: **strip only rules FHWA does not enforce at all (FHWA = 0);
+keep rules FHWA enforces even when our pull over-triggers them on missing data.**
+
+- **BRT01 highway-route requirement dropped (7,358 → 0).** SNBI makes a Route
+  dataset critical for every highway feature, but FHWA flags it 0×; ~7,300
+  highway features come back from the API with neither their Route nor their
+  `BH*` detail block. The `BH*` requiredness is now gated on the feature having a
+  Route (i.e. having actually been retrieved), so it no longer re-reports the one
+  data-source gap thousands of times across BH02/06/09/11/13/16/17.
+- **BAP03 enum accepts "N" (5,999 → 0).** Ohio codes Scour Vulnerability "N"
+  (not applicable); FHWA accepts it (BAP05 already allowed "N").
+- **BG05 out-to-out → optional (1,624 → 0).** FHWA flags BG05 only via the
+  cross-field out-to-out ≥ curb-to-curb rule (21×), never for nulls, unlike BG06
+  curb-to-curb (kept required — FHWA *does* flag its nulls, 1,232×).
+- **BCL01/BCL02, BG02, BG09 → optional** (owner/maint, total length, approach
+  width): all FHWA = 0 on nulls; data-source omissions.
+
+Kept despite >1.5× (FHWA enforces them; the excess is our data gap, not a rule
+bug): BG06 (1.6×), BH13 (2.2×), BCL04/BCL05 toll/historic, BRT03/05.
+
+### Finding: BRT01 is a field-mapping bug, not a rule bug
+The 417 residual BRT01 errors are 281× the literal string `"Unknown"` (over the
+3-char max) plus route *numbers* (`270`, `71`, `480`) failing "must begin with
+R". That means our AssetWise→SNBI mapping is loading the route **number** into
+BRT01 **Route Designation**. This is the long-suspected Route-mapping gap —
+fix the mapping in `snbi_ui`, do **not** loosen the rule to swallow it.
+
 ## Still owed
-Re-run + re-compare after 0.3.3 to confirm the dial-back landed; then revisit
-deferred section-D rules and the suspected Route-mapping/data-source gap.
+- **snbi_ui:** fix the BRT01 Route Designation field mapping (see finding above).
+- **civilpy:** the remaining FHWA MISSes are unimplemented/deferred rules, not
+  regressions — BIR02 (2085, Flag advisory), BG15 (358), BSP01 (211, culvert
+  definition), BIR01/03, BC09, BF03, BAP01/02. Revisit section-D deferrals when
+  chasing coverage rather than precision.

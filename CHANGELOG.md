@@ -5,6 +5,26 @@ Versions follow [Semantic Versioning](https://semver.org/) (major.minor.patch).
 
 ---
 
+## [0.3.4] - 2026-07-01
+
+- **SNBI validation — calibration round 2** (`state.ohio.snbi`). First run against
+  a full local AssetWise sync (46,355 bridges / 28,045 NBIS) cut the error count
+  from 22,534 (5.5× FHWA's 8,301) to **5,929 (0.71×)** by removing over-reporters
+  that FHWA's own report flags 0 times (our REST read omits data the "export FHWA
+  data" feed carries). Principle: strip only rules FHWA does not enforce at all;
+  keep the ones it does even when our pull over-triggers them on missing data.
+  - Dropped the "highway feature must report a Route (BRT01)" requirement (7,358
+    false errors); the BH02/06/09/11/13/16/17 requiredness is now gated on the
+    feature actually having a Route, so it no longer re-reports the same
+    incomplete-pull records thousands of times.
+  - BAP03 Scour Vulnerability now accepts "N" (not applicable), matching BAP05.
+  - BG05 Width Out-to-Out, BG02 Total Length, BG09 Approach Width, and BCL01/BCL02
+    owner/maintenance are optional (FHWA flags none of their nulls); BG06
+    curb-to-curb stays required (FHWA does flag its nulls).
+  - See `docs/SNBIValidationRules.md` for the per-item table and the finding that
+    the residual BRT01 errors are an `snbi_ui` field-mapping bug (route *number*
+    loaded into Route *Designation*), to be fixed there, not by loosening the rule.
+
 ## [0.3.3] - 2026-06-30
 
 - **SNBI validation — calibration against FHWA** (`state.ohio.snbi`). The first
