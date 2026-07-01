@@ -30,20 +30,18 @@ converted internally).  The design procedure follows the 8th/9th Edition
 simplified flange-force method (C6.13.6.1.3b, 6.13.6.1.3c); the bolt shear
 coefficient is the 8th-Edition value (0.56/0.45) via ``design_year``.
 
+The web bolt group is sized for the design shear combined with the horizontal
+force ``Hw`` from the portion of the moment the flanges cannot carry
+(6.13.6.1.3c): the excess of the factored moment over the flange moment
+resistance acts on a D/4 lever arm, ``Hw = (|Mu| - Mflange)/(D/4)``, and the
+web bolts resist the resultant of ``Hw`` and the shear.  When the flanges carry
+the whole moment ``Hw`` is zero and the web is governed by the maximum-pitch
+(sealing) layout.
+
 Known limitations mirrored from the reference procedure: AASHTO 6.10.1.8
 (tension flanges with holes) is not checked; two-row seal-gage edge cases and
 rolled-beam splices with >10% inner/outer plate-area difference are flagged
 rather than resolved.
-
-The web bolt group is sized for the design shear plus the geometric
-(maximum-pitch) requirement.  When the flanges cannot resist the full splice
-moment, AASHTO 6.13.6.1.3c transfers the excess as a horizontal web force
-``Huw = (Aw/2)*(Rh*Fcf + Rcf*fncf)`` that can dominate the web bolt count; the
-elastic flange stresses ``Fcf``/``fncf`` require a composite section-property
-analysis that this module does not yet perform, so that governing case is
-reported through the flange ``Mflange``/slip checks (which fail) rather than by
-enlarging the web group.  A ``NOTICE``-level flange check therefore signals a
-splice whose web should be re-designed by hand for the moment couple.
 """
 
 from __future__ import annotations
@@ -295,17 +293,29 @@ class SpliceDesign:
 
 def _factor_loads(loads: SpliceLoads) -> tuple[dict, dict]:
     """Factored moments (kip-ft) and shears (kip) for the governing splice
-    load combinations: Strength I (+/-), Service II (+/-), Deck Casting."""
+    load combinations: Strength I (+/-), Service II (+/-), Deck Casting.
+
+    For Strength I the permanent-load factor gamma_p is taken as its maximum
+    (DC 1.25, DW 1.50) or minimum (DC 0.90, DW 0.65) to *maximize* the moment
+    in the direction being checked (AASHTO 3.4.1, Table 3.4.1-2): the maximum
+    factor is used when the dead-load moment has the same sign as the live-load
+    extreme, the minimum when it opposes it.  Service II uses gamma_p = 1.0."""
     lo = loads
-    dc = lo.dc1_m + lo.dc2_m
+    dc_m = lo.dc1_m + lo.dc2_m
+
+    def strength(ll_m, positive):
+        # dead-load factor adds to the extreme when its moment shares the sign.
+        want = 1.0 if positive else -1.0
+        g_dc = 1.25 if dc_m * want >= 0 else 0.90
+        g_dw = 1.50 if lo.dw_m * want >= 0 else 0.65
+        return g_dc * dc_m + g_dw * lo.dw_m + 1.75 * ll_m
+
     m = {
         "deck_cast": 1.4 * lo.deck_cast_m,
-        "strength_pos": 1.25 * lo.dc1_m + 1.25 * lo.dc2_m + 1.5 * lo.dw_m
-        + 1.75 * lo.ll_pos_m,
-        "strength_neg": 0.9 * lo.dc1_m + 0.9 * lo.dc2_m + 0.65 * lo.dw_m
-        + 1.75 * lo.ll_neg_m,
-        "service_pos": dc + lo.dw_m + 1.3 * lo.ll_pos_m,
-        "service_neg": dc + lo.dw_m + 1.3 * lo.ll_neg_m,
+        "strength_pos": strength(lo.ll_pos_m, positive=True),
+        "strength_neg": strength(lo.ll_neg_m, positive=False),
+        "service_pos": dc_m + lo.dw_m + 1.3 * lo.ll_pos_m,
+        "service_neg": dc_m + lo.dw_m + 1.3 * lo.ll_neg_m,
     }
     dcv = lo.dc1_v + lo.dc2_v
     v = {
@@ -527,6 +537,20 @@ def _flange_checks(inp, comp, plates, ctrl, pfy, fy, fu, hole, n_rows):
 
 # --- web design -------------------------------------------------------------
 
+def _web_moment_force(mu_kft: float, m_flange_kft: float,
+                      web_depth: float) -> float:
+    """Horizontal web force Hw for the moment the flanges cannot carry
+    (6.13.6.1.3c).  The excess of the factored moment ``mu_kft`` over the
+    moment the flange splices resist ``m_flange_kft`` is delivered to the web
+    bolt group as a horizontal force acting on a lever arm of D/4:
+    ``Hw = (|Mu| - Mflange) / (D/4)``.  Returns 0 when the flanges are
+    adequate.  Moments in kip-ft, ``web_depth`` in inches, Hw in kip."""
+    excess = abs(mu_kft) - m_flange_kft
+    if excess <= 0.0:
+        return 0.0
+    return excess * 12.0 / (web_depth / 4.0)
+
+
 def _web_vn(side: GirderSide) -> float:
     fy, _ = _grade(side.web_material)
     d_o = (side.stiffener_spacing_ft * 12.0
@@ -542,12 +566,15 @@ def _web_vn(side: GirderSide) -> float:
     return res.factored_capacity
 
 
-def _design_web(inp: SpliceInput) -> ComponentDesign:
+def _design_web(inp: SpliceInput, top: ComponentDesign,
+                bottom: ComponentDesign) -> ComponentDesign:
     b, wp = inp.bolts, inp.web_plate
     n_rows = inp.web_rows
     v_left = _web_vn(inp.left)
     v_right = _web_vn(inp.right)
     v_uw = min(v_left, v_right)
+    # controlling web depth (the one whose shear governs)
+    web_depth = inp.left.web_depth if v_left <= v_right else inp.right.web_depth
 
     bolt = steel.bolt_shear_resistance(
         d_bolt=b.diameter, f_ub=BOLT_FU[b.bolt_type], n_planes=wp.shear_planes,
@@ -555,18 +582,53 @@ def _design_web(inp: SpliceInput) -> ComponentDesign:
     bolt_cap = bolt.factored_capacity
 
     m, v = _factor_loads(inp.loads)
-    h_w = 0.0  # flanges carry the moment in the standard case
-    resultant = math.hypot(v_uw, h_w)
+
+    # Flange moment arms (positive = composite deck in compression, negative /
+    # deck-casting = bare steel), reused from the flange design.
+    arm_pos = top.extra["arm_pos"]
+    arm_steel = top.extra["arm_steel"]
+
+    # --- horizontal web force Hw (6.13.6.1.3c) --------------------------------
+    # Strength: the excess of the factored moment over the moment the flange
+    # splices resist (min tension-flange design force x arm) goes to the web.
+    m_flange_pos = bottom.design_force * arm_pos / 12.0
+    m_flange_neg = top.design_force * arm_steel / 12.0
+    hw_strength_pos = _web_moment_force(m["strength_pos"], m_flange_pos,
+                                        web_depth)
+    hw_strength_neg = _web_moment_force(m["strength_neg"], m_flange_neg,
+                                        web_depth)
+    hw_strength = max(hw_strength_pos, hw_strength_neg)
+
+    resultant = math.hypot(v_uw, hw_strength)
     strength_bolts = _ceil_mult(resultant / bolt_cap, n_rows)
 
     slip = steel.bolt_slip_resistance(
         bolt_grade=b.bolt_type, d_bolt=b.diameter, n_planes=wp.shear_planes,
         hole_type=b.hole_type, surface_class=b.surface_class)
     pt_per = slip.capacity
+
+    # Service: Hw from the moment the flange *slip* resistance cannot carry
+    # (flange bolts x their pretension slip x arm).  The larger of the two
+    # composite directions is combined with each composite shear case; deck
+    # casting (bare steel) carries only its own Hw.
+    pt_flange = top.extra["pt_per"]
+    m_slip_pos = bottom.total_bolts * pt_flange * arm_pos / 12.0
+    m_slip_neg = top.total_bolts * pt_flange * arm_steel / 12.0
+    m_slip_deck = bottom.total_bolts * pt_flange * arm_steel / 12.0
+    hw_service = max(
+        _web_moment_force(m["service_pos"], m_slip_pos, web_depth),
+        _web_moment_force(m["service_neg"], m_slip_neg, web_depth),
+    )
+    hw_deck = _web_moment_force(m["deck_cast"], m_slip_deck, web_depth)
+
+    r_deck = math.hypot(v["deck_cast"], hw_deck)
+    r_service_pos = math.hypot(v["service_pos"], hw_service)
+    r_service_neg = math.hypot(v["service_neg"], hw_service)
+    slip_resultant = max(abs(r_deck), abs(r_service_pos), abs(r_service_neg))
     slip_bolts = max(
-        _ceil_mult(abs(v["deck_cast"]) / pt_per, n_rows),
-        _ceil_mult(abs(v["service_pos"]) / pt_per, n_rows),
-        _ceil_mult(abs(v["service_neg"]) / pt_per, n_rows),
+        _ceil_mult(abs(r_deck) / pt_per, n_rows),
+        _ceil_mult(abs(r_service_pos) / pt_per, n_rows),
+        _ceil_mult(abs(r_service_neg) / pt_per, n_rows),
     )
 
     # plate-height geometry -> maximum bolt count at max seal spacing
@@ -620,13 +682,17 @@ def _design_web(inp: SpliceInput) -> ComponentDesign:
         extra={"pitch_bolts": pitch_bolts, "height_adj": height_adj,
                "per_row": per_row, "v_left": v_left, "v_right": v_right,
                "Vp_left": 0.58 * _grade(inp.left.web_material)[0]
-               * inp.left.web_depth * inp.left.web_thickness},
+               * inp.left.web_depth * inp.left.web_thickness,
+               "hw_strength": hw_strength, "hw_strength_pos": hw_strength_pos,
+               "hw_strength_neg": hw_strength_neg, "hw_service": hw_service,
+               "strength_resultant": resultant,
+               "slip_resultant": slip_resultant, "pt_per": pt_per},
     )
-    _web_checks(inp, comp, v_uw)
+    _web_checks(inp, comp, v_uw, resultant, slip_resultant)
     return comp
 
 
-def _web_checks(inp, comp, v_uw):
+def _web_checks(inp, comp, v_uw, strength_resultant, slip_resultant):
     wp = inp.web_plate
     fy, fu = _grade(wp.material)
     hole = _hole_dia(inp.bolts.diameter)
@@ -635,6 +701,8 @@ def _web_checks(inp, comp, v_uw):
     a_g = 2.0 * comp.plate_length * wp.thickness
     per_row = comp.extra["per_row"]
     a_n = a_g - 2.0 * per_row * hole * wp.thickness
+    # The web plates carry the vertical shear on their gross/net section;
+    # the bolt group carries the shear-plus-Hw resultant.
     # factored shear-yield resistance of the two web plates (6.13.5.2 /
     # 6.13.4-2): phi_v = 1.0 for shear.
     checks.append(CheckResult(
@@ -643,13 +711,28 @@ def _web_checks(inp, comp, v_uw):
     checks.append(CheckResult(
         article="6.13.5.2", name="web plate shear rupture",
         capacity=0.80 * 0.58 * fu * a_n, demand=abs(v_uw)))
-    bearing = steel.bolt_bearing_resistance(
-        d_bolt=inp.bolts.diameter, t_ply=wp.thickness, f_u_ply=fu,
-        clear_distance=comp.end - hole / 2.0)
+    # bearing on the (controlling, thinner) web at each bolt hole vs the bolt
+    # shear capacity, summed over the group (6.13.2.9), against the resultant.
+    web_t = min(inp.left.web_thickness, inp.right.web_thickness)
+    web_fu = min(_grade(inp.left.web_material)[1],
+                 _grade(inp.right.web_material)[1])
+    bolt = steel.bolt_shear_resistance(
+        d_bolt=inp.bolts.diameter, f_ub=BOLT_FU[inp.bolts.bolt_type],
+        n_planes=wp.shear_planes, threads_excluded=inp.bolts.web_threads_excluded,
+        design_year=inp.design_year)
+    interior = steel.bolt_bearing_resistance(
+        d_bolt=inp.bolts.diameter, t_ply=web_t, f_u_ply=web_fu,
+        clear_distance=comp.pitch - hole)
+    per_bolt = min(bolt.factored_capacity, interior.factored_capacity)
     checks.append(CheckResult(
         article="6.13.2.9", name="web bearing",
-        capacity=bearing.factored_capacity * comp.total_bolts,
-        demand=abs(v_uw)))
+        capacity=per_bolt * comp.total_bolts, demand=abs(strength_resultant)))
+    # Service II slip resistance of the web bolt group (6.13.2.8) against the
+    # governing shear-plus-Hw service resultant.
+    checks.append(CheckResult(
+        article="6.13.2.8", name="web Service II slip",
+        capacity=comp.total_bolts * comp.extra["pt_per"],
+        demand=abs(slip_resultant)))
 
 
 # --- top-level entry --------------------------------------------------------
@@ -660,13 +743,16 @@ def design_splice(inp: SpliceInput) -> SpliceDesign:
     m, v = _factor_loads(inp.loads)
     top = _design_flange(inp, "top")
     bottom = _design_flange(inp, "bottom")
-    web = _design_web(inp)
+    web = _design_web(inp, top, bottom)
 
-    # composite slab crushing check (Appendix D6.1) at the tension flange
+    # composite slab crushing check (Appendix D6.1): the positive-moment
+    # tension-flange force plus the web horizontal force for that direction
+    # must not crush the deck.
     if inp.deck_composite and inp.deck_eff_width > 0:
+        hw_pos = web.extra.get("hw_strength_pos", 0.0)
         sc = splices.slab_crushing_resistance(
             f_c=inp.fc, b_eff=inp.deck_eff_width, t_s=inp.deck_thickness,
-            demand_force=bottom.design_force)
+            demand_force=bottom.design_force + hw_pos)
         sc.name = "composite slab crushing"
         bottom.checks.append(sc)
 
