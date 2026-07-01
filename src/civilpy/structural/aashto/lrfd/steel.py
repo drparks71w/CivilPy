@@ -426,13 +426,20 @@ def bolt_shear_resistance(
     threads_excluded: bool = True,
     v_u: float | None = None,
     long_joint: bool = False,
+    design_year: int | None = None,
 ) -> CheckResult:
     """Shear resistance of a high-strength bolt (6.13.2.7):
-    Rn = 0.48*Ab*Fub*Ns with threads excluded from the shear plane, 0.38
-    with threads included; joints longer than 38 in between extreme bolts
-    take a 0.83 reduction.  phi_s = 0.80."""
+    Rn = C*Ab*Fub*Ns; joints longer than 38 in between extreme bolts take a
+    0.83 reduction.  phi_s = 0.80.
+
+    The shear-strength coefficient C was raised in the 8th Edition (2017):
+    ``design_year`` >= 2017 uses C = 0.56 (threads excluded) / 0.45 (threads
+    included); earlier editions (the default) use 0.48 / 0.38."""
     a_b = math.pi * d_bolt**2 / 4.0
-    factor = 0.48 if threads_excluded else 0.38
+    if design_year is not None and design_year >= 2017:
+        factor = 0.56 if threads_excluded else 0.45
+    else:
+        factor = 0.48 if threads_excluded else 0.38
     r_n = factor * a_b * f_ub * n_planes
     if long_joint:
         r_n *= 0.83
