@@ -34,6 +34,16 @@ Known limitations mirrored from the reference procedure: AASHTO 6.10.1.8
 (tension flanges with holes) is not checked; two-row seal-gage edge cases and
 rolled-beam splices with >10% inner/outer plate-area difference are flagged
 rather than resolved.
+
+The web bolt group is sized for the design shear plus the geometric
+(maximum-pitch) requirement.  When the flanges cannot resist the full splice
+moment, AASHTO 6.13.6.1.3c transfers the excess as a horizontal web force
+``Huw = (Aw/2)*(Rh*Fcf + Rcf*fncf)`` that can dominate the web bolt count; the
+elastic flange stresses ``Fcf``/``fncf`` require a composite section-property
+analysis that this module does not yet perform, so that governing case is
+reported through the flange ``Mflange``/slip checks (which fail) rather than by
+enlarging the web group.  A ``NOTICE``-level flange check therefore signals a
+splice whose web should be re-designed by hand for the moment couple.
 """
 
 from __future__ import annotations
@@ -96,6 +106,23 @@ def _ceil_mult(x: float, m: int) -> int:
 
 def _floor_eighth(x: float) -> float:
     return math.floor(x * 8.0) / 8.0
+
+
+def _block_shear(n_shear, l_shear, holes_shear, n_tension, tens_gross,
+                 holes_tension, t, f_y, f_u, hole, p_u, name):
+    """Block-shear rupture (6.13.4) for a rectangular tear-out.  ``n_shear``
+    parallel shear planes of gross length ``l_shear`` (each crossing
+    ``holes_shear`` holes) and ``n_tension`` tension planes of gross length
+    ``tens_gross`` (each crossing ``holes_tension`` holes), all of thickness
+    ``t``.  Wraps :func:`steel.block_shear_resistance`."""
+    a_vg = n_shear * l_shear * t
+    a_vn = a_vg - n_shear * holes_shear * hole * t
+    a_tn = (n_tension * tens_gross - n_tension * holes_tension * hole) * t
+    res = steel.block_shear_resistance(
+        a_vg=a_vg, a_vn=max(a_vn, 0.0), a_tn=max(a_tn, 0.0),
+        f_y=f_y, f_u=f_u, p_u=p_u)
+    res.name = name
+    return res
 
 
 # --- structured inputs ------------------------------------------------------
@@ -345,9 +372,6 @@ def _design_flange(inp: SpliceInput, position: str) -> ComponentDesign:
     pt_per = slip.capacity
 
     m, _ = _factor_loads(inp.loads)
-    arm_pos = ((inp.deck_thickness / 2.0 + inp.left.haunch)
-               if inp.deck_composite else ctrl.thickness / 2.0)
-    arm_pos += ctrl.web_thickness_placeholder if False else 0.0
     # composite positive-moment arm and steel (non-composite) arm
     web_depth = inp.left.web_depth
     t_top = inp.left.top_flange.thickness
@@ -362,15 +386,18 @@ def _design_flange(inp: SpliceInput, position: str) -> ComponentDesign:
         return _ceil_mult(force / pt_per, rows), force
 
     if position == "bottom":
-        n_pos, _ = slip_count(m["service_pos"], arm_pos, n_rows)
-        n_deck, _ = slip_count(m["deck_cast"], arm_steel, n_rows)
+        n_pos, f_pos = slip_count(m["service_pos"], arm_pos, n_rows)
+        n_deck, f_deck = slip_count(m["deck_cast"], arm_steel, n_rows)
         slip_bolts = max(n_pos, n_deck)
+        slip_force = max(f_pos, f_deck)
     else:
-        n_neg, _ = slip_count(m["service_neg"], arm_steel, n_rows)
-        slip_bolts = n_neg
+        slip_bolts, slip_force = slip_count(m["service_neg"], arm_steel,
+                                            n_rows)
 
-    # long-joint 0.83 check (6.13.2.7): joint length between extreme bolts
-    controlling = max(strength_bolts, slip_bolts)
+    # Controlling bolt count is sized for strength and the long-joint
+    # reduction only; slip (a serviceability limit) is reported as a separate
+    # check and does not increase the count (C6.13.6.1.3b / NSBA convention).
+    controlling = strength_bolts
     cols = controlling // n_rows
     joint_len = (cols - 1) * inp.bolt_spacing
     long_joint = joint_len >= 38.0
@@ -411,8 +438,14 @@ def _design_flange(inp: SpliceInput, position: str) -> ComponentDesign:
         plate_length=plate_length,
         long_joint=long_joint,
         extra={"filler_R": r_fill, "Ae": ae_l, "arm_pos": arm_pos,
-               "arm_steel": arm_steel, "cols": cols, "hole_dia": hole},
+               "arm_steel": arm_steel, "cols": cols, "hole_dia": hole,
+               "slip_force": slip_force, "pt_per": pt_per},
     )
+    # Service II slip check (6.13.2.8): the provided bolts must furnish more
+    # nominal slip resistance than the flange force at Service II.
+    comp.checks.append(CheckResult(
+        article="6.13.2.8", name=f"{position} flange Service II slip",
+        capacity=controlling * pt_per, demand=slip_force))
     _flange_checks(inp, comp, plates, ctrl, pfy, fy_l, fu_l, hole, n_rows)
     return comp
 
@@ -423,6 +456,10 @@ def _flange_checks(inp, comp, plates, ctrl, pfy, fy, fu, hole, n_rows):
     sp = splices.splice_plate_design_force(
         pfy, plates.outer_area, plates.inner_area)
     checks = comp.checks
+
+    cols = comp.extra["cols"]
+    l_shear = comp.end + (cols - 1) * comp.pitch
+    holes_shear = cols - 0.5
 
     for label, force, thk, width, a_g in (
         ("outer", sp.outer, plates.outer_thickness, plates.outer_width,
@@ -443,25 +480,49 @@ def _flange_checks(inp, comp, plates, ctrl, pfy, fy, fu, hole, n_rows):
         checks.append(CheckResult(
             article="6.13.6.1.3", name=f"{label} plate net-section fracture",
             capacity=0.80 * plate_fu * a_e, demand=force))
+        # block shear on the splice plate (6.13.4): a single tear-out block,
+        # two shear planes plus two tension planes through the end holes.
+        checks.append(_block_shear(
+            n_shear=2, l_shear=l_shear, holes_shear=holes_shear,
+            n_tension=2, tens_gross=comp.gage_bolts + comp.edge,
+            holes_tension=1.5, t=thk, f_y=plate_fy, f_u=plate_fu, hole=hole,
+            p_u=force, name=f"{label} plate block shear"))
 
-    # block shear on the girder flange (6.13.4) — Mode 1 (all bolts pull out)
-    cols = comp.extra["cols"]
-    a_vg = 2.0 * (comp.end + (cols - 1) * comp.pitch) * ctrl.thickness
-    a_vn = a_vg - 2.0 * (cols - 0.5) * hole * ctrl.thickness
-    a_tn = max(comp.gage_groups - hole, 0.0) * ctrl.thickness
-    bs = steel.block_shear_resistance(
-        a_vg=a_vg, a_vn=max(a_vn, 0.0), a_tn=a_tn, f_y=fy, f_u=fu, p_u=pfy)
-    bs.name = "girder flange block shear"
-    checks.append(bs)
+    # block shear on the girder flange (6.13.4): the two bolt groups can tear
+    # out independently (Mode 1, four shear planes) or as one block around the
+    # outside (Mode 2, two shear planes through the wider tension planes); the
+    # smaller resistance governs.
+    mode1 = _block_shear(
+        n_shear=4, l_shear=l_shear, holes_shear=holes_shear, n_tension=2,
+        tens_gross=comp.gage_bolts, holes_tension=1.0, t=ctrl.thickness,
+        f_y=fy, f_u=fu, hole=hole, p_u=pfy,
+        name="girder flange block shear (Mode 1)")
+    mode2 = _block_shear(
+        n_shear=2, l_shear=l_shear, holes_shear=holes_shear, n_tension=2,
+        tens_gross=comp.gage_bolts + comp.edge, holes_tension=1.5,
+        t=ctrl.thickness, f_y=fy, f_u=fu, hole=hole, p_u=pfy,
+        name="girder flange block shear (Mode 2)")
+    checks.append(mode1)
+    checks.append(mode2)
 
-    # bearing at the flange bolt holes (6.13.2.9)
-    bearing = steel.bolt_bearing_resistance(
+    # bearing at the flange bolt holes (6.13.2.9): each bolt delivers the
+    # lesser of its (filler-reduced) shear capacity or the hole bearing
+    # resistance; interior holes govern the group total (end holes carry no
+    # less than interior once bolt shear controls).
+    r_fill = comp.extra["filler_R"]
+    bolt = steel.bolt_shear_resistance(
+        d_bolt=inp.bolts.diameter, f_ub=BOLT_FU[inp.bolts.bolt_type],
+        n_planes=plates.shear_planes,
+        threads_excluded=inp.bolts.flange_threads_excluded,
+        design_year=inp.design_year)
+    interior = steel.bolt_bearing_resistance(
         d_bolt=inp.bolts.diameter, t_ply=ctrl.thickness, f_u_ply=fu,
-        clear_distance=comp.end - hole / 2.0)
-    n_bolts = comp.total_bolts
+        clear_distance=comp.pitch - hole)
+    per_bolt = min(bolt.factored_capacity * r_fill,
+                   interior.factored_capacity)
     checks.append(CheckResult(
         article="6.13.2.9", name="girder flange bearing",
-        capacity=bearing.factored_capacity * n_bolts, demand=pfy))
+        capacity=per_bolt * comp.total_bolts, demand=pfy))
 
 
 # --- web design -------------------------------------------------------------
@@ -574,9 +635,11 @@ def _web_checks(inp, comp, v_uw):
     a_g = 2.0 * comp.plate_length * wp.thickness
     per_row = comp.extra["per_row"]
     a_n = a_g - 2.0 * per_row * hole * wp.thickness
+    # factored shear-yield resistance of the two web plates (6.13.5.2 /
+    # 6.13.4-2): phi_v = 1.0 for shear.
     checks.append(CheckResult(
         article="6.13.5.2", name="web plate shear yield",
-        capacity=0.95 * 0.58 * fy * a_g, demand=abs(v_uw)))
+        capacity=1.0 * 0.58 * fy * a_g, demand=abs(v_uw)))
     checks.append(CheckResult(
         article="6.13.5.2", name="web plate shear rupture",
         capacity=0.80 * 0.58 * fu * a_n, demand=abs(v_uw)))
