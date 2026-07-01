@@ -5,6 +5,17 @@ Versions follow [Semantic Versioning](https://semver.org/) (major.minor.patch).
 
 ---
 
+## [0.3.5] - 2026-07-01
+
+- **SNBI validation — B.RT.01 optional** (`state.ohio.snbi`). AssetWise reports a
+  route's number/direction but omits the B.RT.01 Route Designation on many routes,
+  and FHWA flags that omission 0 times. `Route.BRT01` is now optional (was
+  required); when present it must still be a valid designation (begins with "R",
+  ≤3 chars). This clears the residual BRT01 false errors that traced to a
+  snbi_ui field-mapping bug (fixed there in parallel: routes were read at the
+  feature stride of 31 instead of their own stride of 30, and absent designations
+  were fabricated as the literal "Unknown").
+
 ## [0.3.4] - 2026-07-01
 
 - **SNBI validation — calibration round 2** (`state.ohio.snbi`). First run against

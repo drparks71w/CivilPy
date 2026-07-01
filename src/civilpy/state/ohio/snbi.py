@@ -318,7 +318,10 @@ class Element(BaseModel):
 class Route(BaseModel):
     """SNBI route record (B.RT). Required for every 'highway' feature."""
 
-    BRT01: Annotated[str, StringConstraints(max_length=3, min_length=1, strip_whitespace=True)]
+    # B.RT.01 is optional: AssetWise reports the route number/direction but omits
+    # the designation on many routes, and FHWA flags that omission 0 times. When
+    # present it must still be a valid designation (begins with "R", <= 3 chars).
+    BRT01: Optional[Annotated[str, StringConstraints(max_length=3, min_length=1, strip_whitespace=True)]] = None
     # B.RT.02 (route number) is reported for every route. BRT03/04/05 are
     # back to optional + enum-checked: FHWA flags their nulls far less often
     # than our API data omits them (see the BG03 note above).
@@ -330,8 +333,8 @@ class Route(BaseModel):
     @field_validator("BRT01")
     @classmethod
     def _designation_starts_with_r(cls, v):
-        # B.RT.01: valid route designations begin with "R"
-        if not v.upper().startswith("R"):
+        # B.RT.01: valid route designations begin with "R" (optional; skip if absent)
+        if v is not None and not v.upper().startswith("R"):
             raise ValueError('BRT01 Route Designation must begin with "R"')
         return v
 
