@@ -61,6 +61,94 @@ class TestWebSplice:
             )
 
 
+class TestFlangeSplicePlateSizing:
+    # Example 1 (workshop case study): 69" web, Grade 50W / HPS 70W, 5/16
+    # web weld, 7/8" bolts.  Top flanges 16/18 wide, bottom 18/20 wide;
+    # webs 1/2 and 9/16.  Workbook plates: top 5/8 outer x 11/16 inner,
+    # 16 x 7; bottom 3/4 outer x 7/8 inner, 18 x 8.
+    def test_top_flange_matches_workbook(self):
+        p = lrfd.size_flange_splice_plates(
+            flange_width_left=16.0, flange_width_right=18.0,
+            flange_thickness=1.0,
+            web_thickness_left=0.5, web_thickness_right=0.5625,
+            weld_size=0.3125, outer_thickness=0.625,
+        )
+        assert p.outer_width == pytest.approx(16.0)
+        assert p.clearance == pytest.approx(1.4375)
+        assert p.inner_width == pytest.approx(7.0)      # 7.28 rounded down
+        assert p.inner_thickness == pytest.approx(0.6875)   # 11/16
+        assert p.min_thickness == pytest.approx(0.5625)
+
+    def test_bottom_flange_thickness_in_band(self):
+        p = lrfd.size_flange_splice_plates(
+            flange_width_left=18.0, flange_width_right=20.0,
+            flange_thickness=1.375,
+            web_thickness_left=0.5, web_thickness_right=0.5625,
+            weld_size=0.3125, outer_thickness=0.75,
+        )
+        assert p.outer_width == pytest.approx(18.0)
+        assert p.inner_width == pytest.approx(8.0)       # 8.28 rounded down
+        # Workbook picked 7/8" inner plates; must fall inside the 10% band.
+        lo, hi = p.inner_thickness_band
+        assert lo <= 0.875 <= hi
+
+    def test_example_2_top_flange(self):
+        # Ex 2: top flanges 19/22, webs 3/4, outer 9/16 -> inner 5/8, 8.5 wide.
+        p = lrfd.size_flange_splice_plates(
+            flange_width_left=19.0, flange_width_right=22.0,
+            flange_thickness=1.0,
+            web_thickness_left=0.75, web_thickness_right=0.75,
+            weld_size=0.3125, outer_thickness=0.5625,
+        )
+        assert p.outer_width == pytest.approx(19.0)
+        assert p.clearance == pytest.approx(1.625)
+        assert p.inner_width == pytest.approx(8.5)        # 8.69 rounded down
+        assert p.inner_thickness == pytest.approx(0.625)  # 5/8
+
+    def test_default_outer_from_minimum(self):
+        p = lrfd.size_flange_splice_plates(
+            flange_width_left=16.0, flange_width_right=18.0,
+            flange_thickness=1.0,
+            web_thickness_left=0.5, web_thickness_right=0.5625,
+            weld_size=0.3125,
+        )
+        # No outer thickness given -> rounded-up minimum (9/16").
+        assert p.outer_thickness == pytest.approx(0.5625)
+
+
+class TestWebSplicePlateSizing:
+    def test_example_1_seal_governs(self):
+        # Ex 1: 69" web, 1/2" web, 5/16" plate, 3" flange clearance ->
+        # seal pitch 5.25", 13 bolts per row.
+        p = lrfd.size_web_splice_plate(
+            web_depth=69.0, web_thickness=0.5, web_thickness_other=0.5625,
+            flange_clearance=3.0,
+        )
+        assert p.thickness == pytest.approx(0.3125)      # 5/16
+        assert p.min_thickness == pytest.approx(0.3125)
+        assert p.height == pytest.approx(63.0)
+        assert p.max_pitch_seal == pytest.approx(5.25)
+        assert p.min_bolts_per_row == 13
+        assert p.filler_required is False                # 1/16 diff, not over
+
+    def test_example_2_thickness(self):
+        # Ex 2: 3/4" web -> min plate 7/16".
+        p = lrfd.size_web_splice_plate(
+            web_depth=109.0, web_thickness=0.75, web_thickness_other=0.75,
+            flange_clearance=2.75,
+        )
+        assert p.thickness == pytest.approx(0.4375)      # 7/16
+        assert p.height == pytest.approx(103.5)
+        assert p.filler_required is False
+
+    def test_filler_required_when_webs_differ(self):
+        p = lrfd.size_web_splice_plate(
+            web_depth=60.0, web_thickness=0.5, web_thickness_other=0.75,
+            flange_clearance=3.0,
+        )
+        assert p.filler_required is True
+
+
 class TestSlabStrip:
     def test_single_lane(self):
         # L1 = 40, W1 = 30 (capped): E = 10 + 5*sqrt(1200) = 183.2 in

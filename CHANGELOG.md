@@ -7,6 +7,19 @@ Versions follow [Semantic Versioning](https://semver.org/) (major.minor.patch).
 
 ## [Unreleased]
 
+- **Bolted field splice — plate sizing tools.** Added
+  `size_flange_splice_plates` (C6.13.6.1.3b) and `size_web_splice_plate`
+  (6.13.6.1.3c / seal spacing 6.13.2.6.2) to `aashto.lrfd.splices`, so the
+  designer proportions the splice plates from the girder geometry instead of
+  taking them as inputs: outer plate = narrowest connected flange, web
+  clearance gap from `max(tw) + 2*(weld + 1/8)`, inner width `(b - clr)/2`,
+  minimum thickness `t/2 + 1/16`, and inner thickness proportioned to the
+  outer plate with the 10% double-shear band. The web tool returns the
+  near-full-depth plate height, the 6.13.2.6.2 sealing pitch, the resulting
+  minimum bolts per row, and whether a web filler is required. Validated
+  against both NSBA plate-girder worked examples (`FlangeSplicePlates`,
+  `WebSplicePlates`).
+
 - **Documentation overhaul.**
   - Finished the MIT relicense in the source tree: replaced the AGPL notice in
     ~200 file headers with an SPDX MIT notice (`CONTRIBUTING.md` updated too);

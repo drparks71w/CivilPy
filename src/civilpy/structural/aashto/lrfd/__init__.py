@@ -128,6 +128,10 @@ from civilpy.structural.aashto.lrfd.splices import (
     bolt_spacing_limits,
     SpacingLimits,
     MIN_EDGE_DISTANCE,
+    size_flange_splice_plates,
+    FlangeSplicePlates,
+    size_web_splice_plate,
+    WebSplicePlates,
 )
 from civilpy.structural.aashto.lrfd.bolted_field_splice import (
     design_splice,
@@ -293,6 +297,10 @@ __all__ = [
     "bolt_spacing_limits",
     "SpacingLimits",
     "MIN_EDGE_DISTANCE",
+    "size_flange_splice_plates",
+    "FlangeSplicePlates",
+    "size_web_splice_plate",
+    "WebSplicePlates",
     "design_splice",
     "SpliceInput",
     "SpliceDesign",

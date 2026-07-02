@@ -244,6 +244,162 @@ class SpacingLimits:
     end_ok: bool | None
 
 
+# ---------------------------------------------------------------------------
+# Splice-plate proportioning (sizing the plates, not just checking them)
+# ---------------------------------------------------------------------------
+
+def _round_to(value: float, increment: float, mode: str) -> float:
+    """Round ``value`` to a multiple of ``increment`` (``mode`` = 'up',
+    'down', or 'nearest')."""
+    if increment <= 0.0:
+        return value
+    q = value / increment
+    if mode == "up":
+        q = math.ceil(q - 1e-9)
+    elif mode == "down":
+        q = math.floor(q + 1e-9)
+    else:
+        q = round(q)
+    return q * increment
+
+
+@dataclass
+class FlangeSplicePlates:
+    """Proportioned flange splice plates (C6.13.6.1.3b and the AASHTO/NSBA
+    "develop the flange" guidance).  A single outer plate spans the full
+    flange width; a pair of inner plates straddle the web, separated by the
+    ``clearance`` gap needed for the web and its fillet welds.  Widths and
+    thicknesses in inches.
+
+    ``inner_thickness`` is the ideal thickness that makes the two inner plates
+    equal in area to the outer plate; ``inner_thickness_band`` is the
+    (low, high) range that keeps the inner/outer areas within 10% so the
+    connection may be proportioned for the full flange force in double shear
+    (C6.13.6.1.3b).  Pick any standard plate inside the band."""
+
+    outer_width: float
+    outer_thickness: float
+    inner_width: float
+    inner_width_exact: float
+    inner_thickness: float
+    inner_thickness_band: tuple[float, float]
+    clearance: float
+    min_thickness: float
+
+
+@article("6.13.6.1.3b", "Flange Splice Plate Sizing")
+def size_flange_splice_plates(
+    flange_width_left: float,
+    flange_width_right: float,
+    flange_thickness: float,
+    web_thickness_left: float,
+    web_thickness_right: float,
+    weld_size: float = 0.0,
+    outer_thickness: float | None = None,
+    width_increment: float = 0.5,
+    thickness_increment: float = 0.0625,
+) -> FlangeSplicePlates:
+    """Proportion the outer and inner flange splice plates from the girder
+    geometry (C6.13.6.1.3b; NSBA *Bolted Field Splices for Steel Bridge
+    Flexural Members*).
+
+    * Outer plate width = the narrower connected flange, ``min(bf_left,
+      bf_right)`` — the outer plate must be at least as wide as the narrowest
+      flange at the splice.
+    * Web clearance gap = ``max(tw_left, tw_right) + 2*(weld_size + 1/8)`` so
+      the inner plates clear the web and its fillet welds.
+    * Inner plate width = ``(outer_width - clearance)/2`` (each of the pair),
+      rounded down to ``width_increment``.
+    * Minimum plate thickness = ``flange_thickness/2 + 1/16``.
+    * With the outer thickness chosen (defaults to the rounded-up minimum),
+      the ideal inner thickness equalises the plate areas:
+      ``t_inner = t_outer * b_outer / (2*b_inner_exact)``, rounded up to
+      ``thickness_increment``; the returned band keeps the areas within 10%.
+
+    ``flange_thickness`` is the thickness of the flange being developed (the
+    thicker adjoining flange governs the minimum plate thickness)."""
+    b_outer = min(flange_width_left, flange_width_right)
+    clearance = max(web_thickness_left, web_thickness_right) + 2.0 * (
+        weld_size + 0.125
+    )
+    inner_width_exact = 0.5 * (b_outer - clearance)
+    inner_width = _round_to(inner_width_exact, width_increment, "down")
+    min_thickness = 0.5 * flange_thickness + 0.0625
+    if outer_thickness is None:
+        outer_thickness = _round_to(min_thickness, thickness_increment, "up")
+    area_outer = b_outer * outer_thickness
+    ideal = area_outer / (2.0 * inner_width_exact)
+    inner_thickness = _round_to(ideal, thickness_increment, "up")
+    band = (0.9 * area_outer / (2.0 * inner_width),
+            1.1 * area_outer / (2.0 * inner_width))
+    return FlangeSplicePlates(
+        outer_width=b_outer,
+        outer_thickness=outer_thickness,
+        inner_width=inner_width,
+        inner_width_exact=inner_width_exact,
+        inner_thickness=inner_thickness,
+        inner_thickness_band=band,
+        clearance=clearance,
+        min_thickness=min_thickness,
+    )
+
+
+@dataclass
+class WebSplicePlates:
+    """Proportioned web splice plates (6.13.6.1.3c; 6.13.2.6.2).  A pair of
+    plates covers each face of the web over nearly the full depth.  ``height``
+    is the plate depth (near-full web depth); ``max_pitch_seal`` is the
+    maximum bolt spacing for sealing (6.13.2.6.2) and ``min_bolts_per_row``
+    the resulting minimum number of bolts in a vertical line.  Inches."""
+
+    thickness: float
+    min_thickness: float
+    height: float
+    max_pitch_seal: float
+    min_bolts_per_row: int
+    filler_required: bool
+
+
+@article("6.13.6.1.3c", "Web Splice Plate Sizing")
+def size_web_splice_plate(
+    web_depth: float,
+    web_thickness: float,
+    web_thickness_other: float,
+    flange_clearance: float,
+    thickness: float | None = None,
+    thickness_increment: float = 0.0625,
+) -> WebSplicePlates:
+    """Proportion the web splice plates from the web geometry (6.13.6.1.3c;
+    seal spacing 6.13.2.6.2).
+
+    * Minimum plate thickness = ``web_thickness/2 + 1/16`` (``web_thickness``
+      is the governing/thinner connected web).
+    * Plate height = ``web_depth - 2*flange_clearance`` — the plates extend
+      nearly the full web depth, clearing the flanges by ``flange_clearance``
+      top and bottom.
+    * Maximum bolt pitch for sealing = ``min(4.0 + 4.0*t, 7.0)`` in
+      (6.13.2.6.2), giving a minimum of ``1 + ceil(height/max_pitch)`` bolts
+      in each vertical line.
+    * A filler is required when the two webs differ by more than 1/16 in.
+
+    No filler is needed when the web-thickness difference is under 1/16 in."""
+    min_thickness = 0.5 * web_thickness + 0.0625
+    if thickness is None:
+        thickness = _round_to(min_thickness, thickness_increment, "up")
+    height = web_depth - 2.0 * flange_clearance
+    max_pitch_seal = min(4.0 + 4.0 * thickness, 7.0)
+    min_bolts_per_row = 1 + math.ceil(height / max_pitch_seal - 1e-9)
+    filler_required = abs(web_thickness - web_thickness_other) > 0.0625
+    return WebSplicePlates(
+        thickness=thickness,
+        min_thickness=min_thickness,
+        height=height,
+        max_pitch_seal=max_pitch_seal,
+        min_bolts_per_row=min_bolts_per_row,
+        filler_required=filler_required,
+    )
+
+
 @article("6.13.2.6", "Bolt Spacing and Edge Distance Limits")
 def bolt_spacing_limits(
     d_bolt: float,
