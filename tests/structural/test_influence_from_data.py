@@ -1,3 +1,9 @@
+#  CivilPy
+#  Copyright (C) 2019-2026 Dane Parks
+#
+#  SPDX-License-Identifier: MIT
+#  See the LICENSE file in the project root for full license text.
+
 """Tests for building influence lines from sampled / MIDAS data and running
 permit trucks against them (influence_line_from_ordinates / _from_midas)."""
 

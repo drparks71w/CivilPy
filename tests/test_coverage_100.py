@@ -1,3 +1,9 @@
+#  CivilPy
+#  Copyright (C) 2019-2026 Dane Parks
+#
+#  SPDX-License-Identifier: MIT
+#  See the LICENSE file in the project root for full license text.
+
 """Coverage fill-ins to reach 100% across civilpy modules.
 
 Targets the specific branches and helper functions the main suites leave

@@ -1,3 +1,9 @@
+#  CivilPy
+#  Copyright (C) 2019-2026 Dane Parks
+#
+#  SPDX-License-Identifier: MIT
+#  See the LICENSE file in the project root for full license text.
+
 """Strut-and-tie authoring commands for Rhino (run *inside* Rhino).
 
 This is the authoring half of the pipeline described in

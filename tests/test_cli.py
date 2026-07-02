@@ -1,12 +1,8 @@
-"""
-CivilPy
-Copyright (C) 2019-2026 - Dane Parks
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU Affero General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
-"""
+#  CivilPy
+#  Copyright (C) 2019-2026 Dane Parks
+#
+#  SPDX-License-Identifier: MIT
+#  See the LICENSE file in the project root for full license text.
 
 from io import StringIO
 import sys

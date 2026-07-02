@@ -1,6 +1,6 @@
 #  CivilPy
-#  Copyright (C) 2026 Dane Parks
-#  (AGPL v3 — see package header)
+#  Copyright (C) 2019-2026 Dane Parks
+#  SPDX-License-Identifier: MIT
 
 """Shear flow, lateral earth, soil profiles, moment distribution, open
 channel, K-factors, development length: analytic cross-checks."""

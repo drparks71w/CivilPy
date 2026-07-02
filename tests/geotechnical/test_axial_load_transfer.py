@@ -1,6 +1,6 @@
 #  CivilPy
-#  Copyright (C) 2026 Dane Parks
-#  (AGPL v3 — see the module header for the full notice)
+#  Copyright (C) 2019-2026 Dane Parks
+#  SPDX-License-Identifier: MIT
 
 """Axial pile load-transfer curves (civilpy.geotech.axial_load_transfer):
 the API RP 2A t-z / q-z backbones and the nodal-spring discretiser."""

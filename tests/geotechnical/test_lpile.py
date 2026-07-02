@@ -1,6 +1,6 @@
 #  CivilPy
-#  Copyright (C) 2026 Dane Parks
-#  (AGPL v3 — see the module header for the full notice)
+#  Copyright (C) 2019-2026 Dane Parks
+#  SPDX-License-Identifier: MIT
 
 """LPILE integration (civilpy.geotech.lpile): data-file codegen, the
 built-in simulation, and the text-report parser round-trip."""

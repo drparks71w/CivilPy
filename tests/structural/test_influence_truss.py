@@ -1,6 +1,6 @@
 #  CivilPy
-#  Copyright (C) 2026 Dane Parks
-#  (AGPL v3 — see package header)
+#  Copyright (C) 2019-2026 Dane Parks
+#  SPDX-License-Identifier: MIT
 
 """Influence lines and truss analysis: analytic cross-checks."""
 

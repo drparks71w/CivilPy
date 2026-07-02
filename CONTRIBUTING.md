@@ -28,7 +28,7 @@ to dane@daneparks.com. Feature requests or expansions will likely be ignored.
 
 ## Attribution
 
-CivilPy is licensed under [AGPL-3.0](LICENSE). By submitting a contribution, you agree that your
+CivilPy is licensed under the [MIT License](LICENSE). By submitting a contribution, you agree that your
 code becomes part of the project under that license. Individual attribution cannot be maintained in
 the codebase. Your contribution is acknowledged in the git history, but not in the source files or
 documentation. The git history is frequently wiped at the maintainers discretion.

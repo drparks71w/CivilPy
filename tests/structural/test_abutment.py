@@ -1,6 +1,6 @@
 #  CivilPy
-#  Copyright (C) 2026 Dane Parks
-#  (AGPL v3 — see the module header for the full notice)
+#  Copyright (C) 2019-2026 Dane Parks
+#  SPDX-License-Identifier: MIT
 
 """Cantilever retaining walls / abutments (civilpy.structural.abutment):
 external stability and the stem / toe / heel RC design checks."""

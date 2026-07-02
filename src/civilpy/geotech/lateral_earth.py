@@ -16,8 +16,8 @@ Examples
 """
 
 #  CivilPy
-#  Copyright (C) 2026 Dane Parks
-#  (AGPL v3 — see other modules for the full notice)
+#  Copyright (C) 2019-2026 Dane Parks
+#  SPDX-License-Identifier: MIT
 
 import math
 

@@ -1,6 +1,6 @@
 #  CivilPy
-#  Copyright (C) 2026 Dane Parks
-#  (AGPL v3 — see the module header for the full notice)
+#  Copyright (C) 2019-2026 Dane Parks
+#  SPDX-License-Identifier: MIT
 
 """Laterally loaded piles (civilpy.geotech.lateral_pile): the p-y curve
 library, the FE beam-on-p-y solver, Broms' method, and the closed-form
