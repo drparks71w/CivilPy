@@ -5,6 +5,11 @@ Versions follow [Semantic Versioning](https://semver.org/) (major.minor.patch).
 
 ---
 
+## [0.3.8] - 2026-07-01
+
+- **Relicensed to MIT.** Reverted from AGPL-3.0-or-later back to MIT (`LICENSE`,
+  `pyproject.toml` license field and classifier).
+
 ## [0.3.7] - 2026-07-01
 
 - **Bolted field splice — web horizontal force Hw** (`structural.aashto.lrfd`).
