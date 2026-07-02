@@ -4,6 +4,13 @@
 #  SPDX-License-Identifier: MIT
 #  See the LICENSE file in the project root for full license text.
 
+"""Database connection helpers.
+
+Opens SSH-tunnelled connections to remote PostgreSQL databases (via
+``sshtunnel`` and ``psycopg``) and runs parameterized queries into pandas
+DataFrames. Requires the ``db`` extra: ``pip install civilpy[db]``.
+"""
+
 try:  # psycopg and sshtunnel are optional, in the "db" extra.
     import psycopg as pg
 except ImportError:

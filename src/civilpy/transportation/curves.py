@@ -2,7 +2,7 @@
 (circular) curves with the standard plan/profile sketches.
 
 Vertical curves use the equal-tangent parabola: elevations from the
-grades and curve length, K = L/|A|, and the high/low point where the
+grades and curve length, ``K = L/|A|``, and the high/low point where the
 grade passes through zero.  Horizontal curves use the arc definition:
 T, L, C, E, M from radius and deflection angle, plus the point-mass
 superelevation relation e + f = V^2/(15 R).
@@ -74,7 +74,7 @@ class VerticalCurve:
 
     @property
     def k_value(self) -> float:
-        """K = L/|A| — feet of curve per percent grade change."""
+        """``K = L/|A|`` — feet of curve per percent grade change."""
         return self.length / abs(self.a_pct)
 
     @property

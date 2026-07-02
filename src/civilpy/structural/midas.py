@@ -4,6 +4,14 @@
 #  SPDX-License-Identifier: MIT
 #  See the LICENSE file in the project root for full license text.
 
+"""MIDAS Civil API request templates and helpers.
+
+Prebuilt JSON payloads and helpers for the MIDAS Civil (MOTIVE) REST API:
+requesting analysis-result tables (beam forces, reactions) and mapping
+result cases, used by the model-interrogation tools in
+:mod:`civilpy.structural.midas_models`.
+"""
+
 import os
 import json
 import time

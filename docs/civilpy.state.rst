@@ -7,6 +7,7 @@ Subpackages
 .. toctree::
    :maxdepth: 4
 
+   civilpy.state.maryland
    civilpy.state.ohio
 
 Module contents

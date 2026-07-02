@@ -4,6 +4,12 @@
 #  SPDX-License-Identifier: MIT
 #  See the LICENSE file in the project root for full license text.
 
+"""Bulk downloader for AssetWise inspection photos.
+
+Selenium-driven workflow that authenticates to ODOT AssetWise, walks an
+asset's inspection documents, and downloads photos to a local folder.
+"""
+
 import requests
 
 from io import BytesIO
@@ -21,7 +27,10 @@ import tkinter as tk
 from tkinter import messagebox
 
 # Define the path for the secrets.json file in the user's AppData\Local directory
-civilpy_dir = os.path.join(os.getenv("LOCALAPPDATA"), "Civilpy")  # E.g., C:\Users\<Username>\AppData\Local\Civilpy
+# (LOCALAPPDATA only exists on Windows; fall back to ~/.local/share elsewhere)
+civilpy_dir = os.path.join(
+    os.getenv("LOCALAPPDATA") or str(Path.home() / ".local" / "share"), "Civilpy"
+)  # E.g., C:\Users\<Username>\AppData\Local\Civilpy
 secrets_file = Path.home() / "secrets.json"
 
 def download_assetwise_photos(asset_sfn, target_folder):
@@ -212,45 +221,54 @@ def open_download_window():
 
     download_window.mainloop()
 
-# Check if secrets.json already exists
-if os.path.exists(secrets_file):
-    # If the file exists, immediately open the second window
-    print(f"'secrets.json' already exists in {secrets_file}.")
-    open_download_window()
-else:
-    # Create the GUI window for entering credentials
-    root = tk.Tk()
-    root.title("Store Credentials")
-    root.geometry("400x250")  # Set window size
+# TODO(architecture): this module is a standalone GUI script; the credential
+#   window and download flow used to launch at import time. Kept as a
+#   callable main() until it moves to a proper entry point.
+def main():
+    """Prompt for credentials if needed, then open the download window."""
+    # Check if secrets.json already exists
+    if os.path.exists(secrets_file):
+        # If the file exists, immediately open the second window
+        print(f"'secrets.json' already exists in {secrets_file}.")
+        open_download_window()
+    else:
+        # Create the GUI window for entering credentials
+        root = tk.Tk()
+        root.title("Store Credentials")
+        root.geometry("400x250")  # Set window size
 
-    # Create a label frame for credentials entry
-    frame = tk.LabelFrame(root, text="Enter your credentials", padx=10, pady=10)
-    frame.pack(padx=10, pady=10, fill="both", expand=True)
+        # Create a label frame for credentials entry
+        frame = tk.LabelFrame(root, text="Enter your credentials", padx=10, pady=10)
+        frame.pack(padx=10, pady=10, fill="both", expand=True)
 
-    # Username entry
-    username_label = tk.Label(frame, text="Username:")
-    username_label.grid(row=0, column=0, sticky="w", padx=5, pady=5)
-    username_entry = tk.Entry(frame, width=30)
-    username_entry.grid(row=0, column=1, padx=10, pady=5)
+        # Username entry
+        username_label = tk.Label(frame, text="Username:")
+        username_label.grid(row=0, column=0, sticky="w", padx=5, pady=5)
+        username_entry = tk.Entry(frame, width=30)
+        username_entry.grid(row=0, column=1, padx=10, pady=5)
 
-    # Password entry
-    password_label = tk.Label(frame, text="Password:")
-    password_label.grid(row=1, column=0, sticky="w", padx=5, pady=5)
-    password_entry = tk.Entry(frame, width=30, show="*")  # Use "*" for password masking
-    password_entry.grid(row=1, column=1, padx=10, pady=5)
+        # Password entry
+        password_label = tk.Label(frame, text="Password:")
+        password_label.grid(row=1, column=0, sticky="w", padx=5, pady=5)
+        password_entry = tk.Entry(frame, width=30, show="*")  # Use "*" for password masking
+        password_entry.grid(row=1, column=1, padx=10, pady=5)
 
-    # Toggle checkbox for storing passwords
-    pw_toggle = tk.BooleanVar(value=False)  # Default is unchecked (store password)
-    pw_checkbox = tk.Checkbutton(
-        frame,
-        text="Do not store my PW locally",
-        variable=pw_toggle,
-    )
-    pw_checkbox.grid(row=2, column=0, columnspan=2, pady=5)
+        # Toggle checkbox for storing passwords
+        pw_toggle = tk.BooleanVar(value=False)  # Default is unchecked (store password)
+        pw_checkbox = tk.Checkbutton(
+            frame,
+            text="Do not store my PW locally",
+            variable=pw_toggle,
+        )
+        pw_checkbox.grid(row=2, column=0, columnspan=2, pady=5)
 
-    # Save button
-    save_button = tk.Button(root, text="Save", command=credential_manager, width=15)
-    save_button.pack(pady=10)
+        # Save button
+        save_button = tk.Button(root, text="Save", command=credential_manager, width=15)
+        save_button.pack(pady=10)
 
-    # Start the tkinter main loop
-    root.mainloop()
+        # Start the tkinter main loop
+        root.mainloop()
+
+
+if __name__ == "__main__":  # pragma: no cover
+    main()

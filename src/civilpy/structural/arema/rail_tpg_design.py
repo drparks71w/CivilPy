@@ -4,6 +4,13 @@
 #  SPDX-License-Identifier: MIT
 #  See the LICENSE file in the project root for full license text.
 
+"""Through-plate-girder (TPG) railroad bridge design per AREMA Chapter 15.
+
+Object model (``GlobalDefinitions``, girder, floor system) that walks a TPG
+span design: section properties, flexure/shear checks, fatigue, and
+serviceability, pre-populated with typical AREMA values.
+"""
+
 from civilpy.structural.steel import W, MC
 from civilpy.general import units
 from termcolor import colored

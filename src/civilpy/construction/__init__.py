@@ -4,4 +4,10 @@
 #  SPDX-License-Identifier: MIT
 #  See the LICENSE file in the project root for full license text.
 
+"""Construction engineering package.
+
+.. todo::
+   Placeholder package — no construction tools have been implemented yet.
+"""
+
 test_construction = True

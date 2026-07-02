@@ -4,6 +4,9 @@
 #  SPDX-License-Identifier: MIT
 #  See the LICENSE file in the project root for full license text.
 
+"""AREMA railroad structure design tools (Manual for Railway Engineering).
+"""
+
 from civilpy.structural.arema.steel import (
     LoadRatingMember
 )

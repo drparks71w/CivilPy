@@ -13,7 +13,16 @@ sys.path.insert(0, os.path.abspath("../src"))
 project = "CivilPy"
 copyright = "2019-2026, Dane Parks"
 author = "Dane Parks"
-release = "0.2.0"
+
+# Pull the version from the installed package so docs never drift from
+# pyproject.toml
+try:
+    from importlib.metadata import version as _pkg_version
+
+    release = _pkg_version("civilpy")
+except Exception:
+    release = "0.0.0"
+version = release
 
 # -- General configuration ---------------------------------------------------
 extensions = [
@@ -67,6 +76,13 @@ autodoc_mock_imports = [
     "google",
     "google.generativeai",
     "natsort",
+    "dotenv",
+    "sqlalchemy",
+    "ipywidgets",
+    "IPython",
+    "rhinoscriptsyntax",
+    "scriptcontext",
+    "stm_authoring",
 ]
 
 autosummary_generate = True
@@ -84,4 +100,4 @@ html_theme_options = {
     "includehidden": True,
     "titles_only": False,
 }
-html_static_path = ["_static"]
+html_static_path = []

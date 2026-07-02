@@ -4,6 +4,22 @@
 #  SPDX-License-Identifier: MIT
 #  See the LICENSE file in the project root for full license text.
 
+"""Shared helpers used across CivilPy.
+
+The most important export is ``units``, the shared :class:`pint.UnitRegistry`
+that most CivilPy modules use for dimensioned quantities::
+
+    from civilpy.general import units
+    moment = 150 * units('kip * ft')
+
+Also provides terminal color codes (:class:`PrintColors`), simple
+database-to-DataFrame helpers, and unit-conversion convenience functions.
+
+Note that Pint quantities from *different* registries cannot be combined
+arithmetically — when working with a module that builds its own registry,
+import ``units`` from that module instead.
+"""
+
 from pint import UnitRegistry
 import pandas as pd
 

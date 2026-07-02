@@ -4,6 +4,12 @@
 #  SPDX-License-Identifier: MIT
 #  See the LICENSE file in the project root for full license text.
 
+"""AssetWise field-code dictionary.
+
+Maps ODOT AssetWise numeric field codes to their NBI/SNBI item descriptions,
+used by the AssetWise client to label returned records.
+"""
+
 aw_fields = {
     "2000100": "NBI 001: State Code",
     "2000200": "NBI 002: Highway Agency District",

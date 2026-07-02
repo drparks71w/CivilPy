@@ -7,7 +7,7 @@
 """Ohio DOT cast-in-place half-height headwalls (HW-2.1, HW-2.2).
 
 Cast-in-place headwall dimension tables transcribed from two Ohio DOT
-Standard Bridge Drawings (Office of Structural Engineering):
+Standard Bridge Drawings (Office of Structural Engineering)::
 
     HW-2.1  Half-Height Headwalls for Corrugated Metal Pipe and Plastic
             Pipe  (2018-07-20, rev. 2022-07-15)

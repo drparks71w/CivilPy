@@ -4,6 +4,13 @@
 #  SPDX-License-Identifier: MIT
 #  See the LICENSE file in the project root for full license text.
 
+"""ODOT Stage 2 structural plan-review comment library.
+
+Lists of standard review-comment texts (general, per structure type, per
+plan-sheet type) with BDM references, consumed by
+:mod:`civilpy.state.ohio.DOT.OSE` to assemble review checklists.
+"""
+
 general_criteria = [  # Comments that apply to all Structure types and Plan sets
     {"label": "All Stage I comments resolved and detailed design is as per approved Stage I."},                          # OK - Ref
     {"label": "All correspondence has been reviewed?"},                                                                  # OK - Ref

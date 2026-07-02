@@ -4,6 +4,13 @@
 #  SPDX-License-Identifier: MIT
 #  See the LICENSE file in the project root for full license text.
 
+"""Built-up plate cross-section property calculator.
+
+``CrossSection`` accumulates rectangular plates (bottom to top) and computes
+area, centroid, moments of inertia, and section moduli for the composite
+shape — useful for plate girders and other built-up members.
+"""
+
 import math
 
 from civilpy.structural.steel import W

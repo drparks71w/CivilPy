@@ -4,6 +4,12 @@
 #  SPDX-License-Identifier: MIT
 #  See the LICENSE file in the project root for full license text.
 
+"""ODOT District 6 plan-archive file explorer.
+
+A small FreeSimpleGUI desktop app for browsing and filtering District 6
+plan-file folders by extension and name substring.
+"""
+
 import FreeSimpleGUI as sg
 from pathlib import Path
 from io import BytesIO
@@ -44,71 +50,81 @@ def update_image(image_element, filename):
         image_element.update(data=data)
 
 
-sg.theme("Dark")
-sg.set_options(font=("Courier New", 11))
-
 w, h = size_of_image = (700, 600)
 
-layout_top = [
-    [
-        sg.InputText(enable_events=True, key="-FOLDER-"),
-        sg.FolderBrowse("Browse", size=(7, 1), enable_events=True),
-    ],
-    [
-        sg.InputText(enable_events=True, key="-FILTER-"),
-        sg.Button("Search", size=(7, 1)),
-    ],
-]
-layout_bottom = [
-    [
-        sg.Listbox(
-            [],
-            size=(52, 30),
-            enable_events=True,
-            select_mode=sg.LISTBOX_SELECT_MODE_SINGLE,
-            key="-LISTBOX-",
-        )
-    ],
-]
-layout_left = [
-    [sg.Column(layout_top, pad=(0, 0))],
-    [sg.Column(layout_bottom, pad=(0, 0))],
-]
-layout_right = [[sg.Image(background_color="green", key="-IMAGE-")]]
-layout = [
-    [
-        sg.Column(layout_left),
-        sg.Column(
-            layout_right,
-            pad=(0, 0),
-            size=(w + 15, h + 15),
-            background_color="blue",
-            key="-COLUMN-",
-        ),
-    ],
-]
 
-window = sg.Window("Plan Viewer", layout, finalize=True)
-window["-IMAGE-"].Widget.pack(fill="both", expand=True)
-window["-IMAGE-"].Widget.master.pack(fill="both", expand=True)
-window["-IMAGE-"].Widget.master.master.pack(fill="both", expand=True)
-window["-COLUMN-"].Widget.pack_propagate(False)
+# TODO(architecture): this module is a standalone GUI script; the layout and
+#   event loop used to run at import time, which blocked any `import`. Kept
+#   as a callable main() until it moves to a proper entry point.
+def main():
+    """Launch the Plan Viewer file-explorer window (blocks until closed)."""
+    sg.theme("Dark")
+    sg.set_options(font=("Courier New", 11))
 
-while True:
-    event, values = window.read()
-    if event == sg.WINDOW_CLOSED:
-        break
-    # print(event, values)
-    if event in ("-FOLDER-", "-FILTER-", "Search"):
-        update_listbox(
-            window["-LISTBOX-"],
-            values["-FOLDER-"],
-            (".png", ".gif", ".jpg", ".tif"),
-            values["-FILTER-"],
-        )
-    elif event == "-LISTBOX-":
-        lst = values["-LISTBOX-"]
-        if lst:
-            update_image(window["-IMAGE-"], values["-LISTBOX-"][0])
+    layout_top = [
+        [
+            sg.InputText(enable_events=True, key="-FOLDER-"),
+            sg.FolderBrowse("Browse", size=(7, 1), enable_events=True),
+        ],
+        [
+            sg.InputText(enable_events=True, key="-FILTER-"),
+            sg.Button("Search", size=(7, 1)),
+        ],
+    ]
+    layout_bottom = [
+        [
+            sg.Listbox(
+                [],
+                size=(52, 30),
+                enable_events=True,
+                select_mode=sg.LISTBOX_SELECT_MODE_SINGLE,
+                key="-LISTBOX-",
+            )
+        ],
+    ]
+    layout_left = [
+        [sg.Column(layout_top, pad=(0, 0))],
+        [sg.Column(layout_bottom, pad=(0, 0))],
+    ]
+    layout_right = [[sg.Image(background_color="green", key="-IMAGE-")]]
+    layout = [
+        [
+            sg.Column(layout_left),
+            sg.Column(
+                layout_right,
+                pad=(0, 0),
+                size=(w + 15, h + 15),
+                background_color="blue",
+                key="-COLUMN-",
+            ),
+        ],
+    ]
 
-window.close()
+    window = sg.Window("Plan Viewer", layout, finalize=True)
+    window["-IMAGE-"].Widget.pack(fill="both", expand=True)
+    window["-IMAGE-"].Widget.master.pack(fill="both", expand=True)
+    window["-IMAGE-"].Widget.master.master.pack(fill="both", expand=True)
+    window["-COLUMN-"].Widget.pack_propagate(False)
+
+    while True:
+        event, values = window.read()
+        if event == sg.WINDOW_CLOSED:
+            break
+        # print(event, values)
+        if event in ("-FOLDER-", "-FILTER-", "Search"):
+            update_listbox(
+                window["-LISTBOX-"],
+                values["-FOLDER-"],
+                (".png", ".gif", ".jpg", ".tif"),
+                values["-FILTER-"],
+            )
+        elif event == "-LISTBOX-":
+            lst = values["-LISTBOX-"]
+            if lst:
+                update_image(window["-IMAGE-"], values["-LISTBOX-"][0])
+
+    window.close()
+
+
+if __name__ == "__main__":  # pragma: no cover
+    main()

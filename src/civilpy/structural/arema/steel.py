@@ -6,6 +6,12 @@
 #  SPDX-License-Identifier: MIT
 #  See the LICENSE file in the project root for full license text.
 
+"""AREMA steel bridge load-rating helpers.
+
+Post-processes MIDAS Civil analysis results into AREMA Chapter 15 normal
+and maximum ratings for steel railroad bridges.
+"""
+
 from civilpy.general import PrintColors
 from civilpy.structural.midas import analysis_results_request
 

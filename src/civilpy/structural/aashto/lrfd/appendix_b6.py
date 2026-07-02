@@ -177,11 +177,11 @@ def b6_redistribution_moment(
 ) -> CheckResult:
     """Redistribution moment Mrd at an interior-pier section.
 
-    At the service limit state (B6.3.3.1): Mrd = |Me| - Mpe.  At
-    strength (B6.4.2.1): Mrd = |Me| + fl*Sx/3 - phi_f*Mpe, evaluated
+    At the service limit state (B6.3.3.1): ``Mrd = |Me| - Mpe``.  At
+    strength (B6.4.2.1): ``Mrd = |Me| + fl*Sx/3 - phi_f*Mpe``, evaluated
     for each flange (pass the governing ``f_l``/``s_x``; zero when
     flange lateral bending is negligible).  In both cases
-    0 <= Mrd <= 0.2|Me| — when the computed Mrd exceeds the 20% cap,
+    ``0 <= Mrd <= 0.2|Me|`` — when the computed Mrd exceeds the 20% cap,
     redistribution is not permitted and the section must satisfy the
     ordinary elastic checks (``details["permitted"]`` is False).
 

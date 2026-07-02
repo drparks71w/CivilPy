@@ -4,6 +4,13 @@
 #  SPDX-License-Identifier: MIT
 #  See the LICENSE file in the project root for full license text.
 
+"""AASHTO design and rating vehicles.
+
+Axle-load/spacing definitions for the HL-93 design load (truck, tandem,
+lane) plus legal and permit rating vehicles, with helpers to step axle
+trains across influence lines for moving-load maxima.
+"""
+
 class HL93Load:
     """
     AASHTO HL-93 design vehicle load per AASHTO LRFD Bridge Design Specifications.
@@ -82,8 +89,10 @@ class PedestrianLoad:
     than 25 ft, a reduced load may be used per the formula below, with a
     minimum of 20 psf.
 
-    Reduction formula (L > 25 ft):
+    Reduction formula (L > 25 ft)::
+
         w = max(20, min(90, 240 / L + 20))  [psf]
+
     where L is the loaded span length in feet.
     """
 

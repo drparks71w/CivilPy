@@ -3578,6 +3578,7 @@ class BenfordBridgeAuditor:
     that deviate significantly from the expected distribution.
 
     This is especially useful for detecting:
+
     - **Fabricated inspection data**: Inspectors inventing condition
       ratings or quantities rather than measuring them.
     - **Billing fraud**: Inflated quantities in construction pay items

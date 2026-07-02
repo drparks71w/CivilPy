@@ -4,6 +4,12 @@
 #  SPDX-License-Identifier: MIT
 #  See the LICENSE file in the project root for full license text.
 
+"""Django ORM bootstrap for ODOT bridge-inventory databases.
+
+Configures a Django environment from an external project path and exposes
+its inventory tables for queries, with Pydantic validation of the records.
+"""
+
 import os
 import sys
 import logging

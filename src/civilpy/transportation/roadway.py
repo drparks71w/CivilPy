@@ -124,7 +124,7 @@ def crest_curve_length(
 ) -> float:
     """Minimum crest vertical-curve length (ft), Green Book Eq. 3-43/3-44.
 
-    ``a_pct`` is the algebraic grade difference |G2 - G1| in percent.  Uses
+    ``a_pct`` is the algebraic grade difference ``|G2 - G1|`` in percent.  Uses
     the larger of the two branches so the result is valid whether the sight
     distance is shorter or longer than the curve.
     """
@@ -175,7 +175,7 @@ K_SAG = {
 
 
 def vertical_curve_length_from_k(k: float, a_pct: float) -> float:
-    """Curve length L = K |A| (ft) from a design K value and the grade
+    """Curve length ``L = K*|A|`` (ft) from a design K value and the grade
     difference in percent."""
     return k * abs(a_pct)
 

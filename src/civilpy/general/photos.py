@@ -4,6 +4,13 @@
 #  SPDX-License-Identifier: MIT
 #  See the LICENSE file in the project root for full license text.
 
+"""Site-photo utilities built on Pillow EXIF data.
+
+Extracts EXIF metadata (including GPS coordinates and timestamps) from
+inspection photos, plots photo locations on maps, batch-renames files from
+spreadsheet lists, resizes images, and stamps dates onto photos.
+"""
+
 import os
 import re
 import sys

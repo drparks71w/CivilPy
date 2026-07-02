@@ -4,6 +4,13 @@
 #  SPDX-License-Identifier: MIT
 #  See the LICENSE file in the project root for full license text.
 
+"""Legacy TIMS bridge helpers.
+
+Older interface to ODOT TIMS data: label-code dictionaries (basemap, plan
+types) and the ``TimsBridge`` class for pulling and mapping individual
+bridge records. Superseded in part by :mod:`civilpy.state.ohio.DOT.TIMS`.
+"""
+
 import io
 import os
 import re

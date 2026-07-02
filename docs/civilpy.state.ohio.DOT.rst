@@ -12,6 +12,22 @@ civilpy.state.ohio.DOT.AssetWise module
    :undoc-members:
    :show-inheritance:
 
+civilpy.state.ohio.DOT.apis module
+-----------------------------------
+
+.. automodule:: civilpy.state.ohio.DOT.apis
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+civilpy.state.ohio.DOT.assetwise\_client module
+------------------------------------------------
+
+.. automodule:: civilpy.state.ohio.DOT.assetwise_client
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 civilpy.state.ohio.DOT.aw\_fields module
 -----------------------------------------
 
@@ -32,6 +48,30 @@ civilpy.state.ohio.DOT.bridge module
 --------------------------------------
 
 .. automodule:: civilpy.state.ohio.DOT.bridge
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+civilpy.state.ohio.DOT.credentials module
+------------------------------------------
+
+.. automodule:: civilpy.state.ohio.DOT.credentials
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+civilpy.state.ohio.DOT.D6\_file\_explorer module
+-------------------------------------------------
+
+.. automodule:: civilpy.state.ohio.DOT.D6_file_explorer
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+civilpy.state.ohio.DOT.gemini module
+-------------------------------------
+
+.. automodule:: civilpy.state.ohio.DOT.gemini
    :members:
    :undoc-members:
    :show-inheritance:

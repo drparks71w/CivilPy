@@ -5,6 +5,14 @@
 #  SPDX-License-Identifier: MIT
 #  See the LICENSE file in the project root for full license text.
 
+"""AISC steel-shape database lookup and section classes.
+
+Loads the AISC shapes database (current and historic editions, bundled as
+CSV under ``structural/res``) and exposes ``SteelSection``-style classes
+whose attributes are Pint quantities (``SteelSection("W36X150").I_x``,
+``.S_x``, ``.weight``, …), plus bolt-weight reference data for detailing.
+"""
+
 import numpy as np
 import pandas as pd
 from sympy.combinatorics.fp_groups import define_schreier_generators
@@ -59,7 +67,7 @@ class SteelSection:
         Example:
             >>> s = SteelSection("W36X150")
             >>> float(s.I_x.magnitude)
-            12300.0
+            9040.0
         """
         self.id = self.clean_user_input(label)
         self.aisc_value = self.get_shape()

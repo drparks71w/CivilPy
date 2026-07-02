@@ -1,6 +1,17 @@
 civilpy.structural.aashto package
 ===================================
 
+AASHTO specification tools: design vehicles, load combinations, bearings,
+and the LRFD design/rating calculations in the ``lrfd`` subpackage.
+
+Subpackages
+-----------
+
+.. toctree::
+   :maxdepth: 4
+
+   civilpy.structural.aashto.lrfd
+
 Submodules
 ----------
 

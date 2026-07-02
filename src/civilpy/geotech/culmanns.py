@@ -4,6 +4,13 @@
 #  SPDX-License-Identifier: MIT
 #  See the LICENSE file in the project root for full license text.
 
+"""Culmann's graphical method for active earth pressure.
+
+Reproduces the classic Culmann construction for a retaining wall backfill
+loaded by a Cooper E80 railroad surcharge, computing trial-wedge weights and
+the governing failure plane, and plotting the construction with matplotlib.
+"""
+
 import numpy as np
 import pandas as pd
 from civilpy.general import units

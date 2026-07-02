@@ -4,6 +4,13 @@
 #  SPDX-License-Identifier: MIT
 #  See the LICENSE file in the project root for full license text.
 
+"""Rhino.Inside visualization helpers.
+
+Loads Rhino inside CPython and converts BREP geometry to triangulated
+meshes for interactive display (plotly), used by the strut-and-tie
+authoring workflow. Windows-only (requires a Rhino installation).
+"""
+
 import plotly.graph_objects as go
 import numpy as np
 

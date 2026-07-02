@@ -24,17 +24,17 @@ The vocabulary mirrors the IFC 4.3 ``IfcStructuralAnalysisDomain`` so a future
 ``from_ifc`` / ``to_ifc`` adapter is a direct mapping (see the entity table in
 the design doc):
 
-==================  ===========================================
-hub type            IFC 4.3 entity
-==================  ===========================================
-:class:`Node`       ``IfcStructuralPointConnection``
-:class:`Restraint`  ``IfcBoundaryNodeCondition``
-:class:`Element`    ``IfcStructuralCurveMember``
-:class:`Load`       ``IfcStructuralLoadSingleForce`` (point action)
-:class:`LoadCase`   ``IfcStructuralLoadCase``
-:class:`Result`     ``IfcStructuralResultGroup`` (reactions / forces)
-:class:`StructuralModel`  ``IfcStructuralAnalysisModel``
-==================  ===========================================
+=========================  ===================================================
+hub type                   IFC 4.3 entity
+=========================  ===================================================
+:class:`Node`              ``IfcStructuralPointConnection``
+:class:`Restraint`         ``IfcBoundaryNodeCondition``
+:class:`Element`           ``IfcStructuralCurveMember``
+:class:`Load`              ``IfcStructuralLoadSingleForce`` (point action)
+:class:`LoadCase`          ``IfcStructuralLoadCase``
+:class:`Result`            ``IfcStructuralResultGroup`` (reactions / forces)
+:class:`StructuralModel`   ``IfcStructuralAnalysisModel``
+=========================  ===================================================
 
 Units are carried as labels (default **kips / ft**, matching the rest of
 ``civilpy.structural`` and the Rhino tag contract); actual unit conversion is an

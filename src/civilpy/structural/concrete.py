@@ -693,8 +693,10 @@ class AnchorBolts:
         """
         Steel strength of anchors in shear — ACI 318-19 Eq. 17.7.1.2b.
 
-        For cast-in headed bolts (threads may be in shear plane):
-            V_sa = 0.6 * A_se,V * f_uta  per anchor
+        For cast-in headed bolts (threads may be in shear plane)::
+
+            V_sa = 0.6 * A_se,V * f_uta   (per anchor)
+
         Grout pad reduces by 0.80 (Section 17.7.1.2.1).
         """
         V_sa_each = 0.6 * self.A_se_V * self.f_uta
@@ -795,11 +797,12 @@ class AnchorBolts:
         """
         Concrete breakout strength of anchor group in shear — ACI 318-19 17.7.2.
 
-        shear_direction="perpendicular": standard edge breakout (17.7.2.1a/b).
-          Corner condition (both c_a1 and c_a2 finite): automatically computes
-          both edges and uses the minimum per ACI 17.7.2.1(d).
-        shear_direction="parallel": doubles V_cb with psi_ed=1.0 (17.7.2.1(c)).
-        shear_direction="away": returns None (no edge breakout).
+        ``shear_direction="perpendicular"``: standard edge breakout
+        (17.7.2.1a/b).  Corner condition (both c_a1 and c_a2 finite):
+        automatically computes both edges and uses the minimum per ACI
+        17.7.2.1(d).  ``shear_direction="parallel"``: doubles V_cb with
+        psi_ed=1.0 (17.7.2.1(c)).  ``shear_direction="away"``: returns
+        None (no edge breakout).
 
         Returns None when c_a1 is infinite (no near edge in shear direction).
         """
@@ -879,10 +882,11 @@ class AnchorBolts:
         """
         Tension-shear interaction — ACI 318-19 Section 17.8.
 
-        If N_ua/(φN_n) ≤ 0.2:  shear governs, full shear capacity available.
-        If V_ua/(φV_n) ≤ 0.2:  tension governs, full tension capacity available.
-        Otherwise:
-            N_ua/(φN_n) + V_ua/(φV_n) ≤ 1.2  (Eq. 17.8.3)
+        If N_ua/(φN_n) ≤ 0.2, shear governs and the full shear capacity is
+        available.  If V_ua/(φV_n) ≤ 0.2, tension governs and the full
+        tension capacity is available.  Otherwise (Eq. 17.8.3)::
+
+            N_ua/(φN_n) + V_ua/(φV_n) ≤ 1.2
         """
         phi_Nn = min(r.phi_Sn for r in self._tension_results() if r is not None)
         phi_Vn = min(r.phi_Sn for r in self._shear_results() if r is not None)
@@ -1151,12 +1155,14 @@ class AnchorBolts:
 
         Notes
         -----
-        Tension from moment: N_M = 2·M_u / (n·r)  [elastic, Σy² = n·r²/2]
-        Axial share:         N_P = P_u / n
-        Shear from V_u:      V_v = V_u / n
-        Shear from torsion:  V_t = T_u / (n·r)  [all bolts at equal radius]
-        Final:               N_ua_max = max(0, N_M + N_P)
-                             V_ua_max = V_v + V_t  (conservative, additive)
+        ::
+
+            Tension from moment: N_M = 2·M_u / (n·r)  [elastic, Σy² = n·r²/2]
+            Axial share:         N_P = P_u / n
+            Shear from V_u:      V_v = V_u / n
+            Shear from torsion:  V_t = T_u / (n·r)  [all bolts at equal radius]
+            Final:               N_ua_max = max(0, N_M + N_P)
+                                 V_ua_max = V_v + V_t  (conservative, additive)
         """
         r = bolt_circle_radius
         n = n_bolts

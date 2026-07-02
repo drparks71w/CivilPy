@@ -1009,9 +1009,9 @@ class WoodMemberCheck:
         return result
 
     def check_deflection(self, w, L, limit="L/360", I_eff=None):
-        """Deflection check for uniform load on simple span.
+        """Deflection check for uniform load on simple span::
 
-        delta = 5*w*L^4 / (384*E'*I)
+            delta = 5*w*L^4 / (384*E'*I)
 
         Args:
             w: Uniform load (Pint force/length, e.g. lbf/ft).

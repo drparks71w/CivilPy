@@ -4,9 +4,4 @@
 #  SPDX-License-Identifier: MIT
 #  See the LICENSE file in the project root for full license text.
 
-"""AREMA Chapter 8 (concrete/masonry) tools.
-
-.. todo::
-   Empty stub — implement or remove.
-"""
-
+"""Maryland-specific civil engineering tools (MDTA)."""

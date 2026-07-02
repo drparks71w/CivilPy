@@ -4,6 +4,13 @@
 #  SPDX-License-Identifier: MIT
 #  See the LICENSE file in the project root for full license text.
 
+"""Jupyter notebook export utilities.
+
+Wraps ``nbconvert`` to render notebooks to PDF/WebPDF/HTML with cell-tag
+filtering (``remove_cell``, ``remove_input``, ``remove_output``), so
+calculation notebooks can be published as clean reports.
+"""
+
 import asyncio
 import nbformat
 from nbconvert import WebPDFExporter, PDFExporter, LatexExporter

@@ -4,6 +4,12 @@
 #  SPDX-License-Identifier: MIT
 #  See the LICENSE file in the project root for full license text.
 
+"""Static structural reference tables.
+
+Large lookup dictionaries used across the structural package: A325 bolt
+weights, plate/connection capacities, and similar tabulated design data.
+"""
+
 A325_bolt_weights = {
     1: {
         0.5: 16.5,

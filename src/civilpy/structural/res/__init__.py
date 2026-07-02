@@ -4,3 +4,6 @@
 #  SPDX-License-Identifier: MIT
 #  See the LICENSE file in the project root for full license text.
 
+"""Bundled structural reference data (AISC shape CSVs, definitions).
+"""
+

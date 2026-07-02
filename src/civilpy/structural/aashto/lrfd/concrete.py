@@ -288,7 +288,7 @@ def rc_max_stirrup_spacing(
     phi_v: float = 0.9,
 ) -> CheckResult:
     """Maximum stirrup spacing (5.7.2.6): with the shear stress
-    vu = |Vu - phi*Vp|/(phi*bv*dv), smax = min(0.8*dv, 24in) when
+    ``vu = |Vu - phi*Vp|/(phi*bv*dv)``, smax = min(0.8*dv, 24in) when
     vu < 0.125*f'c, else min(0.4*dv, 12in).  ``capacity`` is smax and
     ``demand`` the actual spacing ``s``."""
     v_stress = abs(v_u - phi_v * v_p) / (phi_v * b_v * d_v)
@@ -321,10 +321,10 @@ def rc_longitudinal_reinforcement(
     phi_c: float = 0.75,
 ) -> CheckResult:
     """Tension demand on longitudinal reinforcement from combined moment,
-    axial, and shear (5.7.3.5-1):
+    axial, and shear (5.7.3.5-1)::
 
-    Aps*fps + As*fy >= |Mu|/(dv*phi_f) + 0.5*Nu/phi_c
-                       + (|Vu/phi_v - Vp| - 0.5*Vs)*cot(theta)
+        Aps*fps + As*fy >= |Mu|/(dv*phi_f) + 0.5*Nu/phi_c
+                           + (|Vu/phi_v - Vp| - 0.5*Vs)*cot(theta)
 
     ``v_s`` is capped at Vu/phi_v per the article.  ``capacity`` is the
     tension the reinforcement can develop (pass the products As*fy and

@@ -4,70 +4,83 @@
 #  SPDX-License-Identifier: MIT
 #  See the LICENSE file in the project root for full license text.
 
+"""Google Gemini helpers for plan-sheet data extraction.
+
+Sends plan-sheet images to the Gemini API to extract structured data
+(labels, tables) that supplements the local ML models in
+:mod:`civilpy.state.ohio.DOT.title_sheet`. Requires a ``GOOGLE_API_KEY``
+in the environment or a ``.env`` file.
+
+.. todo::
+   This started as a one-off extraction script; generalize the prompt and
+   schema beyond the "Supplemental Prints of Standard Construction
+   Drawings" table.
+"""
+
+import json
 import os
-from dotenv import load_dotenv
+
 import google.generativeai as genai
 import PIL.Image
-import json
 import typing_extensions as typing
+from dotenv import load_dotenv
 
-# 1. SETUP: Load environment variables
-load_dotenv()  # This loads the .env file
-api_key = os.getenv("GOOGLE_API_KEY")
 
-if not api_key:
-    raise ValueError("API Key not found. Make sure you have a .env file with GOOGLE_API_KEY defined.")
-
-genai.configure(api_key=api_key)
-
-# 2. DEFINE THE INTERMEDIATE SCHEMA
-# We ask Gemini for a list first to ensure stability.
 class DrawingEntry(typing.TypedDict):
     drawing_code: str
     date: str
 
+
 class ExtractionResult(typing.TypedDict):
     drawings: list[DrawingEntry]
 
-# 3. LOAD THE IMAGE
-# Ensure 'image_5101a8.png' is in your directory
-try:
-    img = PIL.Image.open('image_5101a8.png')
-except FileNotFoundError:
-    print("Error: Image file not found.")
-    exit()
 
-# 4. THE CALL
-model = genai.GenerativeModel("gemini-1.5-flash")
+def configure_gemini():
+    """Load ``GOOGLE_API_KEY`` from the environment/.env and configure genai."""
+    load_dotenv()
+    api_key = os.getenv("GOOGLE_API_KEY")
+    if not api_key:
+        raise ValueError(
+            "API Key not found. Make sure you have a .env file with "
+            "GOOGLE_API_KEY defined."
+        )
+    genai.configure(api_key=api_key)
 
-prompt = """
-Analyze this image of a "Supplemental Prints of Standard Construction Drawings" table.
-Extract all drawing codes (like F-1, BP-2, etc.) and their corresponding dates.
-Ignore empty rows.
-"""
 
-try:
+def extract_std_drawings(image_path, model_name="gemini-1.5-flash"):
+    """Extract standard-construction-drawing codes and dates from a title-sheet image.
+
+    :param image_path: Path to an image of the "Supplemental Prints of
+        Standard Construction Drawings" table.
+    :param model_name: Gemini model to use.
+    :return: ``{"StdConstructionDrawings": {code: date, ...}}``
+    """
+    configure_gemini()
+    img = PIL.Image.open(image_path)
+    model = genai.GenerativeModel(model_name)
+
+    prompt = """
+    Analyze this image of a "Supplemental Prints of Standard Construction Drawings" table.
+    Extract all drawing codes (like F-1, BP-2, etc.) and their corresponding dates.
+    Ignore empty rows.
+    """
+
     response = model.generate_content(
         [prompt, img],
         generation_config=genai.GenerationConfig(
             response_mime_type="application/json",
-            response_schema=ExtractionResult
-        )
+            response_schema=ExtractionResult,
+        ),
     )
-
-    # 5. POST-PROCESSING
     raw_data = json.loads(response.text)
-
-    # Transform list into your specific "StdConstructionDrawings" dictionary format
-    formatted_output = {
+    return {
         "StdConstructionDrawings": {
-            item['drawing_code']: item['date']
-            for item in raw_data['drawings']
+            item["drawing_code"]: item["date"] for item in raw_data["drawings"]
         }
     }
 
-    # 6. PRINT RESULT
-    print(json.dumps(formatted_output, indent=4))
 
-except Exception as e:
-    print(f"An error occurred: {e}")
+if __name__ == "__main__":  # pragma: no cover
+    import sys
+
+    print(json.dumps(extract_std_drawings(sys.argv[1]), indent=4))

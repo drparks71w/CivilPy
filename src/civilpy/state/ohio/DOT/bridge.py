@@ -5,6 +5,14 @@
 #  See the LICENSE file in the project root for full license text.
 
 # QC'd -
+"""ODOT standard bridge design-data tables.
+
+Dictionaries transcribed from ODOT standard bridge drawings (e.g. the
+CS-1-08 / AS-1-15 series): slab thicknesses, reinforcing bar sizes and
+spacings, and related quantities keyed by span length, plus helpers for
+looking up values for a given design.
+"""
+
 simple_concrete_slab = {
   11: { 'thickness': 11.25,
         'a_bar': {'size': 7, 'spacing': 6},

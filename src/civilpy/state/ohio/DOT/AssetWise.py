@@ -4,6 +4,13 @@
 #  SPDX-License-Identifier: MIT
 #  See the LICENSE file in the project root for full license text.
 
+"""Client for ODOT's Bentley AssetWise API.
+
+Authenticates against the ODOT AssetWise endpoint and retrieves bridge asset
+records, inspection reports, and inspection photos; field-code translations
+come from :mod:`civilpy.state.ohio.DOT.aw_fields`.
+"""
+
 import re
 import json
 from types import SimpleNamespace

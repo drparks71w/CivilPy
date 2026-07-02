@@ -252,7 +252,7 @@ def ultimate_bearing_capacity(
     water_table: float | None = None,
     gamma_sat: float | None = None,
 ) -> BearingCapacityResult:
-    """General bearing-capacity equation (AASHTO LRFD 10.6.3.1.2):
+    """General bearing-capacity equation (AASHTO LRFD 10.6.3.1.2)::
 
         q_ult = c*Nc*sc*dc*ic + q*Nq*sq*dq*iq + 0.5*gamma*B'*Ngamma*sg*dg*ig
 

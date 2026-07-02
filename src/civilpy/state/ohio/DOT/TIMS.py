@@ -5,6 +5,13 @@
 #  See the LICENSE file in the project root for full license text.
 
 # Use this section to extract data from TIMs and Assetwise to QA the data
+"""ODOT TIMS (Transportation Information Mapping System) data access.
+
+Queries the public TIMS REST endpoints for bridge inventory records and
+cross-checks them against AssetWise data for QA, including NBI material and
+design/construction-type code dictionaries.
+"""
+
 import json
 import requests
 import pandas as pd

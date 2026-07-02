@@ -28,6 +28,14 @@ civilpy.state.ohio.search\_tools module
    :undoc-members:
    :show-inheritance:
 
+civilpy.state.ohio.snbi module
+------------------------------
+
+.. automodule:: civilpy.state.ohio.snbi
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 Module contents
 ---------------
 

@@ -4,6 +4,12 @@
 #  SPDX-License-Identifier: MIT
 #  See the LICENSE file in the project root for full license text.
 
+"""ODOT Office of Structural Engineering review tools.
+
+Builds and manages Stage 2 structural plan-review checklists, drawing the
+comment library from :mod:`civilpy.state.ohio.DOT.stage_2_comments`.
+"""
+
 import os
 import json
 from pathlib import Path

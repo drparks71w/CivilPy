@@ -4,6 +4,16 @@
 #  SPDX-License-Identifier: MIT
 #  See the LICENSE file in the project root for full license text.
 
+"""SQLite-backed steel-shape lookup (experimental).
+
+Duplicate of :mod:`civilpy.structural.steel` that reads shapes from the
+bundled ``civilpy.db`` SQLite database instead of CSV.
+
+.. todo::
+   Temporary module — merge with :mod:`civilpy.structural.steel` (pick one
+   data backend) and remove.
+"""
+
 import os
 import sqlite3
 import pandas as pd

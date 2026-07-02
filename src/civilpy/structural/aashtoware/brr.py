@@ -4,6 +4,12 @@
 #  SPDX-License-Identifier: MIT
 #  See the LICENSE file in the project root for full license text.
 
+"""AASHTOWare BrR database access helpers.
+
+Connects to an AASHTOWare Bridge Rating (BrR) SQL database from a secrets
+file and pulls bridge/rating records for QA and batch reporting.
+"""
+
 import json
 from pathlib import Path
 from sqlalchemy import create_engine

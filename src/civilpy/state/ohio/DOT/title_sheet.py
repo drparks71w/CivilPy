@@ -4,6 +4,13 @@
 #  SPDX-License-Identifier: MIT
 #  See the LICENSE file in the project root for full license text.
 
+"""ML-based title-sheet section detection for ODOT plan sets.
+
+Loads a trained torchvision detection model and locates labelled regions
+(PID, sheet index, standard drawings, …) on plan title sheets, from PDFs or
+images, for downstream OCR/extraction.
+"""
+
 import torch
 import torchvision
 from torchvision.models.detection.faster_rcnn import FastRCNNPredictor

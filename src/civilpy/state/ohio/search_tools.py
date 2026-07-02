@@ -4,6 +4,12 @@
 #  SPDX-License-Identifier: MIT
 #  See the LICENSE file in the project root for full license text.
 
+"""ODOT bridge-record search and plan-sheet TIFF utilities.
+
+Searches TIMS bridge records by structure file number (SFN) or attributes and
+assembles/splits multi-page TIFF plan sets for archived ODOT drawings.
+"""
+
 import os
 import re
 import math

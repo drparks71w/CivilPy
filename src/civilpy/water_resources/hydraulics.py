@@ -4,6 +4,13 @@
 #  SPDX-License-Identifier: MIT
 #  See the LICENSE file in the project root for full license text.
 
+"""ODOT standard culvert headwall and wing-wall lookup tables.
+
+``OhioCulvertDesign`` encapsulates ODOT standard-drawing dimensions,
+reinforcement, and concrete quantities for box-culvert headwalls and
+wing-walls, keyed by headwall type, design height, and span.
+"""
+
 class OhioCulvertDesign:
     """ODOT standard culvert headwall and wing-wall design lookup table.
 

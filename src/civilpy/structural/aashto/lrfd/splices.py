@@ -71,7 +71,7 @@ def web_splice_design_forces(
     for the full web capacity, not the applied shear.  When the factored
     moment ``m_u`` (kip-in) exceeds the moment the flange splices can carry
     ``m_flange``, the excess is resisted by a horizontal force couple in
-    the web: Hw = (|Mu| - Mrf)/arm.  Each of the ``n_bolts`` (one side of
+    the web: ``Hw = (|Mu| - Mrf)/arm``.  Each of the ``n_bolts`` (one side of
     the splice) sees the vector sum of Vuw/Nb and Hw/Nb."""
     v_uw = v_r_web
     h_w = 0.0
@@ -202,7 +202,7 @@ def flange_moment_resistance(
 ) -> CheckResult:
     """Moment the flange splices alone can resist as a force couple
     (6.13.6.1.3c): Mflange = Pfl * arm.  Compared against the factored
-    design moment ``m_u``; any excess |Mu| - Mflange is carried by the web
+    design moment ``m_u``; any excess ``|Mu| - Mflange`` is carried by the web
     as the horizontal force Hw (see :func:`web_splice_design_forces`).
     Forces in kip, arm in inches, moments in kip-in."""
     m_flange = flange_force * moment_arm

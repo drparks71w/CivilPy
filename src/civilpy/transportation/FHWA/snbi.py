@@ -4,6 +4,14 @@
 #  SPDX-License-Identifier: MIT
 #  See the LICENSE file in the project root for full license text.
 
+"""SNBI transition-readiness plotting scratchpad.
+
+.. todo::
+   Contains only hard-coded demo chart data. The real SNBI validation
+   models live in :mod:`civilpy.state.ohio.snbi`; the generic (national)
+   parts of that module belong here instead.
+"""
+
 import matplotlib.pyplot as plt
 
 # Data for 7 pie charts, one for each section
@@ -29,21 +37,29 @@ no_fields = [
 # Softer pastel colors for the pie charts
 colors = ['#66BB6A', '#FFEE58', '#EF5350']  # Material green, red, and yellow
 
-# Create subplots (2 rows: 3 on the top, 4 on the bottom)
-fig, axes = plt.subplots(2, 4, figsize=(12, 6))
 
-# Flatten axes array and loop over data to create each pie chart
-for i, ax in enumerate(axes.flat):
-    if i < len(data):
-        ax.pie(
-            data[i],
-            labels=labels,
-            autopct='%1.1f%%',
-            colors=colors  # Set softer colors
-        )
-        ax.set_title(f"Section {i+1}: {no_fields[i]}")
-        ax.text(0, -1.2, f"{titles[i]}", fontsize=9, va='center', ha='center')  # Subtitle below
-    else:
-        ax.axis('off')  # Hide unused subplot axes
+def plot_transition_readiness():
+    """Plot the NBI→SNBI transition-readiness pie charts (one per section)."""
+    # Create subplots (2 rows: 3 on the top, 4 on the bottom)
+    fig, axes = plt.subplots(2, 4, figsize=(12, 6))
 
-snbi_data_crosswalk = plt
+    # Flatten axes array and loop over data to create each pie chart
+    for i, ax in enumerate(axes.flat):
+        if i < len(data):
+            ax.pie(
+                data[i],
+                labels=labels,
+                autopct='%1.1f%%',
+                colors=colors  # Set softer colors
+            )
+            ax.set_title(f"Section {i+1}: {no_fields[i]}")
+            ax.text(0, -1.2, f"{titles[i]}", fontsize=9, va='center', ha='center')  # Subtitle below
+        else:
+            ax.axis('off')  # Hide unused subplot axes
+
+    return fig, axes
+
+
+if __name__ == "__main__":  # pragma: no cover
+    plot_transition_readiness()
+    plt.show()

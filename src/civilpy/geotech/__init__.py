@@ -4,6 +4,20 @@
 #  SPDX-License-Identifier: MIT
 #  See the LICENSE file in the project root for full license text.
 
+"""Geotechnical engineering package.
+
+Re-exports the boring-log data model (:class:`~civilpy.geotech.boring.Borehole`,
+samples, SPT results, gradations) and the DIGGS / PDF log parsers from
+:mod:`civilpy.geotech.boring_io`, plus quick lateral earth-pressure helpers
+(Rankine/Coulomb). Deeper analyses live in the submodules: ``spt``
+(corrections and correlations), ``shallow_foundation`` / ``deep_foundation``,
+``axial_load_transfer``, ``lateral_pile`` / ``lpile``, ``soil_profile``,
+``lateral_earth``, and ``culmanns``.
+
+:mod:`civilpy.geotech.cande_adapter` is intentionally *not* imported here so
+that importing this package does not pull in :mod:`civilpy.structural`.
+"""
+
 import math
 import numpy as np
 import matplotlib.pyplot as plt

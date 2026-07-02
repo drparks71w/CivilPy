@@ -2,6 +2,13 @@
 # and shape factor. Values derived from AASHTO LRFD Bridge Design Specifications,
 # Section 14.7.6 (Method B), stress-strain relationships for steel-reinforced
 # elastomeric bearings.
+"""Elastomeric bearing durometer stress–strain tables.
+
+Tabulated compressive stress–strain curves by durometer hardness and shape
+factor (AASHTO LRFD Method A charts), with interpolation helpers used by
+the bearing design tools.
+"""
+
 durometer_strain_factors = {
     "50": {
         "12": .1697,

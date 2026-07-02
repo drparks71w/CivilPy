@@ -4,6 +4,13 @@
 #  SPDX-License-Identifier: MIT
 #  See the LICENSE file in the project root for full license text.
 
+"""Command-line entry point for CivilPy.
+
+Currently a placeholder that prints a banner; future versions will expose
+CivilPy functionality through subcommands (data processing, structural
+calculations, report generation).
+"""
+
 def civilpy_cli():
     """Entry point for the CivilPy command-line interface.
 

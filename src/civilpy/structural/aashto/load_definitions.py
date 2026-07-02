@@ -4,6 +4,13 @@
 #  SPDX-License-Identifier: MIT
 #  See the LICENSE file in the project root for full license text.
 
+"""AASHTO LRFD load combinations and load factors.
+
+Transcription of the LRFD load-combination table (Table 3.4.1-1) and
+permanent-load factors (Table 3.4.1-2) as dictionaries/DataFrames for use
+in load-combination generation.
+"""
+
 import pandas as pd
 
 # Load combinations and load factors per AASHTO LRFD Bridge Design Specifications.

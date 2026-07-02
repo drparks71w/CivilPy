@@ -4,6 +4,13 @@
 #  SPDX-License-Identifier: MIT
 #  See the LICENSE file in the project root for full license text.
 
+"""MDTA inspection-photo editing helpers.
+
+Batch-renames, resizes, and timestamps inspection photos for Maryland
+Transportation Authority reports, driving the generic helpers in
+:mod:`civilpy.general.photos`.
+"""
+
 import FreeSimpleGUI as sg
 from pathlib import Path
 import os
@@ -13,7 +20,10 @@ from PIL import Image
 import pandas as pd
 from openpyxl import Workbook
 
-from photos import (convert_filenames_from_excel,
+# TODO(architecture): this module began as a standalone script and imported a
+#   sibling "photos" module that no longer exists; verify the GUI still works
+#   against civilpy.general.photos.
+from civilpy.general.photos import (convert_filenames_from_excel,
                                     resize_image,
                                     add_timestamp,
                                     get_photos_from_file_list,
@@ -91,140 +101,150 @@ def update_image(image_element, filename):
         image_element.update(data=data)
 
 
-sg.theme("Dark")
-sg.set_options(font=("Roboto Mono", 11))
-
 w, h = size_of_image = (700, 600)
 
-layout_top = [
-    [
-        sg.Text("Photo Folder:"),
-        sg.InputText(enable_events=True, key="-FOLDER-"),
-        sg.FolderBrowse("Browse", button_color=button_color, size=(7, 1), enable_events=True),
-        sg.Button("Generate Excel", key="GENERATE_EXCEL", button_color=button_color, size=(12, 1))
-    ],
-    [
-        sg.Text("Filter:"),
-        sg.InputText(enable_events=True, key="-FILTER-"),
-        sg.Button("Search", button_color=button_color, size=(7, 1)),
-        sg.Button("Resize Images", key="RESIZE_IMAGE", button_color=button_color, size=(12, 1)),
-        sg.Checkbox("Generate Timestamps", key="-TimeStamp-")
+
+# TODO(architecture): this module is a standalone GUI script; the layout and
+#   event loop used to run at import time, which blocked any `import`. Kept
+#   as a callable main() until it moves to a proper entry point.
+def main():
+    """Launch the MDTA Photo Editor window (blocks until closed)."""
+    sg.theme("Dark")
+    sg.set_options(font=("Roboto Mono", 11))
+
+    layout_top = [
+        [
+            sg.Text("Photo Folder:"),
+            sg.InputText(enable_events=True, key="-FOLDER-"),
+            sg.FolderBrowse("Browse", button_color=button_color, size=(7, 1), enable_events=True),
+            sg.Button("Generate Excel", key="GENERATE_EXCEL", button_color=button_color, size=(12, 1))
+        ],
+        [
+            sg.Text("Filter:"),
+            sg.InputText(enable_events=True, key="-FILTER-"),
+            sg.Button("Search", button_color=button_color, size=(7, 1)),
+            sg.Button("Resize Images", key="RESIZE_IMAGE", button_color=button_color, size=(12, 1)),
+            sg.Checkbox("Generate Timestamps", key="-TimeStamp-")
+        ]
     ]
-]
 
-layout_bottom = [
-    [
-        sg.Listbox(
-            [],
-            size=(52, 30),
-            enable_events=True,
-            select_mode=sg.LISTBOX_SELECT_MODE_SINGLE,
-            sbar_background_color="#707070",
-            key="-LISTBOX-",
-            expand_x=True,
-            expand_y=True,
-            horizontal_scroll=True,
-        )
-    ],
-]
-
-layout_left = [
-    [sg.Column(layout_top, pad=(0, 0), expand_x=True, expand_y=True)],
-    [sg.Column(layout_bottom, pad=(0, 0), expand_x=True, expand_y=True)],
-]
-
-layout_right = [[sg.Image(background_color="gray", key="-IMAGE-")]]
-
-layout = [
-    [
-        sg.Column(
-            layout_left,
-            expand_x=True,
-            expand_y=True
-        ),
-        sg.Column(
-            layout_right,
-            pad=(0, 0),
-            size=(w + 15, h + 15),
-            background_color="blue",
-            key="-COLUMN-",
-        ),
-    ],
-]
-
-window = sg.Window("MDTA Photo Editor", layout, resizable=True, finalize=True)
-window["-IMAGE-"].Widget.pack(fill="both", expand=True)
-window["-IMAGE-"].Widget.master.pack(fill="both", expand=True)
-window["-IMAGE-"].Widget.master.master.pack(fill="both", expand=True)
-window["-COLUMN-"].Widget.pack_propagate(False)
-
-while True:
-    event, values = window.read()
-    if event == sg.WINDOW_CLOSED:
-        break
-    # print(event, values)
-    if event in ("-FOLDER-", "-FILTER-", "Search"):
-        update_listbox(
-            window["-LISTBOX-"],
-            values["-FOLDER-"],
-            (".png", ".gif", ".jpg", ".tif"),
-            values["-FILTER-"],
-        )
-    elif event == "GENERATE_EXCEL":
-        generate_excel(
-            values["-FOLDER-"],
-            (".png", ".gif", ".jpg", ".tif"),
-        )
-    elif event == "RESIZE_IMAGE":
-        # Check if the folder already exists and provide the user a warning
-        if os.path.isdir(Path(values["-FOLDER-"]) / 'Renamed_Photos'):
-            sg.popup(
-                "Warning: The resized folder already exists, delete it before rerunning the command",
-                title="File Warning",
-                button_color=("white", "red")
+    layout_bottom = [
+        [
+            sg.Listbox(
+                [],
+                size=(52, 30),
+                enable_events=True,
+                select_mode=sg.LISTBOX_SELECT_MODE_SINGLE,
+                sbar_background_color="#707070",
+                key="-LISTBOX-",
+                expand_x=True,
+                expand_y=True,
+                horizontal_scroll=True,
             )
+        ],
+    ]
 
-        # If renamed photo folder doesn't exist, create it and attempt the conversion
-        else:
-            os.mkdir(Path(values["-FOLDER-"]) / 'Renamed_Photos')
+    layout_left = [
+        [sg.Column(layout_top, pad=(0, 0), expand_x=True, expand_y=True)],
+        [sg.Column(layout_bottom, pad=(0, 0), expand_x=True, expand_y=True)],
+    ]
 
-            file_list = os.listdir(values["-FOLDER-"])
-            images = get_photos_from_file_list(file_list)
-            excel_file = [
-                file
-                for file in file_list
-                if re.search("(xlsx|xls|xlsm)$", str(file), re.IGNORECASE)
-            ][0]
-            photo_list_excel = pd.read_excel(Path(values["-FOLDER-"]) / excel_file, 0, header=None)
-            file_list = photo_list_excel[0].tolist()
-            try:
-                new_names = photo_list_excel[1].tolist()
-            except KeyError as e:
-                new_names = photo_list_excel[0].tolist()
+    layout_right = [[sg.Image(background_color="gray", key="-IMAGE-")]]
 
-            for file in images:
-                # Set the new name of the image based on the excel file
-                new_name = new_names[file_list.index(file)]
-                image = Image.open(Path(values["-FOLDER-"]) / file)
+    layout = [
+        [
+            sg.Column(
+                layout_left,
+                expand_x=True,
+                expand_y=True
+            ),
+            sg.Column(
+                layout_right,
+                pad=(0, 0),
+                size=(w + 15, h + 15),
+                background_color="blue",
+                key="-COLUMN-",
+            ),
+        ],
+    ]
 
-                if values['-TimeStamp-']:
-                    creation_date = get_photo_creation_date(image)
-                    image = resize_image(image)
-                    image = add_timestamp(image, creation_date)
-                else:
-                    image = resize_image(image)
+    window = sg.Window("MDTA Photo Editor", layout, resizable=True, finalize=True)
+    window["-IMAGE-"].Widget.pack(fill="both", expand=True)
+    window["-IMAGE-"].Widget.master.pack(fill="both", expand=True)
+    window["-IMAGE-"].Widget.master.master.pack(fill="both", expand=True)
+    window["-COLUMN-"].Widget.pack_propagate(False)
+
+    while True:
+        event, values = window.read()
+        if event == sg.WINDOW_CLOSED:
+            break
+        # print(event, values)
+        if event in ("-FOLDER-", "-FILTER-", "Search"):
+            update_listbox(
+                window["-LISTBOX-"],
+                values["-FOLDER-"],
+                (".png", ".gif", ".jpg", ".tif"),
+                values["-FILTER-"],
+            )
+        elif event == "GENERATE_EXCEL":
+            generate_excel(
+                values["-FOLDER-"],
+                (".png", ".gif", ".jpg", ".tif"),
+            )
+        elif event == "RESIZE_IMAGE":
+            # Check if the folder already exists and provide the user a warning
+            if os.path.isdir(Path(values["-FOLDER-"]) / 'Renamed_Photos'):
+                sg.popup(
+                    "Warning: The resized folder already exists, delete it before rerunning the command",
+                    title="File Warning",
+                    button_color=("white", "red")
+                )
+
+            # If renamed photo folder doesn't exist, create it and attempt the conversion
+            else:
+                os.mkdir(Path(values["-FOLDER-"]) / 'Renamed_Photos')
+
+                file_list = os.listdir(values["-FOLDER-"])
+                images = get_photos_from_file_list(file_list)
+                excel_file = [
+                    file
+                    for file in file_list
+                    if re.search("(xlsx|xls|xlsm)$", str(file), re.IGNORECASE)
+                ][0]
+                photo_list_excel = pd.read_excel(Path(values["-FOLDER-"]) / excel_file, 0, header=None)
+                file_list = photo_list_excel[0].tolist()
+                try:
+                    new_names = photo_list_excel[1].tolist()
+                except KeyError as e:
+                    new_names = photo_list_excel[0].tolist()
+
+                for file in images:
+                    # Set the new name of the image based on the excel file
+                    new_name = new_names[file_list.index(file)]
+                    image = Image.open(Path(values["-FOLDER-"]) / file)
+
+                    if values['-TimeStamp-']:
+                        creation_date = get_photo_creation_date(image)
+                        image = resize_image(image)
+                        image = add_timestamp(image, creation_date)
+                    else:
+                        image = resize_image(image)
 
 
-                # Check if the value in excel is empty. comes in as a float but checking for NaN crashes program
-                if type(new_name)==float:
-                    image.save(Path(values["-FOLDER-"]) / 'Renamed_Photos' / Path(file).name)
-                else:
-                    image.save(Path(values["-FOLDER-"]) / 'Renamed_Photos' / f"{new_name}{Path(file).suffix}")
+                    # Check if the value in excel is empty. comes in as a float but checking for NaN crashes program
+                    if type(new_name)==float:
+                        image.save(Path(values["-FOLDER-"]) / 'Renamed_Photos' / Path(file).name)
+                    else:
+                        image.save(Path(values["-FOLDER-"]) / 'Renamed_Photos' / f"{new_name}{Path(file).suffix}")
 
-    elif event == "-LISTBOX-":
-        lst = values["-LISTBOX-"]
+        elif event == "-LISTBOX-":
+            lst = values["-LISTBOX-"]
 
-        if lst:
-            update_image(window["-IMAGE-"], Path(values["-FOLDER-"], values["-LISTBOX-"][0]))
+            if lst:
+                update_image(window["-IMAGE-"], Path(values["-FOLDER-"], values["-LISTBOX-"][0]))
 
-window.close()
+    window.close()
+
+
+if __name__ == "__main__":  # pragma: no cover
+    main()

@@ -4,6 +4,13 @@
 #  SPDX-License-Identifier: MIT
 #  See the LICENSE file in the project root for full license text.
 
+"""Bridge-bearing suitability screening.
+
+``BearingSuitability`` compares candidate bearing types (elastomeric, HLMR,
+…) against load, movement, and rotation demands following the guidance of
+AASHTO LRFD Section 14.
+"""
+
 import pandas as pd
 from .durometer import get_strain_from_stress
 
