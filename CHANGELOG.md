@@ -5,6 +5,33 @@ Versions follow [Semantic Versioning](https://semver.org/) (major.minor.patch).
 
 ---
 
+## [Unreleased]
+
+- **Documentation overhaul.**
+  - Finished the MIT relicense in the source tree: replaced the AGPL notice in
+    ~200 file headers with an SPDX MIT notice (`CONTRIBUTING.md` updated too);
+    every module now carries the same header.
+  - Added module docstrings to the 50+ modules that had none, and fixed
+    docstring reST errors so autodoc renders them cleanly.
+  - Sphinx site now covers the whole package: new/expanded `.rst` pages for
+    `geotech`, `structural` (incl. new `aashto.lrfd`, `odot`, `stm_topology`
+    pages), `state.maryland`, `state.ohio.snbi`, transportation and
+    water-resources modules; rewrote `docs/index.rst` into a real landing page
+    (install, quickstart, package overview, MIT license section); `conf.py`
+    reads the release from package metadata instead of a stale hardcode.
+  - Import-safety fixes so autodoc (and plain `import`) can't hang or crash:
+    GUI scripts (`mdta_photo_editor`, `D6_file_explorer`,
+    `ODOT_Inspection_Photo_DL`) no longer launch windows at import —
+    wrapped in `main()`; `gemini.py` refactored into callable functions
+    (no more API-key check at import); `transportation.FHWA.snbi` no longer
+    plots at import; fixed `mdta_photo_editor`'s broken `photos` import;
+    added `state/maryland/__init__.py`.
+  - New demo notebooks: **Bridge Scour (HEC-18)**, **Geotech Foundations from
+    a Boring Log**, and **Roadway Geometry — Curves and Sight Distance**,
+    executed and matching the existing invented-problem house style.
+  - Added `TODO.md` cataloguing architecture cleanups (redundant modules,
+    placeholder stubs, misplaced files, naming inconsistencies).
+
 ## [0.3.8] - 2026-07-01
 
 - **Relicensed to MIT.** Reverted from AGPL-3.0-or-later back to MIT (`LICENSE`,
