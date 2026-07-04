@@ -1259,7 +1259,22 @@ pipeline is a *better* design, not just a reproduced one):**
   **TODO: calibrate the deck-rebar effective depth** (`rebar_cover`) against the
   workbook's M− table. Positive/service govern this splice, so it is exact
   where it matters.
-- [ ] **B5 — optimization loop (the deliverable):** sweep rolled shapes
+- [~] **B5 — optimization loop (the deliverable). Splice-region optimizer +
+  cost model done; full limit-state set is the extension.**
+  `girder_optimizer.optimize_splice_shape` sweeps candidate rolled shapes,
+  gates each on the girder plastic moment (`φ·Fy·Zx ≥ Mu`), auto-sizes the
+  flange/web splice plates (NSBA sizers) and searches web thickness / columns /
+  plate thickness for the fewest-bolt splice that passes **every** splice check,
+  then ranks feasible shapes by steel weight + splice cost (~$20/bolt fab + ~10
+  field-min/bolt). Demo: at the Splice #1 demand it beats the W24x131 as-built
+  (`test_girder_optimizer`, 8 tests). Also `continuous_beam.ContinuousBeam` +
+  `girder_pipeline.girder_line_envelope` give the **offline** DC + HL-93 moment
+  envelope (no live MIDAS), wired end-to-end
+  (`ContinuousBeam → place_splices → design_rolled_splice`). *Remaining:* fold
+  Service II / fatigue / 6.10.2-proportion / deflection into the girder gate,
+  let the section step between pieces, and sweep splice **stations** (not just
+  shapes); trust it against real MIDAS/MDX numbers once B1 lands.
+  Original scope: sweep rolled shapes
   (weights from `steel.W`) and splice stations subject to every limit state
   passing (strength, Service II, fatigue, 6.10.2 proportions, deflection)
   and constructability (shipping length, filler-plate limits), minimize
