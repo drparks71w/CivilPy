@@ -269,6 +269,94 @@ def _nearest_node(model, pt, tol):
     return best if (bd is not None and bd <= tol) else None
 
 
+def splice_writeback_tags(design) -> dict:
+    """Build the ``gdr.status`` / ``gdr.summary`` / ``gdr.checks`` write-back
+    tags (stage **G8**) from a
+    :class:`~civilpy.structural.aashto.lrfd.bolted_field_splice.SpliceDesign`.
+
+    ``gdr.checks`` is newline-separated ``article|check|actual|allowable|verdict``
+    records -- one row per limit state -- the format the C# ``GirderSplice``
+    command renders (NG rows red)."""
+    def num(v):
+        return "-" if v is None else f"{v:.2f}"
+
+    rows = []
+    for c in design.checks:
+        verdict = "OK" if c.ok else "NG"
+        rows.append(f"{c.article}|{c.name}|{num(c.demand)}|"
+                    f"{num(c.factored_capacity)}|{verdict}")
+    ng = sum(1 for c in design.checks if not c.ok)
+    status = "OK" if design.ok else "NG"
+    summary = (f"{design.top_flange.total_bolts} bolts/flange, "
+               f"web {design.web.total_bolts}; {len(design.checks)} checks"
+               + (f", {ng} NG" if ng else ", all OK"))
+    return {GTAG + "status": status, GTAG + "summary": summary,
+            GTAG + "checks": "\n".join(rows)}
+
+
+@dataclass
+class SpliceMarker:
+    """A designed splice to write back: its station point (feet, PLAN), the
+    :class:`SpliceDesign`, and the ``gdr.line`` it belongs to."""
+    point: tuple            # (x, y, z) in feet
+    design: object          # SpliceDesign
+    line: str = ""
+
+
+def write_splice_results(out_path, markers, *, unit_system=None):
+    """Author ``gdr.kind=splice`` marker points carrying the G8 write-back tags
+    into a new ``.3dm`` for the C# ``GirderSplice`` review command.
+
+    ``markers`` is a list of :class:`SpliceMarker`.  Geometry is written in the
+    model's units (``unit_system`` defaults to feet); the plate/bolt *detail*
+    geometry is a later enhancement -- the check table travels in the tags.
+    Returns the number of markers written.
+    """
+    r3 = _require_rhino3dm()
+    f = r3.File3dm()
+    # default to feet so points round-trip 1:1 through _unit_to_feet on read
+    f.Settings.ModelUnitSystem = unit_system or r3.UnitSystem.Feet
+    for m in markers:
+        attr = r3.ObjectAttributes()
+        attr.SetUserString(GTAG + "kind", "splice")
+        if m.line:
+            attr.SetUserString(GTAG + "line", str(m.line))
+        for k, v in splice_writeback_tags(m.design).items():
+            attr.SetUserString(k, v)
+        x, y, z = m.point
+        f.Objects.AddPoint(r3.Point3d(x, y, z), attr)
+    if not f.Write(str(out_path), 7):
+        raise IOError(f"could not write splice results to {out_path}")
+    return len(markers)
+
+
+def read_splice_results(path):
+    """Read ``gdr.kind=splice`` markers back from a ``.3dm``: a list of dicts
+    with ``point`` (feet), ``line``, ``status``, ``summary``, and ``checks``
+    (parsed into ``[article, check, actual, allowable, verdict]`` records).
+    Round-trips :func:`write_splice_results` and mirrors what C# reads."""
+    r3 = _require_rhino3dm()
+    f = r3.File3dm.Read(str(path))
+    if f is None:
+        raise FileNotFoundError(f"could not read 3dm file: {path}")
+    scale = _unit_to_feet(f)
+    out = []
+    for obj in f.Objects:
+        us = dict(obj.Attributes.GetUserStrings() or {})
+        if us.get(GTAG + "kind") != "splice":
+            continue
+        loc = getattr(obj.Geometry, "Location", None)
+        pt = ((loc.X * scale, loc.Y * scale, loc.Z * scale)
+              if loc is not None else None)
+        raw = us.get(GTAG + "checks", "")
+        checks = [r.split("|") for r in raw.splitlines() if r]
+        out.append({
+            "point": pt, "line": us.get(GTAG + "line", ""),
+            "status": us.get(GTAG + "status"),
+            "summary": us.get(GTAG + "summary"), "checks": checks})
+    return out
+
+
 def _build_bridge(model, doc, girder_lines) -> GirderBridge:
     deck_t = _doc_float(doc, "deck_t")
     deck_weff = _doc_float(doc, "deck_weff")

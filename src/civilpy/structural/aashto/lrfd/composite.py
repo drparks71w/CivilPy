@@ -30,7 +30,9 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
-from civilpy.structural.aashto.lrfd.bolted_field_splice import GirderSide, _grade
+from civilpy.structural.aashto.lrfd.bolted_field_splice import (
+    GirderSide, SpliceLoads, _grade,
+)
 
 
 def modular_ratio(fc: float, e_s: float = 29000.0) -> float:
@@ -177,3 +179,56 @@ class CompositeGirder:
             short_term = self.props("n", holes=holes)
             s += short_term.stress(moments["ll_pos"], y)
         return s
+
+    def flange_fcf(self, flange: str, loads: "SpliceLoads", *,
+                   holes: bool = False) -> float:
+        """Governing factored flange stress ``fcf`` (ksi, magnitude) for the
+        Strength I positive and negative cases, from the unfactored
+        :class:`SpliceLoads`.  The permanent-load factor ``gamma_p`` takes its
+        maximum or minimum to *maximize* the stress in the checked direction
+        (AASHTO 3.4.1, Table 3.4.1-2), matching ``_factor_loads``."""
+        def case(positive: bool) -> float:
+            want = 1.0 if positive else -1.0
+            dc = loads.dc1_m + loads.dc2_m
+            g_dc = 1.25 if dc * want >= 0 else 0.90
+            g_dw = 1.50 if loads.dw_m * want >= 0 else 0.65
+            m = {"dc1": g_dc * loads.dc1_m, "dc2": g_dc * loads.dc2_m,
+                 "dw": g_dw * loads.dw_m}
+            m["ll_pos" if positive else "ll_neg"] = 1.75 * (
+                loads.ll_pos_m if positive else loads.ll_neg_m)
+            return self.flange_stress(flange, m, holes=holes)
+        return max(abs(case(True)), abs(case(False)))
+
+
+def design_rolled_splice(left_label: str, right_label: str, loads: "SpliceLoads",
+                         *, grade: str = "Grade 50", deck_thickness: float,
+                         deck_eff_width: float, deck_fc: float = 4.0,
+                         haunch: float = 2.0, rebar_area: float = 0.0,
+                         n: float | None = None, **splice_kwargs):
+    """End-to-end rolled-shape composite field-splice design (G7 + B4).
+
+    Builds both :class:`GirderSide`\\ s from AISC labels, computes the composite
+    flange design stresses ``fcf`` from the deck section (so **no MDX-supplied
+    stress is needed**), and runs :func:`design_splice` with
+    ``method="odot_bdm"``.  Extra ``design_splice`` inputs (``bolts``,
+    ``top_plates``/``bottom_plates``, ``web_plate``, ``*_rows``, spacing,
+    ``design_year`` …) pass through ``splice_kwargs``.
+    """
+    from civilpy.structural.aashto.lrfd.bolted_field_splice import (
+        design_splice, girder_side_from_w, SpliceInput,
+    )
+    left = girder_side_from_w(left_label, grade, haunch=haunch)
+    right = girder_side_from_w(right_label, grade, haunch=haunch)
+    # fcf is computed on the *smaller* (governing) side's composite section
+    smaller = left if left.top_flange.area >= right.top_flange.area else right
+    cg = CompositeGirder(smaller, deck_t=deck_thickness,
+                         deck_weff=deck_eff_width, deck_fc=deck_fc, n=n,
+                         rebar_area=rebar_area)
+    inp = SpliceInput(
+        left=left, right=right, loads=loads,
+        deck_composite=True, deck_thickness=deck_thickness,
+        deck_eff_width=deck_eff_width, fc=deck_fc, method="odot_bdm",
+        fcf_top=cg.flange_fcf("top", loads),
+        fcf_bot=cg.flange_fcf("bottom", loads),
+        **splice_kwargs)
+    return design_splice(inp)

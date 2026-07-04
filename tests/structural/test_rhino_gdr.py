@@ -117,6 +117,55 @@ class TestGdrReader:
         assert ys == [0.0, 8.0]
 
 
+class TestSpliceWriteBack:
+    """G8 -- write a designed splice's status/summary/checks back to a .3dm and
+    read them back (the round-trip the C# GirderSplice command consumes)."""
+
+    def _design(self):
+        from civilpy.structural.aashto.lrfd import (
+            design_rolled_splice, SpliceLoads, BoltSpec, PlatePair, WebPlate,
+        )
+        loads = SpliceLoads(dc1_m=10.90, dc2_m=3.00, dw_m=4.70,
+                            ll_pos_m=337.10, ll_neg_m=-212.80, ll_neg_v=-36.60)
+        plates = PlatePair("Grade 50", 0.375, 5.5, 0.375, 12.75, 2)
+        return design_rolled_splice(
+            "W24X131", "W24X104", loads, deck_thickness=7.5,
+            deck_eff_width=84.0, rebar_area=7.46,
+            bolts=BoltSpec("A325", 0.875, flange_threads_excluded=False,
+                           web_threads_excluded=False, surface_class="C",
+                           hole_type="oversize"),
+            top_plates=plates, bottom_plates=plates,
+            web_plate=WebPlate("Grade 50", 0.4375, 2),
+            top_flange_rows=2, bottom_flange_rows=2, web_rows=4,
+            bolt_spacing=3.0, flange_edge=1.5, flange_end=1.5,
+            web_edge=1.5, web_end=1.5, design_year=2016)
+
+    def test_tags_and_roundtrip(self, tmp_path):
+        from civilpy.structural.rhino_gdr import (
+            splice_writeback_tags, write_splice_results, read_splice_results,
+            SpliceMarker, GTAG,
+        )
+        design = self._design()
+        tags = splice_writeback_tags(design)
+        assert tags[GTAG + "status"] == "OK"           # Splice #1 passes
+        assert "10 bolts/flange" in tags[GTAG + "summary"]
+        # every checks row is a 5-field article|check|actual|allowable|verdict
+        rows = tags[GTAG + "checks"].splitlines()
+        assert rows and all(len(r.split("|")) == 5 for r in rows)
+
+        p = tmp_path / "splice_results.3dm"
+        n = write_splice_results(p, [
+            SpliceMarker(point=(100.0, 0.0, 0.0), design=design, line="1")])
+        assert n == 1
+        got = read_splice_results(str(p))
+        assert len(got) == 1
+        m = got[0]
+        assert m["status"] == "OK" and m["line"] == "1"
+        assert m["point"][0] == pytest.approx(100.0)
+        assert all(len(rec) == 5 for rec in m["checks"])
+        assert all(rec[4] in ("OK", "NG") for rec in m["checks"])
+
+
 def test_missing_deck_params_warn(tmp_path):
     """Absent gdr.deck_t / gdr.deck_weff must warn loudly (G4 contract)."""
     f = rhino3dm.File3dm()

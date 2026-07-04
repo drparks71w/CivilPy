@@ -1141,7 +1141,17 @@ this repo:
   `Element.section` resolved via `civilpy.structural.steel.W(label)` — the
   existing AISC database lookup, not a new table), mirroring
   `read_structural_model`.
-- [ ] **G5 (Python) — MIDAS push with real sections + HL-93:** extend
+- [~] **G5 (Python) — MIDAS push with real sections + HL-93. Pure section/
+  material slice done; moving load + live analyze remain.** `midas_models.
+  rolled_i_section_block` emits a real I/H `SECT` from `steel.W` (AISC
+  dimensions, not `placeholder_section_block`), and `hub_section_material_blocks`
+  assigns one `SECT` per distinct shape + one `MATL` per grade across the hub's
+  elements with a per-element `(sect_id, matl_id)` map (`test_girder_midas`, 5
+  tests). *Remaining (needs a live Civil NX / MAPI session — Dane runs it):*
+  the composite deck section, the `MVCD`/`MVHL`/`MVLD` + lane tables, `analyze()`,
+  and pulling per-girder envelopes; and confirming the exact `DBUSER` SECT JSON
+  + section unit against the live API. Original scope:
+  extend
   `midas_models.midas_payloads` to emit real rolled `SECT` blocks (today:
   `placeholder_section_block`) and author the moving-load tables the
   walkthrough notebook reads (`MVCD`/`MVHL`/`MVLD` + lanes); `analyze()`;
@@ -1151,7 +1161,13 @@ this repo:
   controlling member *per member type* (stringer/floorbeam/…), bearing
   reactions reported clearly, and (if the API allows) highlighting the
   controlling member in the Civil NX view.
-- [ ] **G6 (Python) — splice placement pass:** compute the forced splice count
+- [x] **G6 (Python) — splice placement pass. Done** —
+  `structural/girder_pipeline.py` (`n_field_splices`, `place_splices`,
+  `SpliceCandidate`) + `test_girder_pipeline` (11 tests). Pure: takes the
+  per-case moment envelope, computes `ceil(L/ship_max)−1`, and finds each
+  splice at the lowest-Strength-I station inside its shipping-feasible window
+  (contraflexure wins), returning the unfactored `SpliceLoads` demand there.
+  Original scope: compute the forced splice count
   from shipping length, scan the envelope for the low-moment windows, emit
   candidate stations + the unfactored demand set at each
   (DC1/DC2/DW/LL+I⁺/LL+I⁻ → `SpliceLoads`), and stamp `gdr.kind=splice`
@@ -1172,7 +1188,15 @@ this repo:
   *Remaining:* **B4** — compute `fcf` from the composite n/3n section properties
   + negative-moment rebar so the end-to-end run needs no MDX-supplied stress
   (also needs the `deck_rebar_area` field + `gdr.deck_rebar` tag from G1 #2).
-- [ ] **G8 (Python) — write the designed splice back to the `.3dm`:** at each
+- [~] **G8 (Python) — write the designed splice back to the `.3dm`. Tags +
+  round-trip done; detail geometry remains.** `rhino_gdr.splice_writeback_tags`
+  builds `gdr.status`/`gdr.summary`/`gdr.checks`
+  (`article|check|actual|allowable|verdict`) from a `SpliceDesign`;
+  `write_splice_results` stamps `gdr.kind=splice` markers into a `.3dm` and
+  `read_splice_results` round-trips them (`test_rhino_gdr`
+  `TestSpliceWriteBack`). The C# `GirderSplice` renders the table (NG rows red).
+  *Remaining:* the 3D plate/bolt/filler **detail geometry** and the
+  moment-envelope overlay curve. Original scope: at each
   splice station, generate the 3D detail (flange/web plates, bolt circles,
   fillers) plus a check-summary tag, in the spirit of `results_to_3dm` —
   the file stays the single source of truth for what C# displays.

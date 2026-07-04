@@ -150,6 +150,7 @@ from civilpy.structural.aashto.lrfd.composite import (
     CompositeGirder,
     SectionProps,
     modular_ratio,
+    design_rolled_splice,
 )
 from civilpy.structural.aashto.lrfd.stm import (
     stm_tie_resistance,
@@ -317,6 +318,7 @@ __all__ = [
     "CompositeGirder",
     "SectionProps",
     "modular_ratio",
+    "design_rolled_splice",
     "SpliceLoads",
     "BoltSpec",
     "PlatePair",

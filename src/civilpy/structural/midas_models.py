@@ -111,6 +111,65 @@ def placeholder_section_block(*, sect_id: int = 1, side_ft: float = 1.0,
     }}
 
 
+def rolled_i_section_block(shape_label: str, *, sect_id: int = 1) -> dict:
+    """A ``/db/SECT`` body for a rolled I/H shape, with the real cross-section
+    dimensions pulled from ``steel.W`` (the AISC database) instead of a
+    placeholder square -- stage **G5**.  ``SHAPE="H"`` with
+    ``vSIZE=[H, B1, tw, tf1, B2, tf2]`` in inches.
+
+    NOTE (live-session TODO): the exact ``DBUSER`` JSON and the section's length
+    unit must be confirmed against a running Civil NX (MAPI) session; the
+    geometry here is authoritative, the envelope keys are the reflected
+    convention shared with ``placeholder_section_block``."""
+    from civilpy.structural import steel
+    w = steel.W(shape_label)
+
+    def _in(q):
+        return round(float(q.to("in").magnitude), 4)
+
+    h, b, tw, tf = (_in(w.depth), _in(w.flange_width),
+                    _in(w.web_thickness), _in(w.flange_thickness))
+    return {str(sect_id): {
+        "SECTTYPE": "DBUSER", "SECT_NAME": shape_label,
+        "SECT_BEFORE": {"SHAPE": "H", "DATATYPE": 2,
+                        "SECT_I": {"vSIZE": [h, b, tw, tf, b, tf]}},
+    }}
+
+
+def hub_section_material_blocks(model, *, sect_start: int = 1,
+                                matl_start: int = 1,
+                                default_grade: str = "Grade 50") -> dict:
+    """Assign a real ``SECT`` per distinct AISC shape and a ``MATL`` per
+    distinct grade from the hub's elements (stage **G5** -- replaces the single
+    placeholder SECT/MATL that ``midas_payloads`` emits by default).
+
+    Returns ``{"SECT", "MATL", "sect_by_shape", "matl_by_grade",
+    "elem_assign"}`` where ``elem_assign`` maps each ``Element.id`` to its
+    ``(sect_id, matl_id)`` so the caller can wire real sections onto elements.
+    Elements with no ``section`` label get ``sect_id=None`` (keep the
+    placeholder for those).
+    """
+    shapes: dict[str, int] = {}
+    grades: dict[str, int] = {}
+    sect: dict = {}
+    matl: dict = {}
+    elem_assign: dict = {}
+    for elem in model.elements.values():
+        label = elem.section
+        grade = elem.material or default_grade
+        if label and label not in shapes:
+            sid = sect_start + len(shapes)
+            shapes[label] = sid
+            sect.update(rolled_i_section_block(label, sect_id=sid))
+        if grade not in grades:
+            mid = matl_start + len(grades)
+            grades[grade] = mid
+            matl.update(steel_material_block(name=grade, matl_id=mid))
+        elem_assign[elem.id] = (shapes.get(label), grades[grade])
+    return {"SECT": sect, "MATL": matl, "sect_by_shape": shapes,
+            "matl_by_grade": grades, "elem_assign": elem_assign}
+
+
 def constraint_assign(cons_by_id: dict[int, str]) -> dict:
     """Wrap ``{node_id: "DX..RW" flag string}`` into the ``/db/CONS`` body
     ``{node_id: {"ITEMS": [{"ID": 1, "CONSTRAINT": flags}]}}``."""

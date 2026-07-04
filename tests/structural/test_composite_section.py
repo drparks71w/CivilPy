@@ -79,3 +79,43 @@ class TestServiceStresses:
         # ~17.5 ksi (no-holes); the workbook's with-holes value is 18.65 ksi.
         # Well below Fyf, which is why the splice design stress floors at 37.5.
         assert fcf == pytest.approx(17.5, rel=0.05)
+
+    def test_flange_fcf_from_loads(self):
+        from civilpy.structural.aashto.lrfd import SpliceLoads
+        loads = SpliceLoads(dc1_m=10.90, dc2_m=3.00, dw_m=4.70,
+                            ll_pos_m=337.10, ll_neg_m=-212.80)
+        # bottom flange governed by the positive case (~17.5 ksi no-holes)
+        assert self.cg.flange_fcf("bottom", loads) == pytest.approx(
+            17.5, rel=0.05)
+
+
+class TestDesignRolledSplice:
+    """The end-to-end wrapper computes fcf from the composite deck section, so
+    it reproduces REF-DESIGN Splice #1 with NO MDX-supplied stress."""
+
+    def test_reproduces_splice_1_without_supplied_fcf(self):
+        from civilpy.structural.aashto.lrfd import (
+            design_rolled_splice, SpliceLoads, BoltSpec, PlatePair, WebPlate,
+        )
+        loads = SpliceLoads(
+            dc1_m=10.90, dc1_v=-10.00, dc2_m=3.00, dc2_v=-2.60,
+            dw_m=4.70, dw_v=-4.00, ll_pos_m=337.10, ll_neg_m=-212.80,
+            ll_neg_v=-36.60)
+        plates = PlatePair("Grade 50", 0.375, 5.5, 0.375, 12.75, 2)
+        d = design_rolled_splice(
+            "W24X131", "W24X104", loads, grade="Grade 50",
+            deck_thickness=7.5, deck_eff_width=84.0, deck_fc=4.0,
+            rebar_area=7.46,
+            bolts=BoltSpec("A325", 0.875, flange_threads_excluded=False,
+                           web_threads_excluded=False, surface_class="C",
+                           hole_type="oversize"),
+            top_plates=plates, bottom_plates=plates,
+            web_plate=WebPlate("Grade 50", 0.4375, 2),
+            top_flange_rows=2, bottom_flange_rows=2, web_rows=4,
+            bolt_spacing=3.0, flange_edge=1.5, flange_end=1.5,
+            web_edge=1.5, web_end=1.5, design_year=2016)
+        # fcf floors at Fcf=37.5 -> same 332.53 k / 10 bolts / all OK design
+        assert d.top_flange.design_force == pytest.approx(332.53, rel=2e-3)
+        assert d.top_flange.total_bolts == 10
+        assert d.bottom_flange.total_bolts == 10
+        assert d.ok
