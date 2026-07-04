@@ -11,6 +11,7 @@ import pytest
 
 from civilpy.structural.girder_pipeline import (
     n_field_splices, place_splices, SpliceCandidate,
+    girder_line_envelope, hl93_pos_neg,
 )
 
 
@@ -78,3 +79,47 @@ class TestPlacement:
     def test_no_splice_when_it_ships_whole(self):
         stations, moments = _notched_envelope()
         assert place_splices(stations, moments, ship_max_ft=250.0) == []
+
+
+class TestOfflineEndToEnd:
+    """ContinuousBeam envelope -> place_splices -> design, on the placeholder
+    60-80-60 benchmark (no live MIDAS)."""
+
+    def setup_method(self):
+        # interior girder, klf; DF ~ 0.65; coarse sampling keeps the test fast
+        self.stations, self.M = girder_line_envelope(
+            [0, 60, 140, 200], dc1_klf=0.85, dc2_klf=0.15, dw_klf=0.14,
+            n_sections=15, gdf=0.65, il_samples=81)
+
+    def test_envelope_is_physically_sensible(self):
+        import numpy as np
+        m = self.M
+        # hogging over the piers, sagging at interior mid-span
+        assert np.interp(60, self.stations, m["dc1"]) < 0
+        assert np.interp(100, self.stations, m["dc1"]) > 0
+        # live-load envelope brackets zero (positive and negative reach)
+        assert max(m["ll_pos"]) > 0 and min(m["ll_neg"]) < 0
+
+    def test_pipeline_places_and_designs_a_splice(self):
+        from civilpy.structural.aashto.lrfd.composite import design_rolled_splice
+        from civilpy.structural.aashto.lrfd import BoltSpec, PlatePair, WebPlate
+        picks = place_splices(self.stations, self.M, ship_max_ft=130.0)
+        assert len(picks) == 1
+        p = picks[0]
+        # placed in a low-moment window near the pier-60 contraflexure
+        assert 60.0 < p.station < 90.0
+        plates = PlatePair("Grade 50", 0.375, 5.5, 0.375, 12.75, 2)
+        d = design_rolled_splice(
+            "W24X131", "W24X104", p.loads, deck_thickness=7.5,
+            deck_eff_width=84.0, rebar_area=7.46,
+            bolts=BoltSpec("A325", 0.875, flange_threads_excluded=False,
+                           web_threads_excluded=False, surface_class="C",
+                           hole_type="oversize"),
+            top_plates=plates, bottom_plates=plates,
+            web_plate=WebPlate("Grade 50", 0.4375, 2),
+            top_flange_rows=2, bottom_flange_rows=2, web_rows=4,
+            bolt_spacing=3.0, flange_edge=1.5, flange_end=1.5,
+            web_edge=1.5, web_end=1.5, design_year=2016)
+        assert d.ok
+        assert d.top_flange.total_bolts >= 10
+

@@ -27,7 +27,10 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
+import numpy as np
+
 from civilpy.structural.aashto.lrfd import SpliceLoads
+from civilpy.structural.continuous_beam import ContinuousBeam
 
 # the load cases the placement + splice designer consume, in SpliceLoads order
 _CASES = ("dc1", "dc2", "dw", "ll_pos", "ll_neg")
@@ -133,3 +136,57 @@ def place_splices(stations, moments, ship_max_ft, *, samples: int = 400):
                 ll_neg_m=cases_at["ll_neg"])))
         prev = best_x
     return picks
+
+
+# ---------------------------------------------------------------------------
+# Offline line-girder envelope (the analysis leg, standing in for a live MIDAS
+# run) + the end-to-end wire: envelope -> placement -> splice design.
+# ---------------------------------------------------------------------------
+
+def hl93_pos_neg(il, *, im: float = 0.33, lane_klf: float = 0.64):
+    """Governing positive and negative HL-93 effects for one influence line.
+
+    Positive uses :meth:`InfluenceLine.hl93_effect` (truck/tandem placed for the
+    maximum, lane load on the positive influence area).  Negative mirrors it:
+    the most-negative truck/tandem placement with the lane load on the negative
+    area (a reasonable single-truck approximation of 3.6.1.3.1 -- the two-truck
+    negative-moment rule for interior supports is a refinement)."""
+    pos = il.hl93_effect(im=im, lane_klf=lane_klf)["total"]
+    trucks = [il.maximize_axle_train([8.0, 32.0, 32.0], [0.0, 14.0, 14.0 + s],
+                                     sign=-1.0) for s in (14.0, 30.0)]
+    tandem = il.maximize_axle_train([25.0, 25.0], [0.0, 4.0], sign=-1.0)
+    truck_neg = min(t.value for t in (*trucks, tandem))
+    x, y = il.ordinates(2001)
+    lane_neg = lane_klf * float(np.trapezoid(np.clip(y, None, 0.0), x))
+    return pos, truck_neg * (1.0 + im) + lane_neg
+
+
+def girder_line_envelope(supports, *, dc1_klf, dc2_klf=0.0, dw_klf=0.0,
+                         n_sections: int = 41, gdf: float = 1.0,
+                         im: float = 0.33, lane_klf: float = 0.64,
+                         il_samples: int = 201):
+    """Per-case moment envelope for one continuous girder line.
+
+    ``dc1_klf`` (non-composite dead load: steel + wet slab), ``dc2_klf``
+    (barrier/SDL), and ``dw_klf`` (future wearing surface) are uniform loads;
+    the live load is the HL-93 moment envelope from an influence line at each
+    section, scaled by the girder distribution factor ``gdf``.
+
+    Returns ``(stations, moments)`` where ``moments`` has the ``dc1/dc2/dw/
+    ll_pos/ll_neg`` keys :func:`place_splices` consumes.
+    """
+    beam = ContinuousBeam(supports)
+    stations = list(np.linspace(supports[0], supports[-1], n_sections))
+
+    def diagram(w):
+        b = ContinuousBeam(supports).add_udl(w)
+        return [b.moment_at(x) for x in stations]
+
+    moments = {"dc1": diagram(dc1_klf), "dc2": diagram(dc2_klf),
+               "dw": diagram(dw_klf), "ll_pos": [], "ll_neg": []}
+    for x in stations:
+        il = beam.moment_influence_line(x, n=il_samples)
+        p, n = hl93_pos_neg(il, im=im, lane_klf=lane_klf)
+        moments["ll_pos"].append(gdf * p)
+        moments["ll_neg"].append(gdf * n)
+    return stations, moments
