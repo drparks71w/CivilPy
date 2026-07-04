@@ -65,6 +65,12 @@ Package                          What it covers
 ===============================  ====================================================
 
 .. toctree::
+   :maxdepth: 1
+   :caption: About:
+
+   why_civilpy
+
+.. toctree::
    :maxdepth: 3
    :caption: API Reference:
 
