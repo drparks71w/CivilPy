@@ -201,6 +201,9 @@ class Element:
     section: str | None = None
     material: str | None = None
     id: str = field(default_factory=_new_id)
+    # free-form source tags (e.g. the authoring ``gdr.line`` / ``gdr.id`` /
+    # ``stm.id``) preserved through read -> analysis -> write-back.
+    metadata: dict = field(default_factory=dict)
 
     def __post_init__(self):
         if self.member_type not in MEMBER_TYPES:

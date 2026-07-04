@@ -140,10 +140,16 @@ from civilpy.structural.aashto.lrfd.bolted_field_splice import (
     ComponentDesign,
     Flange,
     GirderSide,
+    girder_side_from_w,
     SpliceLoads,
     BoltSpec,
     PlatePair,
     WebPlate,
+)
+from civilpy.structural.aashto.lrfd.composite import (
+    CompositeGirder,
+    SectionProps,
+    modular_ratio,
 )
 from civilpy.structural.aashto.lrfd.stm import (
     stm_tie_resistance,
@@ -307,6 +313,10 @@ __all__ = [
     "ComponentDesign",
     "Flange",
     "GirderSide",
+    "girder_side_from_w",
+    "CompositeGirder",
+    "SectionProps",
+    "modular_ratio",
     "SpliceLoads",
     "BoltSpec",
     "PlatePair",

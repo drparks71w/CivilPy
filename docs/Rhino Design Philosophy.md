@@ -698,6 +698,16 @@ mirrors it.
 - [ ] **Load combinations / cases.** A `stm.case=<name>` tag so one file can hold
   multiple load cases. Needed before Midas (which is multi-case by nature).
   Defer, but reserve the tag name now.
+- [ ] **Girder-line tag namespace (new, for the splice pipeline).** The line
+  girder → field splice workflow (§"Line girder → field splice — TODO") needs
+  tags the STM contract doesn't have: girder lines carrying a rolled shape,
+  bearing stations, deck parameters, and splice markers. **Recommendation: a
+  parallel `gdr.*` namespace** (`gdr.kind=girder|support|splice`,
+  `gdr.shape=<AISC label>`, …) rather than overloading `stm.kind` — the frozen
+  STM contract and its readers stay untouched, and the two workflows can't
+  corrupt each other's files. Reserve the prefix now; freeze the key list when
+  G1 lands. Owner: joint (C# proposes, Python is the reference reader, same as
+  `stm.*`).
 
 ### Python side — TODO (this repo)
 
@@ -841,12 +851,22 @@ spec) to RhinoCommon. All commands `[CommandStyle(Style.ScriptRunner)]`.
   **In progress (C#):** `Commands/STMMemberCommand.cs` (uncommitted). The Python
   side already *consumes* this tag (see the Python TODO `stm.member` item), so
   the override values must stay `tie`/`strut` exactly.
-- [ ] **`STMRegion`** — select/draw a closed planar curve, tag `stm.kind=region`,
+- [x] **`STMRegion`** — select/draw a closed planar curve, tag `stm.kind=region`,
   and prompt for `stm.thickness` (ft) and `stm.fc` (ksi) (optionally `stm.E`,
   `stm.nu`, `stm.vol_frac`). Offer a `Void`/`Solid` option that tags an inner
   closed curve `stm.kind=void`/`solid`. Optionally stamp `stm.bearing` on a
   support/load when picked. This is the front end for the topology-optimization
-  workflow (Python meshes the region and discovers the truss).
+  workflow (Python meshes the region and discovers the truss). **Shipped:**
+  `Commands/STMRegionCommand.cs` → `Core/StmDocument.TagRegion` /
+  `TagRegionZone`. Labels closed curves (validates `Curve.IsClosed`, skips + warns
+  open/non-curve picks); `Role` option (Region/Void/Solid) + inline `Thickness`/
+  `Fc`/`VolFrac` doubles (numbers via `FormatNumber`, invariant decimal); moves
+  curves to a new cosmetic `STM::Regions` layer; stamps `stm.id`. Solver knobs
+  (penalization, filter radius, mesh resolution) are intentionally **not**
+  authored, per the contract. **`stm.bearing` now shipped** on supports/loads:
+  `STMSupport`/`STMLoad` expose an optional `Bearing` (ft) command-line value,
+  stamped only when &gt; 0 (absent = optimizer default). *Deferred:* `stm.E`/
+  `stm.nu` author overrides (rarely overridden; Python defaults apply).
 - [~] **`STMResults`** (read-back) — load a `results.3dm` (or re-color in place):
   recolor ties red / struts blue and show force labels, per the result-color
   contract. Lets the engineer review Python's output without leaving Rhino.
@@ -946,12 +966,289 @@ existing client and builders — not a fresh bridge (this is stage **S4** above)
 - [ ] Confirm auth/licensing via the existing `~/secrets.json` `MIDAS_API_KEY`
   path the client already uses (no new auth mechanism needed).
 
+### Line girder → field splice — TODO (new pipeline, both sides)
+
+**Goal.** Make the rolled-beam splice workflow — the process demonstrated in
+the civilpy notebooks `Notebooks/Bolted Field Splice Design Process.ipynb` and
+`Notebooks/MIDAS Bridge Model Walkthrough.ipynb` — drivable from Rhino end to
+end: **draw the bridge's five girder lines, set a rolled shape on them, push
+the model to MIDAS, run the moving-load analysis, pick the splice stations
+from the moment envelope, design the bolted field splices, and display the
+designed splice back in the Rhino model.**
+
+**The process being automated** (from the splice notebook, in the order the
+levers matter): (1) splice *count* is forced by shipping length —
+`n_splices = ceil(L / L_ship) − 1`, `L_ship ≈ 100 ft`; every splice beyond
+that is pure cost (~$20/bolt fab + ~10 field-min/bolt, ~124 bolts/splice);
+(2) splice *placement* goes in a low-moment window near the dead-load
+contraflexure point read off the moving-load envelope — a near-pier splice
+switches on the 6.13.6.1.3c web moment-couple and roughly doubles the web
+bolts; (3) section transitions are shop welds, not field splices; (4) only
+then size plates and bolts (`size_flange_splice_plates`,
+`size_web_splice_plate`, `design_splice` — all shipped in
+`civilpy.structural.aashto.lrfd`).
+
+**Reference design (validation target):** `REF-DESIGN Beam Splice Design.pdf`
+(location redacted, ODOT; local copy at
+`(local path redacted)`) — a real
+rolled-beam bridge with **six** field splices, each a 26-page AASHTO LRFD
+9th + ODOT BDM 308.2.2.1.j check set. Splice #1 joins a W24x131 (larger
+stringer: bf 12.9", tf 0.96", tw 0.605") to a W24x104 (bf 12.8", tf 0.75",
+tw 0.50"), Gr. 50 (Fy=50/Fu=65 ksi), 7.5" structural slab, 84" effective
+width. Bolts: 7/8" A325, **oversize holes, Class C** faying surface (Kh=0.85,
+Ks=0.33, Pt=39 k, Ns=2). MDX splice-point demands: DC1=10.9 / DC2=3.0 /
+DW=4.7 / LL+I⁺=337.1 / LL+I⁻=−212.8 k-ft. Result: flange plates 12.75×3/8
+outer + 2× 5.5×3/8 inner, **10 bolts per flange per side** (2 rows @ 3"
+pitch, 1.5" edge/end distance, 0.21" fillers for the depth mismatch); web
+plates with **4 columns × 7 bolts per side**; all checks OK. **The pipeline
+is done when it regenerates this design** (bolt counts, plate sizes,
+governing checks) from a Rhino drawing of that bridge.
+
+> **Division of labor (mandatory).** The C# plugin is a loose UI over
+> civilpy — it captures input (draw, pick, tag) and displays output (read,
+> recolor, panel). **civilpy is the engine and does ~90% of the work:** every
+> number that matters (section properties, envelopes, splice stations, bolt
+> counts, plate sizes, pass/fail) is computed in Python and travels through
+> the `.3dm` file. If a G-stage tempts you to compute anything structural in
+> C#, that computation belongs in a Python stage and a tag/write-back in the
+> contract.
+
+**Already in civilpy — reuse, do not rebuild** (the same rule as the Python
+TODO above; verified against the civilpy source):
+
+- **AISC shapes:** `civilpy.structural.steel.SteelSection(label)` looks up the
+  bundled AISC shape database (labels normalized, pint units attached);
+  `steel.W(label)` adds the W-shape fields the splice work needs —
+  `depth`, `flange_width`, `flange_thickness`, `web_thickness`, `k_design`
+  (fillet), `fastener_workable_gage`. Historic shapes via
+  `HistoricSteelSection`/`WF`.
+- **Materials & bolts:** `steel.SteelMaterial` (AISC Table 2-4) and
+  `steel.BoltMaterial` (AISC J3.2 / ASTM); `get_bolt_weights` for quantities.
+- **Splice design:** `civilpy.structural.aashto.lrfd` — `design_splice`,
+  `SpliceInput`/`SpliceLoads`/`BoltSpec`/`PlatePair`/`WebPlate`,
+  `size_flange_splice_plates`, `size_web_splice_plate`, `proportion_limits`.
+- **MIDAS:** `structural.midas.MidasCivil` client + `parse_result_table`;
+  `structural.midas_models` payload builders (`midas_payloads`/`push_midas`).
+- **Envelopes:** `structural.influence_lines` (`influence_line_from_midas`,
+  `maximize_axle_train`, `hl93_effect`) and the `beam_bending.Beam`
+  line-girder envelope for quick studies.
+
+The chain in dependency order (G-stages). C# items are built here; Python
+items are coordination requests for the civilpy agent — do not build them in
+this repo:
+
+- [~] **G1 (joint) — freeze the `gdr.*` contract** (see the open contract
+  question above). **C# mirror shipped:** `Core/Gdr.cs` implements the
+  proposal below (marked PROPOSED in its doc comment) plus the write-back
+  keys `gdr.status` (`OK|NG`), `gdr.summary`, and `gdr.checks`
+  (newline-separated `article|check|actual|allowable|verdict` records) that
+  G8 writes and G9 reads, and a plan-view plane convention (X = stations,
+  Y = transverse, Z up, lengths authored in feet and scaled to the model's
+  unit system). **Still open:** reconciliation with the Python agent — the
+  keys are not frozen until the civilpy side signs off:
+  - `gdr.kind=girder` on the girder-line curve; `gdr.shape=<AISC label>`
+    (exact manual label, e.g. `W24X104`;
+    `civilpy.structural.steel.W(label)` is the authority for section
+    properties — C# stores only the label); `gdr.grade=<name>` (default
+    `Grade 50`, resolved by `steel.SteelMaterial`).
+  - `gdr.kind=support` on bearing points, `gdr.fixity=fixed|expansion`.
+  - `gdr.kind=splice` on marker points (authored by Python's placement pass,
+    editable by the engineer, consumed by the splice designer).
+  - Bridge-level (document user text, not per object): deck thickness /
+    effective width / f'c for the composite section, `gdr.ship_max` (ft,
+    default 100), bolt standard (diameter, hole type, surface class — the
+    ODOT BDM 308.2.2.1.j defaults above).
+  - Units stay kips/ft per the STM contract; girders drawn as lines in plan
+    or elevation — decide the plane convention here too.
+
+  **Python sign-off (civilpy reference reader, 2026-07-04).** Reviewed
+  `Core/Gdr.cs` @ 6426f92 against the civilpy source. **Accepted** — the key
+  list, the plan convention (X = stations / Y = transverse / Z up, feet), the
+  feet-geometry / inch-detailing / ksi-stress unit split, the write-back format
+  (`gdr.status`/`gdr.summary`/`gdr.checks` = `article|check|actual|allowable|verdict`),
+  and `NormalizeShapeLabel` (verified byte-identical to
+  `SteelSection.clean_user_input`: strip spaces + uppercase) all match. `gdr.line`
+  is already stamped on supports (`GdrDocument.cs`), which settles the
+  girder↔support/splice association explicitly (no nearest-curve inference —
+  the `stm.id` lesson). **Three items to settle before the freeze:**
+  0. **Bridge params must NOT live in `RhinoDoc.Strings`.** `rhino3dm` 8.x
+     (the Python reader) exposes only `Delete`/`DocumentUserTextCount` on
+     `File3dm.Strings` — it **cannot read document user text**, so the
+     document-level `gdr.deck_*`/`gdr.ship_max`/`gdr.bolt_*` keys are
+     unreadable as authored. **Fix (matches the STM contract, which keeps
+     everything in object user text): stamp the bridge params as object user
+     text on a dedicated `gdr.kind=bridge` marker object** (a point off to the
+     side). The G4 reader reads them from that marker; `GirderParams` (C#) must
+     author them there instead of `RhinoDoc.Strings`. **Implemented + verified
+     Python-side** (`rhino_gdr.read_girder_model`, `test_rhino_gdr`).
+  1. **Grade names don't resolve in civilpy yet.** `Gdr.GradeChoices`
+     (`Grade 36/50/50W`, `HPS 50W/70W`, default `Grade 50`) are UI-friendly, but
+     `steel.SteelMaterial` ships ASTM-named instances (`A36`, `A572Gr50`,
+     `A992`, …) with **no `Grade 50` and no weathering/HPS grades**. Resolution:
+     **Python owns a grade-name → `SteelMaterial` map** in G4 (`Grade 50` →
+     Fy 50/Fu 65, `Grade 50W` → A588, `HPS 70W` → …) and adds the missing
+     `A588`/HPS instances — keep the friendly names in the C# picker, **no C#
+     change needed**. Flagged so the two lists stay in lock-step if the picker
+     list changes.
+  2. **Reserve `gdr.deck_rebar` (in², document-level).** The NSBA composite path
+     (B4/G7) drops the *top-flange* splice demand using the negative-moment deck
+     steel (7.46 in² in REF-DESIGN). That area is carried today by neither the
+     `gdr.*` doc tags nor civilpy's `SpliceInput`. Add the doc-level tag now
+     (C#: one `Doc*` key, default-absent) and a matching `deck_rebar_area` field
+     on `SpliceInput` (Python, G7). Everything else B4 needs is already in the
+     contract.
+
+  With those two noted (neither blocks authoring — #1 is Python-internal, #2 is
+  one reserved key), **the Python side signs off on the `gdr.*` contract; C# may
+  treat the key list as frozen.**
+- [x] **G2 (C#) — `GirderLines` authoring command:** draw the framing — girder
+  count (default 5) + spacing + span lengths, or trace existing curves; place
+  bearing points at abutment/pier stations; tag everything per G1. Same
+  Commands/ → Core/ split as the STM commands; self-heals layers like
+  `EnsureTemplate`. **Shipped:** `Commands/GirderLinesCommand.cs` →
+  `Core/GdrDocument.CreateFraming`/`TagGirder`. Pre-selected curves are
+  tagged as traced framing; otherwise span lengths are entered one at a time
+  (Enter finishes) with `Girders`/`Spacing` options. Bearing points get an
+  editable fixity default (single span: fixed at the first bearing;
+  continuous: fixed at the interior pier nearest mid-length, expansion
+  elsewhere) and the run stamps the document-level bridge defaults
+  (`gdr.ship_max`=100 ft + the BDM 308.2.2.1.j bolt set) where absent —
+  values only, no computation.
+- [x] **G3 (C#) — `GirderShape` command:** assign the rolled shape to selected
+  girder lines from a picker (W-shape list; an Eto dropdown in Views/), write
+  `gdr.shape`/`gdr.grade`. Optional polish: extrude a true-scale section
+  along the line on a display layer so the model reads as a bridge, not
+  wireframe — **display-only**: any dimensions C# holds for this are cosmetic
+  (like the STM glyph specs) and feed no calculation; the label is the only
+  thing Python reads. **Shipped:** `Commands/GirderShapeCommand.cs` +
+  `Views/GirderShapeDialog.cs` → `Core/GdrDocument.AssignShape`/
+  `AddDisplaySection`. Editable autocomplete combo seeded from a ~50-shape
+  display-only W catalog in `Core/Gdr.cs`; free-typed labels are normalized
+  exactly like civilpy's `SteelSection.clean_user_input` (strip spaces,
+  uppercase) and tagged even when not in the catalog (they just get no
+  cosmetic extrusion — a command-line note says civilpy resolves any AISC
+  label). Grade dropdown mirrors `steel.SteelMaterial` names.
+- [x] **G4 (Python) — read `gdr.*` into the hub. Done** —
+  `structural/rhino_gdr.read_girder_model` + `test_rhino_gdr` (8 tests): girder
+  polylines → `Element` chains (`section`=AISC label, `material`=grade,
+  `role=girder`, `midas_type=BEAM`, `metadata['gdr.line']`), bearings → 6-DOF
+  `Restraint` (`fixed`=XYZ / `expansion`=YZ), a `gdr.grade`→(Fy,Fu) map, feet
+  units, loud missing-deck warnings. Reads bridge params from a `gdr.kind=bridge`
+  marker (see G1 item #0: rhino3dm can't read `RhinoDoc.Strings`). Added a
+  generic `Element.metadata` dict to the hub (also serves `stm.id`/`gdr.id`). It:
+  parse girder lines +
+  bearings into `StructuralModel` (one element chain per girder line,
+  `Element.section` resolved via `civilpy.structural.steel.W(label)` — the
+  existing AISC database lookup, not a new table), mirroring
+  `read_structural_model`.
+- [ ] **G5 (Python) — MIDAS push with real sections + HL-93:** extend
+  `midas_models.midas_payloads` to emit real rolled `SECT` blocks (today:
+  `placeholder_section_block`) and author the moving-load tables the
+  walkthrough notebook reads (`MVCD`/`MVHL`/`MVLD` + lanes); `analyze()`;
+  pull the per-girder envelope via `beam_forces` / `parse_result_table` or
+  influence lines (`influence_line_from_midas` + `maximize_axle_train` for
+  permit/rating trucks). Fold in the walkthrough notebook's own TODO cell:
+  controlling member *per member type* (stringer/floorbeam/…), bearing
+  reactions reported clearly, and (if the API allows) highlighting the
+  controlling member in the Civil NX view.
+- [ ] **G6 (Python) — splice placement pass:** compute the forced splice count
+  from shipping length, scan the envelope for the low-moment windows, emit
+  candidate stations + the unfactored demand set at each
+  (DC1/DC2/DW/LL+I⁺/LL+I⁻ → `SpliceLoads`), and stamp `gdr.kind=splice`
+  markers back into the `.3dm` for the engineer to accept or drag.
+- [~] **G7 (Python) — splice design for rolled shapes. Front end + fixture
+  done; composite `fcf` (B4) remains.** Added `girder_side_from_w(label, grade)`
+  (builds `GirderSide` from the AISC db via `steel.W`), and a selectable
+  `SpliceInput.method="odot_bdm"` that follows the REF-DESIGN/DLZ workbook:
+  design stress `Fcf` (`splices.flange_design_stress_fcf`, fed via
+  `fcf_top`/`fcf_bot`) instead of full `Fyf`; the 6.8.3 net-area hole +
+  oversize handling; and the per-plate single-shear bolt count. Filler 0.21" <
+  1/4" → no penalty. **Reproduces Splice #1's flange exactly** — design force
+  332.53 k, 10 bolts/flange/side, all flange checks OK — from both hand-entered
+  and `W`-label inputs (`TestSpliceSum210107`, `TestGirderSideFromW`; the legacy
+  `nsba` method keeps the two plate-girder validation designs green). The web is
+  civilpy's lighter 4×4=16 (min bolts for max spacing) vs the workbook's
+  traditional 4×7=28 — kept as a documented **B5 optimization** win, not forced.
+  *Remaining:* **B4** — compute `fcf` from the composite n/3n section properties
+  + negative-moment rebar so the end-to-end run needs no MDX-supplied stress
+  (also needs the `deck_rebar_area` field + `gdr.deck_rebar` tag from G1 #2).
+- [ ] **G8 (Python) — write the designed splice back to the `.3dm`:** at each
+  splice station, generate the 3D detail (flange/web plates, bolt circles,
+  fillers) plus a check-summary tag, in the spirit of `results_to_3dm` —
+  the file stays the single source of truth for what C# displays.
+- [~] **G9 (C#) — `GirderSplice` review command + panel:** read the write-back
+  file, show the 3D splice detail at each station, overlay the moment
+  envelope on the elevation, and present the check summary (mirror the
+  workbook's Design Summary sheet — actual vs. allowable per article) in an
+  Eto panel; flag any NG check loudly. **C# side shipped:**
+  `Commands/GirderSpliceCommand.cs` + `Views/GirderSpliceDialog.cs` →
+  `Core/GdrDocument.ImportSpliceModel`/`ListSplices`. Imports the write-back
+  `.3dm` (all geometry + tags + colors onto `Girders::Splices`, refreshed per
+  run), prints a loud `*** NG ***` command-line verdict per failing splice,
+  and shows a two-grid dialog (splices over per-splice limit-state checks,
+  NG rows red) with select + zoom-to-station. **Still open:** exercising it
+  against a real G8 file — blocked until the Python write-back exists (the
+  moment-envelope overlay geometry also arrives from G8; C# just imports it).
+- [ ] **End-to-end conformance:** author the REF-DESIGN bridge with
+  G2/G3, run G4–G8, and confirm the six splice locations and Splice #1's
+  design match the PDF — the girder-pipeline analog of the STM contract
+  conformance test.
+
+**Benchmark + optimization goals (added 2026-07-03 — the point of the
+pipeline is a *better* design, not just a reproduced one):**
+
+- [ ] **B1 — MDX benchmark (Python):** the REF-DESIGN workbook records its
+  MDX/Descus inputs and outputs (composite section properties for n=8 and
+  3n=24, splice-point demands DC1/DC2/DW/LL+I±, service stresses). Run the
+  same bridge through Rhino → civilpy → MIDAS and tabulate MIDAS vs. MDX
+  side by side (moments, shears, deflections, section properties). Quantify
+  every delta; explain or fix anything beyond a few percent.
+  > **Assumed span arrangement (placeholder — refine with the real MDX input
+  > echo).** Pending the exact geometry (available ~Mon 2026-07-06): **5
+  > girders @ 8 ft spacing** (32 ft out-to-out), **3-span continuous
+  > 60–80–60 = 200 ft**, W24x131/W24x104 stringers, 7.5″ slab / 84″ effective
+  > width. **TODO(dane): replace with the surveyed span lengths, girder count,
+  > spacing, and skew from REF-DESIGN before trusting B1/B5 numbers.**
+- [ ] **B2 — deflection truth:** prior research found LEAP Steel
+  overestimates deflections ~10%; MDX is believed closer. Use B1 to
+  calibrate confidence in the MIDAS deflections (and the L/800-type service
+  checks) before letting the optimizer trade steel against them.
+- [ ] **B3 — MIDAS model completeness (extends G5):** the comparison is only
+  fair if the MIDAS model is real: steel materials loaded per grade
+  (`MATL`), rolled sections (`SECT`), bearing fixity from `gdr.fixity`
+  (`CONS`), stiffener locations found/recorded, an ODOT-standard deck (BDM
+  slab thickness / haunch / effective width) as the composite section, and
+  the HL-93 moving-load setup (`MVCD`/`MVHL`/`MVLD` + lanes from the deck
+  width). Non-composite (DC1) vs. composite (DC2/DW/LL) stages must match
+  how MDX applies them.
+- [~] **B4 — NSBA composite splice method (extends G7). Section engine done;
+  auto-`fcf` wiring remains.** `aashto.lrfd.composite.CompositeGirder`
+  computes the transformed non-composite / `n` / `3n` / cracked-`negative`
+  section properties and the per-case flange stress (`test_composite_section`,
+  11 tests). **Validated against the REF-DESIGN MDX tables**: bare-steel
+  I = 3099 vs 3100, composite `n` I = 10434 vs 10375 (0.6%), `3n` 7692 vs 7768
+  (1%); bottom-flange service stresses DC1 0.4928 vs 0.4926, LL+I 9.46 vs 9.58.
+  This is B1's "verify the section math independent of MIDAS." *Remaining:*
+  (a) feed the computed `fcf` into `design_splice` automatically (a
+  `design_rolled_splice` wrapper) so the end-to-end run needs no MDX-supplied
+  stress; (b) the cracked negative section is ~11% stiff (I 5274 vs 4754) —
+  **TODO: calibrate the deck-rebar effective depth** (`rebar_cover`) against the
+  workbook's M− table. Positive/service govern this splice, so it is exact
+  where it matters.
+- [ ] **B5 — optimization loop (the deliverable):** sweep rolled shapes
+  (weights from `steel.W`) and splice stations subject to every limit state
+  passing (strength, Service II, fatigue, 6.10.2 proportions, deflection)
+  and constructability (shipping length, filler-plate limits), minimize
+  total steel weight + splice cost (~$20/bolt fab, ~10 field-min/bolt), and
+  report the savings against the as-built W24x131/W24x104 six-splice
+  design. MDX is the benchmark to beat, not the answer key.
+
 ### Quick status board
 
 | Area | Python (civilpy) | C# plugin (Rider) |
 |---|---|---|
 | File read/write bridge | ✅ shipped | n/a |
-| Topology optimization (region → truss) | building (`stm_topology`) | `STMRegion` ☐ |
+| Topology optimization (region → truss) | building (`stm_topology`) | `STMRegion` ✅ (region/void/solid labeler) |
 | Solve + results write-back | ✅ shipped | reads results (`STMResults`) ☐ |
 | Authoring commands | prototype in `src/civilpy/structural/rhino_scripts/` ✅ | `STMTemplate`+`STMSupport`+`STMLoad` ✅; `STMMember`/`STMResults`/panel in progress (C#) |
 | Symbol block creation | intentionally **not** here (rhino3dm bug) | ✅ `STMTemplate` owns this (`Core/StmDocument`) |
@@ -963,3 +1260,8 @@ existing client and builders — not a fresh bridge (this is stage **S4** above)
 | Rhino → STM | ✅ shipped (via `model_from_3dm`) | n/a |
 | Rhino → Midas | ✅ shipped (`read_structural_model` → `midas_models.push_midas`); shares one encoder with `TrussBridge` | n/a |
 | Packaging | pip extra ✅ | Yak ☐ |
+| Girder-line authoring (`gdr.*` contract) | **signed off** ✅ (G1); grade-name map ✅; **reader ✅ (G4, `rhino_gdr`)**; open: reserve `gdr.deck_rebar`, move bridge params to a `gdr.kind=bridge` marker | `Core/Gdr.cs` ✅ (G1); `GirderLines`+`GirderShape` ✅ (G2–G3); **TODO: `GirderParams` → object user text, not `RhinoDoc.Strings`** |
+| MIDAS moving-load run + envelope | splice designer ✅ (`design_splice`); sections/MVLD/envelope ☐ (G5) | n/a |
+| Splice placement + rolled-shape design | ☐ (G6–G7; fixture = REF-DESIGN) | n/a |
+| Splice write-back + review | write-back ☐ (G8) | `GirderSplice` importer + check dialog ✅, live test vs. G8 ☐ (G9) |
+| MDX benchmark + steel optimization | ☐ (B1–B5; beat the as-built design) | n/a (displays results) |
