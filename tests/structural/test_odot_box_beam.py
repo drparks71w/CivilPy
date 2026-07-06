@@ -13,13 +13,21 @@ from civilpy.structural.odot import (
     ANCHOR_DOWEL,
     BEARING_DESIGN_DATA,
     BOX_BEAM_DEPTHS,
+    BOX_SECTION_PROPERTIES,
+    BOX_WALL_THICKNESS_IN,
+    BOX_WIDTH_IN,
     DESIGN_DATA_SHEET,
     DESIGN_SPEC,
     SHEAR_KEY,
     TIE_ROD,
     bearing_pad,
+    box_beam_design,
+    box_section_properties,
+    box_void_dimensions,
     diaphragm_count,
     diaphragm_end_offset,
+    diaphragm_stations_ft,
+    strand_group_height_in,
 )
 
 
@@ -145,3 +153,93 @@ class TestBearings:
         assert d.shear_modulus_horizontal == 0.130
         assert d.creep_deflection_percent == 25.0
         assert d.bearings_per_beam == 4
+
+
+class TestSectionProperties:
+    """Cross-section geometry and tabulated properties (PSBD-1-25 sheets 3
+    & 4/6)."""
+
+    def test_all_standard_depths_present(self):
+        assert set(BOX_SECTION_PROPERTIES) == set(BOX_BEAM_DEPTHS)
+
+    def test_cb27_48_beam_only(self):
+        s = box_section_properties(27)
+        assert s.width == BOX_WIDTH_IN
+        assert s.area == pytest.approx(713.8)
+        assert s.i == pytest.approx(66222)
+        assert s.yb == pytest.approx(13.39)
+        assert s.zt == pytest.approx(4866)
+        assert s.zb == pytest.approx(4945)
+
+    def test_cb27_48_composite(self):
+        s = box_section_properties(27)
+        assert s.ic == pytest.approx(109704)
+        assert s.ybc == pytest.approx(17.13)
+        assert s.ztc == pytest.approx(11119)
+        assert s.zbc == pytest.approx(6403)
+
+    def test_deeper_beam_has_larger_area_and_inertia(self):
+        depths = sorted(BOX_SECTION_PROPERTIES)
+        areas = [box_section_properties(d).area for d in depths]
+        inertias = [box_section_properties(d).i for d in depths]
+        assert areas == sorted(areas)
+        assert inertias == sorted(inertias)
+
+    def test_rejects_nonstandard_depth(self):
+        with pytest.raises(ValueError, match="non-standard beam depth"):
+            box_section_properties(30)
+
+    def test_void_dimensions_match_wall_thickness(self):
+        # void width = 48 - 2 x 5.5 = 37 in; void height = D - 2 x 5.5
+        for d in BOX_BEAM_DEPTHS:
+            w, h = box_void_dimensions(d)
+            assert w == pytest.approx(BOX_WIDTH_IN - 2 * BOX_WALL_THICKNESS_IN)
+            assert h == pytest.approx(d - 2 * BOX_WALL_THICKNESS_IN)
+
+    def test_void_dimensions_spot_values(self):
+        assert box_void_dimensions(27) == pytest.approx((37.0, 16.0))
+        assert box_void_dimensions(17) == pytest.approx((37.0, 6.0))
+        assert box_void_dimensions(42) == pytest.approx((37.0, 31.0))
+
+
+class TestDiaphragmStations:
+    def test_single_diaphragm_at_midspan(self):
+        assert diaphragm_stations_ft(40.0, 27) == (20.0,)
+
+    def test_two_diaphragms_symmetric(self):
+        stations = diaphragm_stations_ft(60.0, 27)
+        assert len(stations) == 2
+        assert stations[0] == pytest.approx(60.0 - stations[1])
+        offset_ft = 30.0 / 12.0
+        assert stations[0] == pytest.approx(offset_ft)
+        assert stations[1] == pytest.approx(60.0 - offset_ft)
+
+    def test_three_diaphragms_include_midspan(self):
+        stations = diaphragm_stations_ft(90.0, 33)
+        assert len(stations) == 3
+        assert stations[1] == pytest.approx(45.0)
+
+
+class TestStrandGroupHeight:
+    def test_matches_section_eccentricity(self):
+        # strand_group_height = Yb - e_beam, within the sheet's rounding.
+        d = box_beam_design("CB27-48", 50)
+        s = box_section_properties(27)
+        h = strand_group_height_in(d)
+        assert h == pytest.approx(s.yb - d.e_beam, abs=0.05)
+
+    def test_weighted_average(self):
+        d = box_beam_design("CB17-48", 20)
+        assert (d.strands_2in, d.strands_4in, d.strands_6in) == (8, 4, 0)
+        assert strand_group_height_in(d) == pytest.approx((8 * 2 + 4 * 4) / 12)
+
+    def test_rejects_zero_strands(self):
+        from civilpy.structural.odot.box_beam_design import BoxBeamDesign
+        d = BoxBeamDesign(
+            beam_type="composite", box="X", depth=17, width=48, span=20,
+            e_beam=1.0, e_composite=None, n_strands=0, strands_2in=0,
+            strands_4in=0, strands_6in=0, stirrup_w_pairs=0, stirrup_zone_x=0,
+            stirrup_y=0, stirrup_z=0, camber_d0=0, camber_d30=0, deflection=0,
+            bearing_type="B1")
+        with pytest.raises(ValueError, match="no strands"):
+            strand_group_height_in(d)
