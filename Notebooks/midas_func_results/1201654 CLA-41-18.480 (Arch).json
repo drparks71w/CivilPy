@@ -1,0 +1,17 @@
+{
+ "file": "1201654 CLA-41-18.480 (Arch).mcb",
+ "type": "Arch",
+ "elems": 91,
+ "elem_types": {
+  "BEAM": 91
+ },
+ "can_analyze": true,
+ "can_rate_ll": true,
+ "note": "rateable: supports + static + moving load present",
+ "n_beam_elems": 91,
+ "beamforce_query": "combos(CB)+moving(MV)",
+ "beamforce_rows": 1092,
+ "max_My": 849.612570951266,
+ "max_Vz": 227.669102667951,
+ "max_Axial": 1132.81453307398
+}
