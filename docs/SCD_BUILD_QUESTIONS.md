@@ -58,6 +58,31 @@ Format: SCD — question — what was assumed — what to revisit if wrong.
   crown/cross slope, sheet-2 joint grooves/seals (cataloged as data in
   `JOINT_DETAILS` / `JOINT_NOTES` / `SEAT_CONFIGURATIONS`).
 
+## SB-1-24 (rev. 01-16-2026)
+
+- **M/N-bar orientation assumed longitudinal.** The SLAB PLAN view only
+  draws A-bars (bottom) and B-bars (top) as the many parallel longitudinal
+  lines across the full plan; M-bars and N-bars only appear in the SLAB
+  ELEVATION, dimensioned "@ 10\"/12\" SPA." along the span with "(2)
+  ADDITIONAL N-BARS" called out near the abutment. Assumed M/N are
+  additional longitudinal bars (modeled the same way as A/B, full-width,
+  full-length) rather than transverse or abutment-zone-only bars. Revisit
+  if a project bar list shows M/N confined to the end zones only.
+- **Bottom/top cover assumed 2.5 in** (not explicitly re-dimensioned in
+  the rendered crop used) to place the A/M (bottom) and B/N (top) bar
+  elevations; the sheet's actual cover note should be confirmed against a
+  full-resolution render of the SLAB ELEVATION detail bubble before using
+  the bar elevations for anything beyond a visual check.
+- **layer group: `Deck::SB-1-24`, not `Site::`/`Culvert::`.** Unlike the
+  SCD plan-insert accessories (approach slabs, headwalls, barriers), the
+  slab bridge SCD *is* the deck/superstructure itself for a slab-bridge
+  structure type, so its GH component bakes to the `Deck::` group already
+  defined by `Gdr.cs` rather than one of the two civilpy-proposed groups.
+- **Not modeled**: the edge-beam taper solid (D/X detail — cataloged as
+  data only), bent A/B-bar ends near the abutments, the U401/U402
+  edge-beam lap bars, camber, and the abutment diaphragm (CPA-1-08,
+  Wave 4's next item).
+
 ## Wave 3: bridge railings (SBR/BR/TST/DBR/TBR)
 
 - **Already-done discovery.** `civilpy.structural.odot.bridge_railing`

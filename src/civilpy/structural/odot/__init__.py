@@ -84,6 +84,12 @@ Sub-modules:
     general notes (payment items, waterproofing, weepholes, PEJF, lap
     splices) and the eight standard rebar bend shapes (``bend_shape``,
     ``TYPE-1``..``TYPE-8``) the bar list references.
+
+``slab_bridge``
+    Single span slab bridges (SB-1-24): the span-keyed ``SLAB DATA`` table
+    (thickness + A/B/M/N bar schedule, 11-38 ft) and ``EDGE BEAM SLAB
+    DATA`` table (over-the-side-drainage vs. parapet edge conditions), and
+    the ``layout_slab_bridge`` generator behind the SB-1-24 component.
 """
 
 from civilpy.structural.odot.bridge_railing import (
@@ -221,6 +227,22 @@ from civilpy.structural.odot.box_culvert_headwall import (
     WingwallLayout,
     bend_shape,
     layout_wingwall,
+)
+from civilpy.structural.odot.slab_bridge import (
+    EDGE_BEAM_DESIGNS,
+    LAP_SPLICE_FT as SB_1_24_LAP_SPLICE_FT,
+    SLAB_DESIGNS,
+    BarSpec as SlabBarSpec,
+    EdgeBarSpec,
+    EdgeBeamDesign,
+    SlabBridgeInput,
+    SlabBridgeLayout,
+    SlabDesign,
+    bridge_length_ft,
+    edge_beam_design,
+    layout_slab_bridge,
+    slab_design,
+    standard_hook_bar_length_ft,
 )
 from civilpy.structural.odot.deck_design import (
     DESIGN_METHOD,
@@ -378,4 +400,18 @@ __all__ = [
     "WingwallLayout",
     "bend_shape",
     "layout_wingwall",
+    "EDGE_BEAM_DESIGNS",
+    "SB_1_24_LAP_SPLICE_FT",
+    "SLAB_DESIGNS",
+    "SlabBarSpec",
+    "EdgeBarSpec",
+    "EdgeBeamDesign",
+    "SlabBridgeInput",
+    "SlabBridgeLayout",
+    "SlabDesign",
+    "bridge_length_ft",
+    "edge_beam_design",
+    "layout_slab_bridge",
+    "slab_design",
+    "standard_hook_bar_length_ft",
 ]

@@ -58,7 +58,7 @@ exists, the catalog module should encode it alongside the drawing.
 
 | SCD | Title | Rev | Rating | Notes |
 |---|---|---|---|---|
-| SB-1-24 | Single Span Slab Bridges | 2026-01 | **1** | Verified by render: complete SLAB DATA table (spans 11–38 ft → thickness + A/B/M/N bar schedules), skew math on the sheet. The single highest-value component after the girder bridge. |
+| SB-1-24 | Single Span Slab Bridges | 2026-01 | **1** | ✅ DONE — `odot.slab_bridge` + `Notebooks/res/SB-1-24.py`, 14 tests. Full SLAB DATA + EDGE BEAM SLAB DATA tables (spans 11-38 ft); skewed parallelogram plan (0-25 deg) + A/B/M/N longitudinal bar mats. Edge-beam taper solid, bent bar ends, camber, abutment diaphragm not drawn. |
 | CS-1-24 | Continuous Slab Bridge | 2026-01 | **2** | Same family + continuity/haunches; largest embedded tables of the set (779 numeric entries). |
 | CPA-1-08 | Capped Pile Abutment (slab bridges) | 2024-01 | **2** | Cap + pile rows + wingwalls; SB-1-24's companion (referenced from its elevation). |
 | CPP-1-08 | Capped Pile Pier (continuous slabs) | 2017-07 | **2** | One sheet, clean parametric cap/pile layout. |
