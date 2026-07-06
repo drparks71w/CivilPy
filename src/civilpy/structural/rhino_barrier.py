@@ -45,6 +45,9 @@ from civilpy.structural.odot.bridge_railing import BRIDGE_RAILINGS
 from civilpy.structural.rhino_gdr import (
     GTAG, GirderBridge, read_girder_model, _require_rhino3dm, _box_mesh, _fmt_num,
 )
+from civilpy.structural.rhino_layers import (
+    LAYER_BARRIERS, LAYER_LANE_MARKINGS, LAYER_REBAR, ensure_layer,
+)
 
 #: Reinforced-concrete unit weight (pcf) for barrier dead load.
 CONCRETE_PCF = 150.0
@@ -284,14 +287,15 @@ def _interp_offset(face, z):
 
 # ── layer helpers ─────────────────────────────────────────────────────────
 def _add_layers(f, r3):
-    """Create the leaf layers a directly-opened barrier .3dm should carry
-    (the DeckBarrier importer re-parents by gdr.kind). Returns their
-    indices as a dict."""
+    """Create the nested ``Deck::`` layers a directly-opened barrier .3dm
+    should carry (the DeckBarrier importer re-parents by gdr.kind
+    regardless of source layer, but a direct open should already match).
+    Returns their indices as a dict."""
     return {
-        "barrier": f.Layers.AddLayer("Traffic Barriers", (150, 150, 155, 255)),
-        "steel": f.Layers.AddLayer("Traffic Barriers", (90, 90, 100, 255)),
-        "rebar": f.Layers.AddLayer("Rebar", (60, 120, 200, 255)),
-        "lane": f.Layers.AddLayer("Lane Markings", (240, 220, 60, 255)),
+        "barrier": ensure_layer(f, LAYER_BARRIERS),
+        "steel": ensure_layer(f, LAYER_BARRIERS),
+        "rebar": ensure_layer(f, LAYER_REBAR),
+        "lane": ensure_layer(f, LAYER_LANE_MARKINGS),
     }
 
 
@@ -482,7 +486,7 @@ def build_lane_lines(source, *, out_path, n_lanes: int | None = None,
 
     f = r3.File3dm()
     f.Settings.ModelUnitSystem = unit_system or r3.UnitSystem.Feet
-    lay = f.Layers.AddLayer("Lane Markings", (245, 225, 70, 255))
+    lay = ensure_layer(f, LAYER_LANE_MARKINGS)
     z = deck_top_z_ft + 0.02
     w = line_width_in / 12.0 / 2.0
     count = {"n": 0}

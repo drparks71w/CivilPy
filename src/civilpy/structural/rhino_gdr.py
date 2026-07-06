@@ -37,6 +37,9 @@ import uuid
 import warnings
 from dataclasses import dataclass, field
 
+from civilpy.structural.rhino_layers import (
+    LAYER_DISPLAY, LAYER_SPLICES, ensure_layer,
+)
 from civilpy.structural.rhino_stm import _require_rhino3dm, _unit_to_feet
 from civilpy.structural.structural_model import StructuralModel, Units
 
@@ -594,8 +597,8 @@ def write_splice_results(out_path, markers, *, unit_system=None,
     f = r3.File3dm()
     # default to feet so points round-trip 1:1 through _unit_to_feet on read
     f.Settings.ModelUnitSystem = unit_system or r3.UnitSystem.Feet
-    lay_marker = f.Layers.AddLayer("Splices", (200, 30, 30, 255))
-    lay_display = f.Layers.AddLayer("Splice Display", (110, 125, 140, 255))
+    lay_marker = ensure_layer(f, LAYER_SPLICES)
+    lay_display = ensure_layer(f, LAYER_DISPLAY)
     for m in markers:
         attr = r3.ObjectAttributes()
         attr.LayerIndex = lay_marker

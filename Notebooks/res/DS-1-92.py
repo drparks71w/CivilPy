@@ -16,7 +16,7 @@ Component inputs (Type Hint / Access in parentheses):
     railing  (str, Item)    "DBR-2-73" | "TST-1-99" | "TST-2-21"
     posts    (float, List)  railing post stations, ft (optional; upper
                             strips are placed only where given)
-    bake     (bool, Item)   write display geometry to SCD::DS-1-92
+    bake     (bool, Item)   write display geometry to Site::DS-1-92
 Outputs:
     strips  (Brep, List)   upper + lower strip solids (final 45-deg bend)
     report  (str)
@@ -60,12 +60,12 @@ def _strip_solid(run, root_z_ft, s):
 def _bake(breps):
     doc = Rhino.RhinoDoc.ActiveDoc
     import System.Drawing as sd
-    idx = doc.Layers.FindByFullPath("SCD::DS-1-92", -1)
+    idx = doc.Layers.FindByFullPath("Site::DS-1-92", -1)
     if idx < 0:
-        parent = doc.Layers.FindByFullPath("SCD", -1)
+        parent = doc.Layers.FindByFullPath("Site", -1)
         if parent < 0:
             lyr = Rhino.DocObjects.Layer()
-            lyr.Name = "SCD"
+            lyr.Name = "Site"
             parent = doc.Layers.Add(lyr)
         lyr = Rhino.DocObjects.Layer()
         lyr.Name = "DS-1-92"
@@ -124,5 +124,5 @@ else:
         if globals().get("bake"):
             n = _bake(strips)
             report_lines.append(
-                "BAKED {} objects to SCD::DS-1-92 (display only).".format(n))
+                "BAKED {} objects to Site::DS-1-92 (display only).".format(n))
         report = "\n".join(report_lines)

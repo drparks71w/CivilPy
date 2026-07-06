@@ -64,6 +64,10 @@ from civilpy.structural.odot import (
     diaphragm_stations_ft,
 )
 from civilpy.structural.rhino_gdr import GTAG, _box_mesh, _fmt_num, _require_rhino3dm
+from civilpy.structural.rhino_layers import (
+    LAYER_BEARINGS, LAYER_BOX_BEAMS, LAYER_BRIDGE_DECK, LAYER_DIAPHRAGMS,
+    LAYER_GIRDERS, LAYER_TENDONS, LAYER_TIE_RODS, ensure_layer,
+)
 
 #: Concrete unit weight (pcf) for the box-beam and topping-slab self-weight.
 CONCRETE_PCF = 150.0
@@ -110,13 +114,13 @@ def _tag_common(r3, layer_index, kind, **extra):
 
 def _add_layers(f, r3):
     return {
-        "girder": f.Layers.AddLayer("Girders", (60, 60, 65, 255)),
-        "beam": f.Layers.AddLayer("Beams", (140, 140, 145, 255)),
-        "tendon": f.Layers.AddLayer("Tendons", (200, 160, 20, 255)),
-        "diaphragm": f.Layers.AddLayer("Diaphragms", (100, 100, 180, 255)),
-        "tie_rod": f.Layers.AddLayer("Tie Rods", (180, 60, 60, 255)),
-        "bearing": f.Layers.AddLayer("Bearings", (0, 110, 200, 255)),
-        "slab": f.Layers.AddLayer("Bridge Deck", (170, 170, 175, 255)),
+        "girder": ensure_layer(f, LAYER_GIRDERS),
+        "beam": ensure_layer(f, LAYER_BOX_BEAMS),
+        "tendon": ensure_layer(f, LAYER_TENDONS),
+        "diaphragm": ensure_layer(f, LAYER_DIAPHRAGMS),
+        "tie_rod": ensure_layer(f, LAYER_TIE_RODS),
+        "bearing": ensure_layer(f, LAYER_BEARINGS),
+        "slab": ensure_layer(f, LAYER_BRIDGE_DECK),
     }
 
 

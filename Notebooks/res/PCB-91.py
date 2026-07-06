@@ -15,7 +15,7 @@ Component inputs (Type Hint / Access in parentheses):
     joint_gap       (float, Item)  in, 0 to 1.75 (optional, 0.25 closed)
     anchored        (bool, Item)   True = show anchor-hole markers and
                                    report the TL-4 anchored configuration
-    bake            (bool, Item)   write display geometry to SCD::PCB-91
+    bake            (bool, Item)   write display geometry to Site::PCB-91
 Outputs:
     barriers (Brep, List)     one solid per segment (lifting slot cut)
     profile  (Curve, Item)    the NJ-shape section at the run start
@@ -68,12 +68,12 @@ def _segment_solid(seg, s):
 def _bake(breps, curves, pts):
     doc = Rhino.RhinoDoc.ActiveDoc
     import System.Drawing as sd
-    idx = doc.Layers.FindByFullPath("SCD::PCB-91", -1)
+    idx = doc.Layers.FindByFullPath("Site::PCB-91", -1)
     if idx < 0:
-        parent = doc.Layers.FindByFullPath("SCD", -1)
+        parent = doc.Layers.FindByFullPath("Site", -1)
         if parent < 0:
             lyr = Rhino.DocObjects.Layer()
-            lyr.Name = "SCD"
+            lyr.Name = "Site"
             parent = doc.Layers.Add(lyr)
         lyr = Rhino.DocObjects.Layer()
         lyr.Name = "PCB-91"
@@ -149,5 +149,5 @@ else:
         if globals().get("bake"):
             n = _bake(barriers, [profile] if profile else [], anchors)
             report_lines.append(
-                "BAKED {} objects to SCD::PCB-91 (display only).".format(n))
+                "BAKED {} objects to Site::PCB-91 (display only).".format(n))
         report = "\n".join(report_lines)

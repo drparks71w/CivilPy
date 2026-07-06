@@ -1304,3 +1304,70 @@ pipeline is a *better* design, not just a reproduced one):**
 | Splice placement + rolled-shape design | ☐ (G6–G7; fixture = REF-DESIGN) | n/a |
 | Splice write-back + review | write-back ☐ (G8) | `GirderSplice` importer + check dialog ✅, live test vs. G8 ☐ (G9) |
 | MDX benchmark + steel optimization | ☐ (B1–B5; beat the as-built design) | n/a (displays results) |
+
+## Rhino layer taxonomy: NBIS inspection groups (2026-07-06)
+
+**Deck / Superstructure / Substructure are authoritative and pinned to the
+C# side.** `ODOT Rhino Plugin/Core/Gdr.cs` (`RhinoODOTExtension` repo,
+commit `34f7051`, "GirderDeck command + Deck/Superstructure/Substructure
+layer groups") defines the nested layer paths every import command
+(`GirderDeck`, `DeckBarrier`/`DeckLaneLines`, `BoxBeamLines`) re-parents
+objects into by `gdr.kind`, purely NBIS/SNBI's three inspection groups:
+
+```
+Deck            Deck::Bridge Deck, Deck::Traffic Barriers, Deck::Rebar, Deck::Lane Markings
+Superstructure  Superstructure::Girders, ::Splices, ::Bearings, ::Display, ::Box Beams,
+                ::Tendons, ::Diaphragms, ::Tie Rods
+Substructure    (reserved -- no elements generated yet)
+```
+
+**Finding:** civilpy's own `.3dm` writers (`rhino_gdr`, `rhino_deck`,
+`rhino_barrier`, `rhino_box_beam`) were baking into **flat leaf names**
+("Girders", "Bridge Deck", "Beams", ...) instead of these nested paths.
+This does **not** break the round trip -- every C# import command routes
+strictly by `gdr.kind`, never by the source file's layer -- but it meant a
+directly-opened civilpy write-back file didn't yet read the way an
+assembled model does, `rhino_box_beam`'s "Beams" didn't even match
+`Gdr.LayerBoxBeams` ("Box Beams"), and there was no shared source of truth
+a future common-data-model exporter could read off the layer tree instead
+of re-deriving it from tags. **Fixed:** `civilpy.structural.rhino_layers`
+transcribes the ``Gdr.cs`` paths as constants plus an `ensure_layer(f,
+full_path, color)` helper (the Python-side mirror of
+`StmDocument.EnsureLayer`'s "walk the `::`-separated path, create what's
+missing" logic, since standalone `rhino3dm` has no `FindByFullPath`); all
+four writers now call it. Verified by writing a box-beam model and reading
+its layer tree back (`test_rhino_layers.py`).
+
+**PROPOSED — Culvert and Site (pending C#-side reconciliation).** Two more
+groups for the ODOT SCD standard-drawing components, which are neither
+deck, superstructure, nor substructure and were previously flat under an
+ad hoc `SCD::<name>` layer:
+
+```
+Culvert   headwalls / box culverts: Culvert::HW-1.1, Culvert::HW-2.1 (HW-2.2 shares it), (later Culvert::BCHW)
+Site      off-structure roadway items: Site::AS-1-15, Site::AS-2-15, Site::DS-1-92, Site::PCB-91
+```
+
+This assignment is an assumption (see `docs/SCD_BUILD_QUESTIONS.md`): drip
+strips (DS-1-92) physically mount on the deck fascia and could arguably be
+`Deck::` instead, but every SCD component is untagged/display-only (none
+carry `gdr.kind`, so none of the C# import commands touch them), which
+puts them all in the same "standard-drawing reference, not analysis-model
+participant" bucket — hence one shared split by Culvert vs. everything
+else at grade, not by physical adjacency to the deck. Revisit if the SCD
+components ever get `gdr.kind` tags of their own.
+
+**Why this matters for the common data model.** NBIS/SNBI's inspection
+groups are also IFC 4.3's `IfcBridgePart.PredefinedType` enumeration
+(`ABUTMENT`, `DECK`, `PIER`, `SUBSTRUCTURE`, `SUPERSTRUCTURE`,
+`SURFACESTRUCTURE`, ...) — see
+[IFC 4.3 as the hub vocabulary](#ifc-43-as-the-hub-vocabulary-and-where-it-must-be-extended)
+above. Keeping the Rhino layer tree, the `civilpy.state.ohio.snbi`
+condition-rating groups, and (eventually) `to_ifc`'s `IfcBridgePart` split
+on the *same* five-way taxonomy means one mapping serves Rhino, IFC,
+and — when those adapters exist — BrR's NBI element groups and AssetWise's
+inspection hierarchy, instead of three drifting, independently-invented
+ones. Midas has no equivalent spatial-structure concept (it is
+elements/sections/loads only), so the Midas adapter stays keyed off
+`gdr.shape`/`gdr.grade` as today; the taxonomy question only applies to
+adapters that carry a spatial/inspection hierarchy.

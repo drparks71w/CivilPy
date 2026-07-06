@@ -17,7 +17,7 @@ cut through it along Y.  For the concrete-pipe table (HW-2.2) set
 Component inputs (Type Hint / Access in parentheses):
     diameter  (float, Item)  pipe inside diameter D, inches (tabulated)
     concrete  (bool,  Item)  use the HW-2.2 concrete-pipe table (optional)
-    bake      (bool,  Item)  write display geometry to SCD::HW-2.1
+    bake      (bool,  Item)  write display geometry to Culvert::HW-2.1
 Outputs:
     wall    (Brep, Item)   the headwall solid with the pipe opening cut
     opening (Curve, Item)  the circular pipe opening on the front face
@@ -69,12 +69,12 @@ def _pipe_cutter(center, dia_ft, thickness_ft, s):
 def _bake(objs):
     doc = Rhino.RhinoDoc.ActiveDoc
     import System.Drawing as sd
-    idx = doc.Layers.FindByFullPath("SCD::HW-2.1", -1)
+    idx = doc.Layers.FindByFullPath("Culvert::HW-2.1", -1)
     if idx < 0:
-        parent = doc.Layers.FindByFullPath("SCD", -1)
+        parent = doc.Layers.FindByFullPath("Culvert", -1)
         if parent < 0:
             lyr = Rhino.DocObjects.Layer()
-            lyr.Name = "SCD"
+            lyr.Name = "Culvert"
             parent = doc.Layers.Add(lyr)
         lyr = Rhino.DocObjects.Layer()
         lyr.Name = "HW-2.1"
@@ -136,5 +136,5 @@ else:
         if globals().get("bake"):
             n = _bake([wall, opening])
             report_lines.append(
-                "BAKED {} objects to SCD::HW-2.1 (display only).".format(n))
+                "BAKED {} objects to Culvert::HW-2.1 (display only).".format(n))
         report = "\n".join(report_lines)

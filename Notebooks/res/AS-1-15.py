@@ -18,7 +18,7 @@ Component inputs (Type Hint / Access in parentheses):
     backwall      (float, Item)  backwall thickness, in (optional, 14;
                               selects D801 vs D802 anchor bars)
     bake       (bool, Item)   True = write display geometry to the
-                              SCD::AS-1-15 layer in the active document
+                              Site::AS-1-15 layer in the active document
 Outputs:
     slab    (Brep, Item)   the approach slab solid
     rebar   (Curve, List)  every bar (A, B501, C, D801/D802)
@@ -93,8 +93,8 @@ def _bake(slab, curves, outline):
             parent = idx
         return idx
 
-    lay_slab = layer("SCD::AS-1-15", sd.Color.FromArgb(160, 160, 160))
-    lay_bars = layer("SCD::AS-1-15::Rebar", sd.Color.FromArgb(170, 40, 40))
+    lay_slab = layer("Site::AS-1-15", sd.Color.FromArgb(160, 160, 160))
+    lay_bars = layer("Site::AS-1-15::Rebar", sd.Color.FromArgb(170, 40, 40))
 
     def attrs(lay):
         a = Rhino.DocObjects.ObjectAttributes()
@@ -171,6 +171,6 @@ else:
         ] + list(layout.notes[2:])
         if globals().get("bake"):
             n = _bake(slab, rebar, outline)
-            report_lines.append("BAKED {} objects to SCD::AS-1-15 "
+            report_lines.append("BAKED {} objects to Site::AS-1-15 "
                                 "(display only, untagged).".format(n))
         report = "\n".join(report_lines)

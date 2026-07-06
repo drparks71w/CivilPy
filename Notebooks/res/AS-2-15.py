@@ -17,7 +17,7 @@ Component inputs (Type Hint / Access in parentheses):
     width         (float, Item)  approach slab width W, ft
     skew          (float, Item)  degrees (optional, 0)
     installation  (str, Item)    "A" or "C" (optional, "A")
-    bake          (bool, Item)   write display geometry to SCD::AS-2-15
+    bake          (bool, Item)   write display geometry to Site::AS-2-15
 Outputs:
     sleeper  (Brep, Item)    the sleeper slab solid
     rebar    (Curve, List)   SS501 + SS502 bars
@@ -60,12 +60,12 @@ def _prism(outline, depth_ft, s):
 def _bake(objs):
     doc = Rhino.RhinoDoc.ActiveDoc
     import System.Drawing as sd
-    idx = doc.Layers.FindByFullPath("SCD::AS-2-15", -1)
+    idx = doc.Layers.FindByFullPath("Site::AS-2-15", -1)
     if idx < 0:
-        parent = doc.Layers.FindByFullPath("SCD", -1)
+        parent = doc.Layers.FindByFullPath("Site", -1)
         if parent < 0:
             lyr = Rhino.DocObjects.Layer()
-            lyr.Name = "SCD"
+            lyr.Name = "Site"
             parent = doc.Layers.Add(lyr)
         lyr = Rhino.DocObjects.Layer()
         lyr.Name = "AS-2-15"
@@ -138,5 +138,5 @@ else:
         if globals().get("bake"):
             n = _bake([sleeper, joint, drain, pipe] + rebar)
             report_lines.append(
-                "BAKED {} objects to SCD::AS-2-15 (display only).".format(n))
+                "BAKED {} objects to Site::AS-2-15 (display only).".format(n))
         report = "\n".join(report_lines)

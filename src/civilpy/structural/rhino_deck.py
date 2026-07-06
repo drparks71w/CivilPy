@@ -39,6 +39,9 @@ from civilpy.structural.odot.bridge_railing import BRIDGE_RAILINGS
 from civilpy.structural.rhino_gdr import (
     GTAG, GirderBridge, read_girder_model, _require_rhino3dm, _box_mesh, _fmt_num,
 )
+from civilpy.structural.rhino_layers import (
+    LAYER_BARRIERS, LAYER_BRIDGE_DECK, LAYER_REBAR, ensure_layer,
+)
 
 #: Default deck slab thickness (in) when the model carries no ``gdr.deck_t``.
 DEFAULT_DECK_T_IN = 8.5
@@ -184,12 +187,13 @@ def build_deck(source, *, out_path, deck_t_in: float | None = None,
 
     f = r3.File3dm()
     f.Settings.ModelUnitSystem = unit_system or r3.UnitSystem.Feet
-    # leaf layer names matching the C# Deck group (the GirderDeck importer
-    # re-parents by gdr.kind; these are for a directly-opened .3dm)
-    lay_deck = f.Layers.AddLayer("Bridge Deck", (170, 170, 175, 255))
-    lay_par = f.Layers.AddLayer("Traffic Barriers", (150, 150, 155, 255))
-    lay_rail = f.Layers.AddLayer("Traffic Barriers", (150, 150, 155, 255))
-    lay_rebar = f.Layers.AddLayer("Rebar", (60, 120, 200, 255))
+    # Nested Deck:: layers matching Gdr.cs (the GirderDeck importer re-parents
+    # by gdr.kind regardless of source layer, but a directly-opened write-back
+    # should already read the same as a fully-assembled model).
+    lay_deck = ensure_layer(f, LAYER_BRIDGE_DECK)
+    lay_par = ensure_layer(f, LAYER_BARRIERS)
+    lay_rail = ensure_layer(f, LAYER_BARRIERS)
+    lay_rebar = ensure_layer(f, LAYER_REBAR)
 
     # ── deck slab ─────────────────────────────────────────────────────────
     deck_attr = r3.ObjectAttributes()
