@@ -43,6 +43,32 @@ Format: SCD — question — what was assumed — what to revisit if wrong.
   crown/cross slope, sheet-2 joint grooves/seals (cataloged as data in
   `JOINT_DETAILS` / `JOINT_NOTES` / `SEAT_CONFIGURATIONS`).
 
+## AS-2-15 (rev. 01-20-2023)
+
+- **Only the sleeper slab is modeled.** AS-2-15 is 14 sheets of
+  installation configurations (Types A/B/C, flexible/rigid pavement,
+  MSE vs. turnback wingwalls). The parametric geometry is the reinforced
+  concrete sleeper slab (Type A/C); the fourteen configurations are
+  cataloged as data (`INSTALLATION_INDEX`). Type B has no sleeper slab
+  (reinforced joint mesh, measured by SY) and raises `ValueError`.
+- **Skew convention (Section A-A + Note 9).** The 8 ft sleeper width
+  (4'-0" + 4'-0" in Section A-A) is the TRUE width perpendicular to the
+  skewed centerline, so the slab's along-roadway (X) extent is 8/cos θ
+  and the plan outline is a parallelogram sheared by y·tan θ. SS501 runs
+  parallel to the skewed centerline, length A = (W − 0.5')/cos θ. SS502
+  is placed **parallel to CL roadway** (Note 9), so its plan run in X
+  equals the tabulated bar length B = 7.5'/cos θ; its spacing is measured
+  perpendicular to CL roadway. (An earlier draft's test asserted a true
+  4.0 ft half-width and a 7.5 ft SS502 plan run — both corrected to the
+  sec θ forms above to match the bending table.)
+- **Sleeper measured length** is W/cos θ (linear foot along the skew,
+  per the measurement note), independent of the bar cover deductions.
+- **Not modeled** (reported by the component): the 25 ft flexible
+  pavement transition and its T2→T3 thickness tapers, bond breaker,
+  aggregate-drain outlets (DM-4.1) and pipe outlet details (DM-1.1/1.2),
+  the MSE-wall / turnback-wingwall variations, and the Type B reinforced
+  joint mesh.
+
 ## DS-1-92 (rev. 07-15-22)
 
 - **Sheet thickness for display.** The sheet specifies "minimum 22 gage"

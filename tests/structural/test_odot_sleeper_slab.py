@@ -114,15 +114,20 @@ def test_layout_bars():
 
 def test_layout_skewed():
     lay = layout_sleeper_slab(SleeperSlabInput(24.0, skew_deg=30.0))
+    cos30 = math.cos(math.radians(30.0))
     tan30 = math.tan(math.radians(30.0))
-    assert lay.outline[1][0] == pytest.approx(-4.0 + 24.0 * tan30)
+    # The 8 ft sleeper width is true (perpendicular to the skewed
+    # centerline, per Section A-A), so the edge's longitudinal (X) offset
+    # is 4.0/cos(theta); the edge line is then sheared by y*tan(theta).
+    half = 4.0 / cos30
+    assert lay.outline[1][0] == pytest.approx(-half + 24.0 * tan30)
     # sleeper measured along the skew
-    assert lay.measured_length_ft == pytest.approx(
-        24.0 / math.cos(math.radians(30.0)))
-    # SS502 length shortens in plan to B*cos = 7.5 exactly longitudinally
+    assert lay.measured_length_ft == pytest.approx(24.0 / cos30)
+    # SS502 runs parallel to CL roadway (Note 9); its plan run in X equals
+    # the tabulated bar length B = 7.5/cos(theta).
     s502 = [b for b in lay.bars if b.mark == "SS502"][0]
     dx = s502.points[1][0] - s502.points[0][0]
-    assert dx == pytest.approx(7.5)   # B/cos * cos... plan run stays 7.5
+    assert dx == pytest.approx(7.5 / cos30)
     # SS501 parallel to the skewed centerline
     s501 = [b for b in lay.bars if b.mark == "SS501"][0]
     (x0, y0, _), (x1, y1, _) = s501.points
