@@ -326,6 +326,11 @@ class SpliceDesign:
     top_flange: ComponentDesign
     bottom_flange: ComponentDesign
     web: ComponentDesign
+    # the SpliceInput this design came from (set by design_splice), so a
+    # result self-describes: downstream writers (rhino_gdr's gdr.splice.*
+    # smart-node tags, plate/bolt display geometry) need the bolt spec and
+    # inner-plate dimensions that only the input carries.
+    spec: SpliceInput | None = None
 
     @property
     def components(self) -> list[ComponentDesign]:
@@ -844,4 +849,5 @@ def design_splice(inp: SpliceInput) -> SpliceDesign:
         bottom.checks.append(sc)
 
     return SpliceDesign(factored_moments=m, factored_shears=v,
-                        top_flange=top, bottom_flange=bottom, web=web)
+                        top_flange=top, bottom_flange=bottom, web=web,
+                        spec=inp)
