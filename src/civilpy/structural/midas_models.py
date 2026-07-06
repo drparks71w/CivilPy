@@ -112,53 +112,77 @@ def placeholder_section_block(*, sect_id: int = 1, side_ft: float = 1.0,
 
 
 def rolled_i_section_block(shape_label: str, *, sect_id: int = 1,
-                          length_unit: str = "in") -> dict:
-    """A ``/db/SECT`` body for a rolled I/H shape, with the real cross-section
-    dimensions pulled from ``steel.W`` (the AISC database) instead of a
-    placeholder square -- stage **G5**.  ``SHAPE="H"`` with
-    ``vSIZE=[H, B1, tw, tf1, B2, tf2]`` in ``length_unit``.
+                          length_unit: str = "in",
+                          db_name: str | None = "AISC10(US)") -> dict:
+    """A ``/db/SECT`` body for a rolled I/H shape.
 
-    ``length_unit`` is a Pint unit string (``"in"``, ``"ft"``, ...) and
-    **must match the model's own ``UNIT`` table DIST** -- MIDAS applies one
-    length unit to every geometric quantity in the model, section dimensions
-    included, so a mismatch silently scales the section by the conversion
-    factor (inches sent while the model is in feet gives a 12x oversized,
-    self-intersecting section). Callers building a full model payload should
-    pass the model's own ``units.length`` (see
-    :func:`hub_section_material_blocks`); the ``"in"`` default is only for
-    standalone use.
+    By default this references the shape directly out of MIDAS's own
+    section database (``db_name="AISC10(US)"``, ``DATATYPE=1``) rather than
+    re-entering dimensions as a user-input section: ``shape_label`` (e.g.
+    ``"W24X104"``) must match a name in that database, and MIDAS -- not
+    civilpy -- is then the source of truth for the section properties used
+    in analysis.  This is the correct choice for standard rolled shapes;
+    civilpy's own ``steel.W`` dimensions are not sent at all in this path.
+    Confirmed against a live Civil NX round-trip: ``GET /db/SECT`` echoed
+    back exactly this ``SECT_BEFORE`` shape for a section entered as
+    "DB/Shape -> AISC10(US) -> W24X104" in the Civil NX UI.
 
-    NOTE (live-session TODO): the exact ``DBUSER`` JSON must be confirmed
-    against a running Civil NX (MAPI) session; the geometry here is
-    authoritative, the envelope keys are the reflected convention shared with
-    ``placeholder_section_block``."""
-    from civilpy.structural import steel
-    w = steel.W(shape_label)
+    Pass ``db_name=None`` for a built-up or historic shape with no library
+    entry -- this falls back to a user-input (``DATATYPE=2``) section with
+    dimensions pulled from ``steel.W`` (the AISC database module), the
+    previous default behavior.  ``length_unit`` is a Pint unit string
+    (``"in"``, ``"ft"``, ...) and **must match the model's own ``UNIT``
+    table DIST** in that fallback -- MIDAS applies one length unit to every
+    geometric quantity in the model, section dimensions included, so a
+    mismatch silently scales the section by the conversion factor (inches
+    sent while the model is in feet gives a 12x oversized, self-intersecting
+    section). Callers building a full model payload should pass the model's
+    own ``units.length`` (see :func:`hub_section_material_blocks`); the
+    ``"in"`` default is only for standalone use."""
+    common = {
+        "OFFSET_PT": "CC", "OFFSET_CENTER": 0, "USER_OFFSET_REF": 0,
+        "HORZ_OFFSET_OPT": 0, "USERDEF_OFFSET_YI": 0,
+        "VERT_OFFSET_OPT": 0, "USERDEF_OFFSET_ZI": 0,
+        "USE_SHEAR_DEFORM": True, "USE_WARPING_EFFECT": False,
+        "SHAPE": "H",
+    }
+    if db_name is not None:
+        sect_before = {**common, "DATATYPE": 1,
+                       "SECT_I": {"DB_NAME": db_name,
+                                  "SECT_NAME": shape_label}}
+    else:
+        from civilpy.structural import steel
+        w = steel.W(shape_label)
 
-    def _conv(q):
-        return round(float(q.to(length_unit).magnitude), 6)
+        def _conv(q):
+            return round(float(q.to(length_unit).magnitude), 6)
 
-    h, b, tw, tf = (_conv(w.depth), _conv(w.flange_width),
-                    _conv(w.web_thickness), _conv(w.flange_thickness))
+        h, b, tw, tf = (_conv(w.depth), _conv(w.flange_width),
+                        _conv(w.web_thickness), _conv(w.flange_thickness))
+        sect_before = {**common, "DATATYPE": 2,
+                       "SECT_I": {"vSIZE": [h, b, tw, tf, b, tf]}}
     return {str(sect_id): {
         "SECTTYPE": "DBUSER", "SECT_NAME": shape_label,
-        "SECT_BEFORE": {"SHAPE": "H", "DATATYPE": 2,
-                        "SECT_I": {"vSIZE": [h, b, tw, tf, b, tf]}},
+        "SECT_BEFORE": sect_before,
     }}
 
 
 def hub_section_material_blocks(model, *, sect_start: int = 1,
                                 matl_start: int = 1,
                                 default_grade: str = "Grade 50",
-                                length_unit: str | None = None) -> dict:
+                                length_unit: str | None = None,
+                                db_name: str | None = "AISC10(US)") -> dict:
     """Assign a real ``SECT`` per distinct AISC shape and a ``MATL`` per
     distinct grade from the hub's elements (stage **G5** -- replaces the single
     placeholder SECT/MATL that ``midas_payloads`` emits by default).
 
-    ``length_unit`` defaults to the model's own ``units.length`` so the
-    section dimensions stay consistent with the ``NODE`` coordinates and the
-    ``UNIT`` table's DIST (see :func:`rolled_i_section_block` for why a
-    mismatch here is dangerous, not just cosmetic).
+    Every shape is sent as a reference into MIDAS's own ``db_name`` section
+    database (default ``"AISC10(US)"``) rather than a re-entered set of
+    dimensions -- see :func:`rolled_i_section_block`.  Pass ``db_name=None``
+    if the model's shapes are built-up/historic sections with no library
+    entry; ``length_unit`` (defaulting to the model's own ``units.length``)
+    only matters in that fallback, to keep section dimensions consistent
+    with the ``NODE`` coordinates and the ``UNIT`` table's DIST.
 
     Returns ``{"SECT", "MATL", "sect_by_shape", "matl_by_grade",
     "elem_assign"}`` where ``elem_assign`` maps each ``Element.id`` to its
@@ -179,7 +203,8 @@ def hub_section_material_blocks(model, *, sect_start: int = 1,
             sid = sect_start + len(shapes)
             shapes[label] = sid
             sect.update(rolled_i_section_block(label, sect_id=sid,
-                                                length_unit=length_unit))
+                                                length_unit=length_unit,
+                                                db_name=db_name))
         if grade not in grades:
             mid = matl_start + len(grades)
             grades[grade] = mid
@@ -457,7 +482,8 @@ def soil_spring_supports(
 
 
 def midas_payloads(model: "StructuralModel", *, node_start: int = 1,
-                   elem_start: int = 1, material_name: str = "A709-50") -> dict:
+                   elem_start: int = 1, material_name: str = "A709-50",
+                   db_name: str | None = "AISC10(US)") -> dict:
     """Serialize a :class:`~civilpy.structural.structural_model.StructuralModel`
     to MIDAS ``PUT /db/*`` assign bodies -- the **Rhino -> Midas** payload step.
 
@@ -473,7 +499,10 @@ def midas_payloads(model: "StructuralModel", *, node_start: int = 1,
     (:func:`hub_section_material_blocks`) and a real ``MATL`` per distinct
     grade; an element with no shape label falls back to the placeholder
     square section (still real steel material) so it always references a
-    valid section.
+    valid section.  By default each ``SECT`` references the shape directly
+    out of MIDAS's own ``db_name`` database (``"AISC10(US)"``) instead of
+    re-entering dimensions; pass ``db_name=None`` for built-up/historic
+    shapes with no library entry.
 
     .. note::
        The ``CNLD`` concentrated-nodal-load layout follows the API manual but is
@@ -489,7 +518,8 @@ def midas_payloads(model: "StructuralModel", *, node_start: int = 1,
     nodes = {str(i): {"X": round(x, 6), "Y": round(y, 6), "Z": round(z, 6)}
              for i, (x, y, z) in coords_by_id.items()}
 
-    blocks = hub_section_material_blocks(model, default_grade=material_name)
+    blocks = hub_section_material_blocks(model, default_grade=material_name,
+                                          db_name=db_name)
     sect = dict(blocks["SECT"])
     matl = dict(blocks["MATL"])
     elem_assign = blocks["elem_assign"]

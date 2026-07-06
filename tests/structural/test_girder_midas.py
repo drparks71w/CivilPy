@@ -16,12 +16,29 @@ from civilpy.structural.midas_models import (
 )
 
 
-def test_rolled_i_section_has_real_aisc_dimensions():
+def test_rolled_i_section_references_aisc_db_by_default():
     blk = rolled_i_section_block("W24X104", sect_id=3)
     s = blk["3"]
     assert s["SECT_NAME"] == "W24X104"
-    assert s["SECT_BEFORE"]["SHAPE"] == "H"
-    h, b, tw, tf, b2, tf2 = s["SECT_BEFORE"]["SECT_I"]["vSIZE"]
+    before = s["SECT_BEFORE"]
+    assert before["SHAPE"] == "H"
+    assert before["DATATYPE"] == 1
+    assert before["SECT_I"] == {"DB_NAME": "AISC10(US)", "SECT_NAME": "W24X104"}
+
+
+def test_rolled_i_section_custom_db_name():
+    blk = rolled_i_section_block("W24X104", sect_id=1, db_name="AISC14(US)")
+    assert blk["1"]["SECT_BEFORE"]["SECT_I"]["DB_NAME"] == "AISC14(US)"
+
+
+def test_rolled_i_section_falls_back_to_user_dimensions():
+    blk = rolled_i_section_block("W24X104", sect_id=3, db_name=None)
+    s = blk["3"]
+    assert s["SECT_NAME"] == "W24X104"
+    before = s["SECT_BEFORE"]
+    assert before["SHAPE"] == "H"
+    assert before["DATATYPE"] == 2
+    h, b, tw, tf, b2, tf2 = before["SECT_I"]["vSIZE"]
     assert (h, b, tw, tf) == (24.1, 12.8, 0.5, 0.75)   # AISC W24x104
     assert (b2, tf2) == (b, tf)                          # symmetric rolled shape
 
@@ -59,8 +76,15 @@ class TestHubSectionMaterialBlocks:
             # the assigned SECT carries the element's own shape label
             assert self.blocks["SECT"][str(sid)]["SECT_NAME"] == elem.section
 
-    def test_sections_carry_real_geometry(self):
+    def test_sections_reference_the_aisc_db_by_default(self):
         w131 = self.blocks["SECT"][
             str(self.blocks["sect_by_shape"]["W24X131"])]
+        assert w131["SECT_BEFORE"]["SECT_I"] == {
+            "DB_NAME": "AISC10(US)", "SECT_NAME": "W24X131"}
+
+    def test_sections_carry_real_geometry_with_db_name_none(self):
+        blocks = hub_section_material_blocks(self.m, db_name=None,
+                                              length_unit="in")
+        w131 = blocks["SECT"][str(blocks["sect_by_shape"]["W24X131"])]
         h, b, tw, tf, *_ = w131["SECT_BEFORE"]["SECT_I"]["vSIZE"]
         assert (h, b, tw, tf) == (24.5, 12.9, 0.605, 0.96)  # AISC W24x131

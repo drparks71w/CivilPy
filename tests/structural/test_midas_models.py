@@ -255,8 +255,27 @@ def test_midas_payloads_sect_matches_model_length_unit():
     section dimensions). Regression test for the bug where rolled_i_section_
     block always sent inches while a feet model's UNIT table declared FT,
     silently scaling every section 12x into a huge, self-intersecting box
-    that swallowed the girder spacing."""
+    that swallowed the girder spacing. Only applies to the db_name=None
+    (built-up/historic, user-input dimensions) fallback -- by default
+    sections reference the AISC db directly and carry no dimensions at all."""
     from civilpy.structural import steel
+    from civilpy.structural.structural_model import StructuralModel, Units
+
+    m = StructuralModel(units=Units(force="kips", length="ft"))
+    a = m.add_node(0, 0, 0)
+    b = m.add_node(30, 0, 0)
+    m.add_element(a.id, b.id, midas_type="BEAM", section="W24X104")
+
+    p = mm.midas_payloads(m, db_name=None)
+    sid = next(iter(p["SECT"]))
+    h_ft = p["SECT"][sid]["SECT_BEFORE"]["SECT_I"]["vSIZE"][0]
+    expected_ft = steel.W("W24X104").depth.to("ft").magnitude
+    assert h_ft == pytest.approx(expected_ft, abs=1e-6)
+    # a W24 depth in inches (~24) would be a dead giveaway of the old bug
+    assert h_ft < 5.0
+
+
+def test_midas_payloads_sect_references_aisc_db_by_default():
     from civilpy.structural.structural_model import StructuralModel, Units
 
     m = StructuralModel(units=Units(force="kips", length="ft"))
@@ -266,11 +285,10 @@ def test_midas_payloads_sect_matches_model_length_unit():
 
     p = mm.midas_payloads(m)
     sid = next(iter(p["SECT"]))
-    h_ft = p["SECT"][sid]["SECT_BEFORE"]["SECT_I"]["vSIZE"][0]
-    expected_ft = steel.W("W24X104").depth.to("ft").magnitude
-    assert h_ft == pytest.approx(expected_ft, abs=1e-6)
-    # a W24 depth in inches (~24) would be a dead giveaway of the old bug
-    assert h_ft < 5.0
+    before = p["SECT"][sid]["SECT_BEFORE"]
+    assert before["DATATYPE"] == 1
+    assert before["SECT_I"] == {"DB_NAME": "AISC10(US)",
+                                 "SECT_NAME": "W24X104"}
 
 
 def test_hub_section_material_blocks_length_unit_override():
@@ -281,8 +299,9 @@ def test_hub_section_material_blocks_length_unit_override():
     b = m.add_node(30, 0, 0)
     m.add_element(a.id, b.id, midas_type="BEAM", section="W24X104")
 
-    blocks_ft = mm.hub_section_material_blocks(m)
-    blocks_in = mm.hub_section_material_blocks(m, length_unit="in")
+    blocks_ft = mm.hub_section_material_blocks(m, db_name=None)
+    blocks_in = mm.hub_section_material_blocks(m, db_name=None,
+                                                length_unit="in")
     h_ft = blocks_ft["SECT"]["1"]["SECT_BEFORE"]["SECT_I"]["vSIZE"][0]
     h_in = blocks_in["SECT"]["1"]["SECT_BEFORE"]["SECT_I"]["vSIZE"][0]
     assert h_in == pytest.approx(h_ft * 12.0, rel=1e-4)
