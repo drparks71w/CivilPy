@@ -64,3 +64,24 @@ Format: SCD — question — what was assumed — what to revisit if wrong.
 - **Perforations and field notching** are cataloged (`hole_centers_in`)
   but not cut from the display solids; box-beam spike fastening is data
   only.
+
+## PCB-91 (rev. 07-17-2020)
+
+- **Lifting-slot height.** Section B-B shows the drainage/lifting slot
+  14 in wide (base 5" | 1'-2" | 5") with a 7 in vertical dimension at the
+  slot; view A-A carries an unexplained 2 in dimension near the bottom
+  centerline. Encoded the slot as 14 in wide x 7 in high x 4'-0" long
+  (elevation: 3' | 4' | 3' on a 10 ft segment). Revisit if the slot is
+  actually 2 in high with the 7 in belonging to something else.
+- **Anchor-hole transverse position.** Detail C dimensions the anchor
+  2" + 5" from the barrier face; the plan shows a row along each face.
+  The GH component places hole markers 5 in from each base edge
+  (y = +/-7 in). The sheet leaves the anchor count per segment to the
+  project plans, so the component simply marks every tabulated station.
+- **Revision date.** The revision block lists 1999/2002/2013 entries but
+  the drawing file is `PCB-91_07-17-20.dgn`; cited 07-17-2020 (matching
+  the feasibility review and the `bridge_railing` catalog).
+- **Hinge-loop hardware** (loop projections, 18/15/12/8.5 in loop
+  elevations in the hinged-connection detail) is cataloged as constants
+  only where legible and is not drawn; the joint is represented by its
+  gap.

@@ -57,6 +57,11 @@ Sub-modules:
     Stainless steel drip strips for over-the-side drainage (DS-1-92):
     section profile, perforation pattern, railing-dependent placement,
     and the fascia run generator behind the DS-1-92 component.
+
+``portable_barrier``
+    Portable concrete barrier geometry (PCB-91): the New Jersey shape
+    section, segment/joint/anchor layout behind the PCB-91 component
+    (crash test levels stay in ``bridge_railing``).
 """
 
 from civilpy.structural.odot.bridge_railing import (
@@ -145,6 +150,12 @@ from civilpy.structural.odot.drip_strip import (
     drip_strip_runs,
     strip_profile_in,
 )
+from civilpy.structural.odot.portable_barrier import (
+    BarrierSegment,
+    anchor_hole_stations_ft,
+    barrier_run,
+    profile_points_in as pcb_profile_points_in,
+)
 from civilpy.structural.odot.deck_design import (
     DESIGN_METHOD,
     MIN_DESIGN_HAUNCH,
@@ -181,6 +192,10 @@ __all__ = [
     "StripRun",
     "drip_strip_runs",
     "strip_profile_in",
+    "BarrierSegment",
+    "anchor_hole_stations_ft",
+    "barrier_run",
+    "pcb_profile_points_in",
     "BridgeRailing",
     "BRIDGE_RAILINGS",
     "railing",

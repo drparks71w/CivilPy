@@ -28,7 +28,7 @@ exists, the catalog module should encode it alongside the drawing.
 |---|---|---|---|---|
 | AS-1-15 | Reinforced Concrete Approach Slab | 2023-01 | **1** | ✅ DONE — `odot.approach_slab` + `Notebooks/res/AS-1-15.py`, 21 tests. Replaces the lost AS-1-15.3dm. |
 | DS-1-92 | Drip Strip (over-the-side drainage) | 2022-07 | **1** | ✅ DONE — `odot.drip_strip` + `Notebooks/res/DS-1-92.py`, 10 tests. Plugs the "drainage" gap in the bridge generator. |
-| PCB-91 | Portable Concrete Barrier | 2020-07 | **1** | Single segment profile + connection; catalog entry already exists (`bridge_railing`). |
+| PCB-91 | Portable Concrete Barrier | 2020-07 | **1** | ✅ DONE — `odot.portable_barrier` + `Notebooks/res/PCB-91.py`, 9 tests; TL data stays in `bridge_railing`. |
 | AS-2-15 | Approach Slab Installation | 2023-07 | **4** | 14 sheets, mostly installation configurations and pressure-relief joints; implement the drawable subset (joint sections), catalog the rest. |
 
 ## Wave 2 — headwalls
