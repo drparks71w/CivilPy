@@ -42,3 +42,25 @@ Format: SCD — question — what was assumed — what to revisit if wrong.
   portion for integral curb/barrier, curb-height transitions, deck
   crown/cross slope, sheet-2 joint grooves/seals (cataloged as data in
   `JOINT_DETAILS` / `JOINT_NOTES` / `SEAT_CONFIGURATIONS`).
+
+## DS-1-92 (rev. 07-15-22)
+
+- **Sheet thickness for display.** The sheet specifies "minimum 22 gage"
+  ASTM A167 Type 304 with no decimal thickness. Used 0.031 in (nominal
+  22-gage stainless sheet) purely for solid display
+  (`GAGE_THICKNESS_IN`); it is not an engineering value.
+- **Root depth below deck surface.** Views A-A/C-C dimension 2-1/2 in
+  (DBR-2-73, written "DRB-2-73" on the sheet — treated as a typo) and
+  2 in (TST-1-99); view D-D shows 2 in for TST-2-21. Encoded those as the
+  bend-line depth. The asphalt-overlay variants (views B-B/E-E, 3 in min
+  overlay) shift the strip relative to the wearing surface — not encoded
+  separately; the component takes the concrete-deck-surface datum.
+- **Upper/lower strip separation.** The views draw the upper strip's
+  embedded plate immediately above the lower strip's (they overlap in
+  view G-G); the exact vertical gap between the two roots is not
+  dimensioned legibly, so both strips are modeled from a common root
+  line. Revisit if the ~1-3/4 in stagger dimensioned in views A-A/B-B
+  should separate them vertically.
+- **Perforations and field notching** are cataloged (`hole_centers_in`)
+  but not cut from the display solids; box-beam spike fastening is data
+  only.

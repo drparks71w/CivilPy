@@ -52,6 +52,11 @@ Sub-modules:
     Reinforced concrete approach slab (AS-1-15): the reinforcing steel
     table, bar count/length formulas, seat and joint details, and the
     pure-Python layout generator behind the AS-1-15 Grasshopper component.
+
+``drip_strip``
+    Stainless steel drip strips for over-the-side drainage (DS-1-92):
+    section profile, perforation pattern, railing-dependent placement,
+    and the fascia run generator behind the DS-1-92 component.
 """
 
 from civilpy.structural.odot.bridge_railing import (
@@ -133,6 +138,13 @@ from civilpy.structural.odot.approach_slab import (
     approach_slab_design,
     layout_approach_slab,
 )
+from civilpy.structural.odot.drip_strip import (
+    PLACEMENTS as DRIP_STRIP_PLACEMENTS,
+    DripStripPlacement,
+    StripRun,
+    drip_strip_runs,
+    strip_profile_in,
+)
 from civilpy.structural.odot.deck_design import (
     DESIGN_METHOD,
     MIN_DESIGN_HAUNCH,
@@ -164,6 +176,11 @@ __all__ = [
     "anchor_bar_mark",
     "approach_slab_design",
     "layout_approach_slab",
+    "DRIP_STRIP_PLACEMENTS",
+    "DripStripPlacement",
+    "StripRun",
+    "drip_strip_runs",
+    "strip_profile_in",
     "BridgeRailing",
     "BRIDGE_RAILINGS",
     "railing",
