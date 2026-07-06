@@ -164,6 +164,65 @@ class TestSpliceWriteBack:
         assert m["point"][0] == pytest.approx(100.0)
         assert all(len(rec) == 5 for rec in m["checks"])
         assert all(rec[4] in ("OK", "NG") for rec in m["checks"])
+        # a smart-node marker minted a persistent gdr.id
+        assert m["id"]
+
+    def test_smart_node_attributes(self, tmp_path):
+        """The gdr.splice.* attribute set round-trips: bolt spec, per-component
+        grids, and the three plate stacks all land on the marker and read back
+        as the same numbers the SpliceDesign carries."""
+        from civilpy.structural.rhino_gdr import (
+            splice_attribute_tags, write_splice_results, read_splice_results,
+            SpliceMarker, GTAG,
+        )
+        design = self._design()
+        assert design.spec is not None      # design_splice attached the input
+
+        tags = splice_attribute_tags(design)
+        # marker-level bolt spec mirrors the input
+        assert tags[GTAG + "splice.bolt_spec"] == "A325"
+        assert tags[GTAG + "splice.bolt_dia"] == "0.875"
+        assert tags[GTAG + "splice.hole_type"] == "oversize"
+        # every component carries a bolt count and a plate stack
+        for part in ("tf", "bf", "web"):
+            assert int(tags[f"{GTAG}splice.{part}.bolts"]) > 0
+            assert float(tags[f"{GTAG}splice.{part}.plate_t"]) > 0
+
+        p = tmp_path / "smart_splice.3dm"
+        # display geometry is baked but only the marker carries gdr.kind
+        write_splice_results(p, [
+            SpliceMarker(point=(100.0, 0.0, 0.0), design=design, line="1",
+                         id="fixed-guid-123")], display=True)
+        got = read_splice_results(str(p))
+        assert len(got) == 1                 # display objects are not markers
+        a = got[0]
+        assert a["id"] == "fixed-guid-123"   # a supplied id is preserved
+        attrs = a["attrs"]
+        # numeric attrs parse to float; the web bolt count matches the design
+        assert attrs["web.bolts"] == float(design.web.total_bolts)
+        assert attrs["tf.bolts"] == float(design.top_flange.total_bolts)
+        assert attrs["bolt_dia"] == pytest.approx(0.875)
+        assert attrs["bolt_spec"] == "A325"  # non-numeric stays a string
+
+    def test_display_geometry_object_count(self, tmp_path):
+        """With display=True the file holds the marker plus baked plate meshes
+        and bolt-axis curves; disabling it writes the marker alone."""
+        from civilpy.structural.rhino_gdr import (
+            write_splice_results, SpliceMarker,
+        )
+        design = self._design()
+        p_on = tmp_path / "disp_on.3dm"
+        p_off = tmp_path / "disp_off.3dm"
+        write_splice_results(p_on, [
+            SpliceMarker(point=(0.0, 0.0, 0.0), design=design, line="1")],
+            display=True)
+        write_splice_results(p_off, [
+            SpliceMarker(point=(0.0, 0.0, 0.0), design=design, line="1")],
+            display=False)
+        f_on = rhino3dm.File3dm.Read(str(p_on))
+        f_off = rhino3dm.File3dm.Read(str(p_off))
+        assert len(list(f_off.Objects)) == 1
+        assert len(list(f_on.Objects)) > 1   # plates + bolt axes were baked
 
 
 def test_missing_deck_params_warn(tmp_path):

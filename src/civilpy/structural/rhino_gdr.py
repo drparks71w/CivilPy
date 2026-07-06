@@ -620,14 +620,19 @@ def write_splice_results(out_path, markers, *, unit_system=None,
 
 def read_splice_results(path):
     """Read ``gdr.kind=splice`` markers back from a ``.3dm``: a list of dicts
-    with ``point`` (feet), ``line``, ``status``, ``summary``, and ``checks``
-    (parsed into ``[article, check, actual, allowable, verdict]`` records).
-    Round-trips :func:`write_splice_results` and mirrors what C# reads."""
+    with ``point`` (feet), ``line``, ``id``, ``status``, ``summary``,
+    ``checks`` (parsed into ``[article, check, actual, allowable, verdict]``
+    records), and ``attrs`` -- the ``gdr.splice.*`` smart-node attribute set
+    with the prefix stripped and numeric values converted to ``float``
+    (e.g. ``attrs["tf.bolts"]``, ``attrs["bolt_dia"]``).  Round-trips
+    :func:`write_splice_results` and mirrors what C# reads; display geometry
+    (no ``gdr.kind``) is ignored by contract."""
     r3 = _require_rhino3dm()
     f = r3.File3dm.Read(str(path))
     if f is None:
         raise FileNotFoundError(f"could not read 3dm file: {path}")
     scale = _unit_to_feet(f)
+    sp = GTAG + "splice."
     out = []
     for obj in f.Objects:
         us = dict(obj.Attributes.GetUserStrings() or {})
@@ -638,10 +643,20 @@ def read_splice_results(path):
               if loc is not None else None)
         raw = us.get(GTAG + "checks", "")
         checks = [r.split("|") for r in raw.splitlines() if r]
+        attrs = {}
+        for k, v in us.items():
+            if not k.startswith(sp):
+                continue
+            try:
+                attrs[k[len(sp):]] = float(v)
+            except ValueError:
+                attrs[k[len(sp):]] = v
         out.append({
             "point": pt, "line": us.get(GTAG + "line", ""),
+            "id": us.get(GTAG + "id", ""),
             "status": us.get(GTAG + "status"),
-            "summary": us.get(GTAG + "summary"), "checks": checks})
+            "summary": us.get(GTAG + "summary"), "checks": checks,
+            "attrs": attrs})
     return out
 
 
