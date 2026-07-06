@@ -43,16 +43,16 @@ exists, the catalog module should encode it alongside the drawing.
 
 | SCD | Title | Rev | Rating | Notes |
 |---|---|---|---|---|
-| SBR-1-20 | Single Slope Railing 42" | 2024-07 | **1** | Profile sweep + bars; section data already in `bridge_railing`. |
-| SBR-3-20 | Single Slope Railing 36" | 2024-07 | **1** | Same family. |
-| BR-1-13 | New Jersey Shape Railing | 2014-01 | **1** | Profile + reinforcing tables (521 numeric entries). |
-| SBR-2-20 | 57" Single Slope Median | 2024-07 | **2** | Median variants (Type B1 / back-to-back). |
-| BR-2-15 | Sidewalk Railing w/ Concrete Barrier | 2024-07 | **2** | Barrier + steel tube on sidewalk; two materials. |
-| TST-1-99 | Twin Steel Tube Railing | 2021-01 | **2** | Posts/tubes/anchorages fully dimensioned. |
-| TST-2-21 | Three Steel Tube Railing | 2025-01 | **3** | 15 sheets, many mounting configurations. |
-| DBR-2-73 | Deep Beam Bridge Guardrail | 2002-07 | **3** | Post + W-beam on deck edge; links to `odot.guardrail`. |
-| DBR-3-11 | Deep Beam Retrofit Railing | 2011-07 | **3** | Retrofit mounting variants. |
-| TBR-1-11 | Thrie Beam Retrofit Railing | 2013-01 | **3** | Same pattern. |
+| SBR-1-20 | Single Slope Railing 42" | 2024-07 | **1** | ✅ DONE — cataloged in `bridge_railing` (already had profile data); drawn by the generic `rhino_barrier.build_barriers()` pipeline (`shape_family` -> "single slope"), not a per-SCD GH script. |
+| SBR-3-20 | Single Slope Railing 36" | 2024-07 | **1** | ✅ DONE — same family/pipeline as SBR-1-20. |
+| BR-1-13 | New Jersey Shape Railing | 2014-01 | **1** | ✅ DONE — cataloged + drawn via `build_barriers()` (`shape_family` -> "new jersey"); the default barrier in every earlier deck/barrier test. |
+| SBR-2-20 | 57" Single Slope Median | 2024-07 | **2** | ✅ DONE (single Type B1) — cataloged + drawn via `build_barriers()`; the back-to-back variant is two SBR-2 instances placed independently (not a single symmetric F-shape call), see `SCD_BUILD_QUESTIONS.md`. |
+| BR-2-15 | Sidewalk Railing w/ Concrete Barrier | 2024-07 | **2** | ✅ DONE — fixed a real bug found while wiring up Wave 3: `shape_family()` matched "combination (barrier + steel tube)" as plain "steel tube" (substring match on "tube"), drawing only a 10 in curb instead of the true 42 in x 12 in rectangular crashworthy barrier (SECTION A-A/B-B/C-C). Added a `"combination"` family: full-height reinforced barrier + steel tube rail `rail_height_above_in` (2'-0") above it. |
+| TST-1-99 | Twin Steel Tube Railing | 2021-01 | **2** | ✅ DONE — cataloged + drawn via `build_barriers()` (`shape_family` -> "steel tube": curb + posts + rails). |
+| TST-2-21 | Three Steel Tube Railing | 2025-01 | **3** | ✅ DONE — same "steel tube" pipeline as TST-1-99; mounting-configuration variants (15 sheets) are catalog notes, not separately drawn. |
+| DBR-2-73 | Deep Beam Bridge Guardrail | 2002-07 | **3** | ✅ DONE (approximate) — "steel tube" family draws a generic curb + post + rail; the true corrugated deep-beam rail shape is not modeled (HSS-tube approximation, same simplification as TST-1/2). Links to `odot.guardrail` for the MGS transition. |
+| DBR-3-11 | Deep Beam Retrofit Railing | 2011-07 | **3** | ✅ DONE (approximate) — same "steel tube" pipeline/simplification as DBR-2-73. |
+| TBR-1-11 | Thrie Beam Retrofit Railing | 2013-01 | **3** | ✅ DONE (approximate) — same "steel tube" pipeline/simplification; the true thrie-beam corrugation is not modeled. |
 
 ## Wave 4 — slab bridges & substructure
 

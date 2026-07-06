@@ -111,10 +111,14 @@ def _extents(bridge: GirderBridge):
 
 def shape_family(r) -> str:
     """Classify a catalog railing into a geometry family: ``"new jersey"``,
-    ``"single slope"``, ``"portable"`` (PCB F-shape), ``"steel tube"``
-    (post-and-beam), or ``"trapezoid"`` (generic concrete)."""
+    ``"single slope"``, ``"portable"`` (PCB F-shape), ``"combination"``
+    (full-height concrete barrier + steel tube pedestrian rail on top,
+    e.g. BR-2-15), ``"steel tube"`` (post-and-beam on a low curb, e.g.
+    TST-1/TST-2), or ``"trapezoid"`` (generic concrete)."""
     shape = (r.shape or "").lower()
     scd = (r.scd or "").upper()
+    if "combination" in shape:
+        return "combination"
     if r.post_shape or "post-and-beam" in shape or "tube" in shape or (
             r.material or "").lower() == "steel":
         return "steel tube"
@@ -417,11 +421,21 @@ def build_barriers(source, *, out_path, designation: str = DEFAULT_BARRIER,
         n_barrier += 1
 
         if fam == "steel tube":
+            # low curb; posts/rails carry the full railing height above it
             z_curb = deck_top_z_ft + min(height_ft, 10.0 / 12.0)
             n_steel += _add_steel_railing(
                 f, r3, r, y_ref, side, x0, x1, z_curb,
                 deck_top_z_ft + height_ft, lay["steel"])
-        elif rebar:
+        elif fam == "combination":
+            # full-height reinforced concrete barrier; the steel tube
+            # pedestrian rail mounts on TOP of it (e.g. BR-2-15's HSS posts
+            # bolted to the barrier top, rail_height_above_in above that)
+            z_top = deck_top_z_ft + height_ft
+            n_steel += _add_steel_railing(
+                f, r3, r, y_ref, side, x0, x1, z_top,
+                z_top + (r.rail_height_above_in or 24.0) / 12.0, lay["steel"])
+
+        if fam != "steel tube" and rebar:
             verts, longs = barrier_rebar_curves(
                 prof, y_ref, x0, x1, deck_top_z_ft, cover_ft=cover_ft,
                 spacing_ft=v_spacing, bar_size=bar_size,

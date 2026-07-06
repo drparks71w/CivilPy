@@ -14,3 +14,5 @@ skipped-by-rating. Companion decisions and open questions live in
 | HW-2.2 | done (circular) | `structural/odot/headwall.py` (`concrete=True`) | `Notebooks/res/HW-2.1.py` (`concrete` toggle) | shared with HW-2.1; elliptical table cataloged, not drawn |
 | HW-1.1 | done | `structural/odot/full_height_headwall.py` | `Notebooks/res/HW-1.1.py` | 11 (`test_odot_full_height_headwall.py`) |
 | BCHW | done (wingwall/foreslope wall) | `structural/odot/box_culvert_headwall.py` | `Notebooks/res/BCHW.py` | 11 (`test_odot_box_culvert_headwall.py`) |
+| SBR-1-20, SBR-3-20, BR-1-13, SBR-2-20, TST-1-99, TST-2-21, DBR-2-73, DBR-3-11, TBR-1-11 | done | `structural/odot/bridge_railing.py` (catalog, pre-existing) | `structural/rhino_barrier.py` `build_barriers()` (shared pipeline, not per-SCD scripts) | covered by `test_rhino_barrier.py` + `test_odot_bridge_railing.py` |
+| BR-2-15 | done (bugfix) | `structural/odot/bridge_railing.py` (added `base_width`, `rail_height_above_in`) + `structural/rhino_barrier.py` (new `"combination"` shape family) | `build_barriers()` | `test_rhino_barrier.py::test_combination_*` (2 new tests) |

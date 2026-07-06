@@ -65,6 +65,20 @@ def test_shape_family_classification():
     assert shape_family(BRIDGE_RAILINGS["SBR-3 (36 in)"]) == "single slope"
     assert shape_family(BRIDGE_RAILINGS["TST-2 (three steel tube)"]) == "steel tube"
     assert shape_family(BRIDGE_RAILINGS["PCB (portable, unanchored)"]) == "portable"
+    # BR-2-15's shape string ("combination (barrier + steel tube)") contains
+    # "tube" as a substring -- regression guard for it being misclassified
+    # as a bare steel-tube railing (which would draw only a 10 in curb
+    # instead of the full 42 in crashworthy concrete barrier).
+    assert shape_family(
+        BRIDGE_RAILINGS["BR-2 (sidewalk barrier + twin tube)"]) == "combination"
+
+
+def test_combination_profile_is_full_height_not_a_curb():
+    r = BRIDGE_RAILINGS["BR-2 (sidewalk barrier + twin tube)"]
+    prof = barrier_profile(r, 42.0 / 12.0, side=+1)
+    assert max(z for _, z in prof) == pytest.approx(3.5)   # full 42 in, not 10 in
+    offs = [o for o, _ in prof]
+    assert max(offs) - min(offs) == pytest.approx(1.0)     # 12 in rectangular section
 
 
 def test_barrier_dc2_matches_catalog():
@@ -126,6 +140,15 @@ class TestBuildBarriers:
         assert bm.shape_family == "steel tube"
         assert bm.n_steel > 0        # posts + rail tubes
         assert bm.n_rebar == 0       # steel railing carries no concrete cage
+
+    def test_combination_barrier_gets_both_concrete_cage_and_rail(
+            self, girders, tmp_path):
+        bm = build_barriers(girders, out_path=tmp_path / "br2.3dm",
+                            designation="BR-2 (sidewalk barrier + twin tube)")
+        assert bm.shape_family == "combination"
+        assert bm.n_barrier == 2
+        assert bm.n_steel > 0   # pedestrian rail posts/tubes on top
+        assert bm.n_rebar > 0   # the 42 in barrier is itself reinforced
 
     def test_roundtrip_tags(self, girders, tmp_path):
         out = tmp_path / "barriers.3dm"

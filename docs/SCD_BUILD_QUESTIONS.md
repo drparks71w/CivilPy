@@ -58,6 +58,42 @@ Format: SCD — question — what was assumed — what to revisit if wrong.
   crown/cross slope, sheet-2 joint grooves/seals (cataloged as data in
   `JOINT_DETAILS` / `JOINT_NOTES` / `SEAT_CONFIGURATIONS`).
 
+## Wave 3: bridge railings (SBR/BR/TST/DBR/TBR)
+
+- **Already-done discovery.** `civilpy.structural.odot.bridge_railing`
+  already cataloged full profile/reinforcement data for every Wave 3
+  railing, and `civilpy.structural.rhino_barrier.build_barriers()` already
+  draws any of them generically via `shape_family()` dispatch (concrete
+  profile sweep + rebar cage, or steel curb + posts + rails) — there was no
+  need for per-SCD standalone GH scripts like the other waves. Wave 3's
+  work was auditing that existing pipeline against each drawing rather
+  than building anew.
+- **BR-2-15 bug found and fixed.** `shape_family()` matched the substring
+  `"tube"` in BR-2-15's shape string ("combination (barrier + steel
+  tube)") and misclassified it as a bare `"steel tube"` railing, so
+  `barrier_profile()` drew only a 10 in curb instead of the actual 42 in
+  tall x 12 in wide rectangular crashworthy concrete barrier (confirmed
+  against SECTION A-A/B-B/C-C on the drawing) with a steel tube pedestrian
+  rail on top. Fixed by adding a `"combination"` family (checked before
+  the `"tube"` substring test) and a `rail_height_above_in` field (2'-0",
+  from SECTION A-A's post height above the barrier) so the concrete body
+  draws full height + gets its own rebar cage, and the steel rail mounts
+  above that instead of replacing it. Also filled in the missing
+  `base_width=12.0` (the sheet shows a straight rectangular section, not
+  tapered — `top_width` was already correct at 12.0, `base_width` had
+  been silently defaulting to the generic 18 in fallback).
+- **DBR-2-73 / DBR-3-11 / TBR-1-11 use the generic "steel tube"
+  approximation** (curb + HSS-tube posts/rails) rather than their true
+  corrugated deep-beam / thrie-beam rail cross-sections — the same
+  simplification already accepted for TST-1/TST-2. Revisit if a true
+  corrugated-rail profile is ever wanted.
+- **SBR-2-20 "back-to-back" median variant** is cataloged as its own
+  `BridgeRailing` entry but is meant to be placed as two independent
+  SBR-2 single-slope instances (mirrored, 6 in max gap apart), not drawn
+  as one symmetric F-shape the way PCB's `side=0` placement works. Not
+  verified against the drawing's exact median geometry; revisit if a
+  true single symmetric back-to-back cross-section is needed.
+
 ## BCHW (rev. 01-21-2022)
 
 - **This sheet has no dimension table.** Every geometric value (wall

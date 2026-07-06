@@ -89,6 +89,10 @@ class BridgeRailing:
     weight_per_ft: float | None = None
     #: Precast segment length(s), feet (portable barrier).
     segment_length_ft: tuple[float, ...] = ()
+    #: For a "combination" railing (full-height concrete barrier + steel
+    #: tube pedestrian rail on top, e.g. BR-2-15): how far the steel tube
+    #: assembly extends above the concrete barrier's own ``height``, inches.
+    rail_height_above_in: float | None = None
     notes: str = ""
 
     def test_level_load(self) -> TestLevelLoad | None:
@@ -190,10 +194,13 @@ _CATALOG: list[BridgeRailing] = [
     ),
     # ============================================================ BR-2-15
     # Bridge sidewalk railing with concrete barrier: a 42 in (3 ft-6 in)
-    # crashworthy concrete barrier carrying a twin steel tube pedestrian
-    # rail on top.  Design criteria (sheet 5/5): NCHRP 350 TL-4, AASHTO
-    # LRFD BDS 2014; f'c = 4.5 ksi, fy = 60 ksi, tube fy = 46 ksi.  HSS
-    # 4x4x3/16 posts at 6 ft-6 in carry two HSS 4x3x1/4 rails.
+    # crashworthy concrete barrier -- SECTION A-A/B-B/C-C (sheet 1/5) show
+    # a straight rectangular 1'-0" (6"+6") section, not tapered -- carrying
+    # a steel tube pedestrian rail on top. Design criteria (sheet 5/5):
+    # NCHRP 350 TL-4, AASHTO LRFD BDS 2014; f'c = 4.5 ksi, fy = 60 ksi, tube
+    # fy = 46 ksi.  HSS 4x4x3/16 posts at 6 ft-6 in max carry HSS 4x3x1/4
+    # rail(s); the post + base plate assembly (SECTION A-A) extends 2'-0"
+    # above the barrier top.
     BridgeRailing(
         scd="BR-2-15",
         scd_date="2024-07-19",
@@ -203,6 +210,7 @@ _CATALOG: list[BridgeRailing] = [
         material="reinforced concrete + steel",
         test_level="TL-4",
         height=42.0,
+        base_width=12.0,
         top_width=12.0,
         f_c=4.5,
         f_y=60.0,
@@ -212,9 +220,11 @@ _CATALOG: list[BridgeRailing] = [
         post_shape="HSS 4x4x3/16",
         post_spacing=78.0,
         rail_element="2 - HSS 4x3x1/4",
-        notes="The 42 in concrete barrier is the TL-4 crashworthy element; a "
-        "twin steel tube pedestrian rail mounts on top (combined height "
-        "higher). Optional vandal protection fence (VPF-1-24).",
+        rail_height_above_in=24.0,
+        notes="The 42 in rectangular concrete barrier is the TL-4 "
+        "crashworthy element; a twin steel tube pedestrian rail mounts on "
+        "top, extending 2'-0\" above the barrier (combined height 5'-6\"). "
+        "Optional vandal protection fence (VPF-1-24).",
     ),
     # ============================================================ SBR-3-20
     # Single-slope concrete parapet, 36 in.  Design criteria (sheet 5/5):
