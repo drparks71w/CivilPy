@@ -111,24 +111,35 @@ def placeholder_section_block(*, sect_id: int = 1, side_ft: float = 1.0,
     }}
 
 
-def rolled_i_section_block(shape_label: str, *, sect_id: int = 1) -> dict:
+def rolled_i_section_block(shape_label: str, *, sect_id: int = 1,
+                          length_unit: str = "in") -> dict:
     """A ``/db/SECT`` body for a rolled I/H shape, with the real cross-section
     dimensions pulled from ``steel.W`` (the AISC database) instead of a
     placeholder square -- stage **G5**.  ``SHAPE="H"`` with
-    ``vSIZE=[H, B1, tw, tf1, B2, tf2]`` in inches.
+    ``vSIZE=[H, B1, tw, tf1, B2, tf2]`` in ``length_unit``.
 
-    NOTE (live-session TODO): the exact ``DBUSER`` JSON and the section's length
-    unit must be confirmed against a running Civil NX (MAPI) session; the
-    geometry here is authoritative, the envelope keys are the reflected
-    convention shared with ``placeholder_section_block``."""
+    ``length_unit`` is a Pint unit string (``"in"``, ``"ft"``, ...) and
+    **must match the model's own ``UNIT`` table DIST** -- MIDAS applies one
+    length unit to every geometric quantity in the model, section dimensions
+    included, so a mismatch silently scales the section by the conversion
+    factor (inches sent while the model is in feet gives a 12x oversized,
+    self-intersecting section). Callers building a full model payload should
+    pass the model's own ``units.length`` (see
+    :func:`hub_section_material_blocks`); the ``"in"`` default is only for
+    standalone use.
+
+    NOTE (live-session TODO): the exact ``DBUSER`` JSON must be confirmed
+    against a running Civil NX (MAPI) session; the geometry here is
+    authoritative, the envelope keys are the reflected convention shared with
+    ``placeholder_section_block``."""
     from civilpy.structural import steel
     w = steel.W(shape_label)
 
-    def _in(q):
-        return round(float(q.to("in").magnitude), 4)
+    def _conv(q):
+        return round(float(q.to(length_unit).magnitude), 6)
 
-    h, b, tw, tf = (_in(w.depth), _in(w.flange_width),
-                    _in(w.web_thickness), _in(w.flange_thickness))
+    h, b, tw, tf = (_conv(w.depth), _conv(w.flange_width),
+                    _conv(w.web_thickness), _conv(w.flange_thickness))
     return {str(sect_id): {
         "SECTTYPE": "DBUSER", "SECT_NAME": shape_label,
         "SECT_BEFORE": {"SHAPE": "H", "DATATYPE": 2,
@@ -138,10 +149,16 @@ def rolled_i_section_block(shape_label: str, *, sect_id: int = 1) -> dict:
 
 def hub_section_material_blocks(model, *, sect_start: int = 1,
                                 matl_start: int = 1,
-                                default_grade: str = "Grade 50") -> dict:
+                                default_grade: str = "Grade 50",
+                                length_unit: str | None = None) -> dict:
     """Assign a real ``SECT`` per distinct AISC shape and a ``MATL`` per
     distinct grade from the hub's elements (stage **G5** -- replaces the single
     placeholder SECT/MATL that ``midas_payloads`` emits by default).
+
+    ``length_unit`` defaults to the model's own ``units.length`` so the
+    section dimensions stay consistent with the ``NODE`` coordinates and the
+    ``UNIT`` table's DIST (see :func:`rolled_i_section_block` for why a
+    mismatch here is dangerous, not just cosmetic).
 
     Returns ``{"SECT", "MATL", "sect_by_shape", "matl_by_grade",
     "elem_assign"}`` where ``elem_assign`` maps each ``Element.id`` to its
@@ -149,6 +166,7 @@ def hub_section_material_blocks(model, *, sect_start: int = 1,
     Elements with no ``section`` label get ``sect_id=None`` (keep the
     placeholder for those).
     """
+    length_unit = length_unit or model.units.length
     shapes: dict[str, int] = {}
     grades: dict[str, int] = {}
     sect: dict = {}
@@ -160,7 +178,8 @@ def hub_section_material_blocks(model, *, sect_start: int = 1,
         if label and label not in shapes:
             sid = sect_start + len(shapes)
             shapes[label] = sid
-            sect.update(rolled_i_section_block(label, sect_id=sid))
+            sect.update(rolled_i_section_block(label, sect_id=sid,
+                                                length_unit=length_unit))
         if grade not in grades:
             mid = matl_start + len(grades)
             grades[grade] = mid
