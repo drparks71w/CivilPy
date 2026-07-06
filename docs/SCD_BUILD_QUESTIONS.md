@@ -43,6 +43,31 @@ Format: SCD — question — what was assumed — what to revisit if wrong.
   crown/cross slope, sheet-2 joint grooves/seals (cataloged as data in
   `JOINT_DETAILS` / `JOINT_NOTES` / `SEAT_CONFIGURATIONS`).
 
+## HW-2.1 (rev. 07-15-2022) / HW-2.2 (rev. 07-20-2018)
+
+- **Drawable subset = end treatment "A", circular pipe.** Only the
+  rectangular cast-in-place headwall of the circular tables is generated:
+  width W, height H, front face vertical, back face battered from 12 in
+  (top, per the profile view) to the tabulated T at the base. The pipe-
+  arch tables, the elliptical table (HW-2.2), the anchor bolt/cable/
+  eyebolt options, and the 6 in inlet headwall extension are catalog/
+  not-drawn.
+- **Pipe elevation & the A/B boundary.** The flow line is taken at the
+  wall base (z = 0), so the pipe centre sits D/2 above it and the cover
+  over the crown is H − D. On the drawing this reaches its stated 6 in
+  minimum exactly at D = 48 in (H = 54 in) — strong confirmation of the
+  datum. Sizes with cover < 6 in are end treatment "B" (the wall top is
+  bevel-cut by 2:1 slopes tangent to the pipe, per the sheet note "2:1
+  slopes … tangent to pipe"); `layout_headwall` raises `ValueError` for
+  them rather than emit a wrong top. Modeled range: HW-2.1 D = 12–48 in
+  (12 sizes), HW-2.2 D = 12–60 in (13 sizes).
+- **Battered back, not a prism.** The wall is swept from a Y-Z side
+  profile (front vertical at y = 0; back at y = −12 in on top, y = −T at
+  the base), so the solid volume tapers with height. The tabulated
+  `concrete_cy` remains the controlling quantity; the swept solid is for
+  display and is not reconciled to it (the battered form is close but the
+  drawing's exact base fillet / footing below the flow line is not drawn).
+
 ## AS-2-15 (rev. 01-20-2023)
 
 - **Only the sleeper slab is modeled.** AS-2-15 is 14 sheets of

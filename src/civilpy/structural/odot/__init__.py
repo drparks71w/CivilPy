@@ -45,8 +45,10 @@ Sub-modules:
     (RB-1-55).
 
 ``headwall``
-    Cast-in-place half-height headwall dimension table for circular pipe
-    (HW-2.1).
+    Cast-in-place half-height headwall dimension tables (HW-2.1 corrugated-
+    metal/plastic, HW-2.2 concrete) plus the ``layout_headwall`` generator
+    behind the HW-2.1 Grasshopper component: the rectangular circular-pipe
+    headwall solid (end treatment "A"), battered back face, pipe opening.
 
 ``approach_slab``
     Reinforced concrete approach slab (AS-1-15): the reinforcing steel

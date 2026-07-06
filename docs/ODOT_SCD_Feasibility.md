@@ -35,7 +35,7 @@ exists, the catalog module should encode it alongside the drawing.
 
 | SCD | Title | Rev | Rating | Notes |
 |---|---|---|---|---|
-| HW-2.1 | Half-Height Headwalls, CMP/plastic | 2022-07 | **1** | Dimension tables already encoded (`odot.headwall`); geometry is a straightforward parametric solid per pipe size. |
+| HW-2.1 | Half-Height Headwalls, CMP/plastic | 2022-07 | **1** | ✅ DONE — `odot.headwall.layout_headwall` + `Notebooks/res/HW-2.1.py`, 10 tests. Rectangular circular-pipe headwall (end treatment "A", D 12–48 in); battered back, pipe opening. Treatment "B" / pipe-arch / elliptical guarded out (cover < 6 in raises). |
 | HW-2.2 | Half-Height Headwalls, concrete pipe | 2018-07 | **1** | Same pattern as HW-2.1. |
 | HW-1.1 | Full Height Headwalls | 2025-07 | **2** | Bigger dimension table (198 numeric entries), wingwall geometry adds work. |
 
