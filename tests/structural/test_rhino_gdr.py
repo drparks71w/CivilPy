@@ -183,3 +183,60 @@ def test_missing_deck_params_warn(tmp_path):
         b = read_girder_model(str(p))
     assert b.deck_t is None and b.deck_weff is None
     assert b.deck_fc == pytest.approx(4.0)   # falls back to the BDM default
+
+
+def _author_midspan_bearing_bridge(path):
+    """One girder line whose curves break at SHAPE TRANSITIONS (x = 45), not
+    at the pier: the interior bearing at x = 60 lands mid-element, the way
+    real authored bridges arrive (e.g. REF-DESIGN)."""
+    f = rhino3dm.File3dm()
+    f.Settings.ModelUnitSystem = rhino3dm.UnitSystem.Feet
+    for x0, x1, shape in ((0.0, 45.0, "W24X104"), (45.0, 120.0, "W24X131")):
+        pl = rhino3dm.Polyline()
+        pl.Add(x0, 0.0, 0.0)
+        pl.Add(x1, 0.0, 0.0)
+        ga = rhino3dm.ObjectAttributes()
+        _tag(ga, kind="girder", shape=shape, grade="Grade 50", line=1)
+        f.Objects.AddCurve(pl.ToPolylineCurve(), ga)
+    for x, fixity in ((0.0, "expansion"), (60.0, "fixed"),
+                      (120.0, "expansion")):
+        ba = rhino3dm.ObjectAttributes()
+        _tag(ba, kind="support", fixity=fixity, line=1)
+        f.Objects.AddPoint(rhino3dm.Point3d(x, 0.0, 0.0), ba)
+    da = rhino3dm.ObjectAttributes()
+    _tag(da, kind="bridge", deck_t="7.5", deck_weff="84")
+    f.Objects.AddPoint(rhino3dm.Point3d(0.0, -4.0, 0.0), da)
+    assert f.Write(str(path), 7)
+
+
+class TestMidElementBearing:
+    @pytest.fixture
+    def bridge(self, tmp_path):
+        p = tmp_path / "midspan_bearing.3dm"
+        _author_midspan_bearing_bridge(p)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            return read_girder_model(str(p))
+
+    def test_all_bearings_restrained(self, bridge):
+        m = bridge.model
+        xs = sorted(m.nodes[nid].x for nid in m.restraints)
+        assert xs == pytest.approx([0.0, 60.0, 120.0])
+
+    def test_element_split_at_bearing(self, bridge):
+        m = bridge.model
+        chain = bridge.girder_lines["1"]
+        assert len(chain) == 3  # 2 authored curves -> 3 after the split
+        spans = [(m.nodes[m.elements[e].node_a].x,
+                  m.nodes[m.elements[e].node_b].x) for e in chain]
+        assert spans == [pytest.approx((0.0, 45.0)),
+                         pytest.approx((45.0, 60.0)),
+                         pytest.approx((60.0, 120.0))]
+
+    def test_split_halves_keep_section_and_metadata(self, bridge):
+        m = bridge.model
+        chain = bridge.girder_lines["1"]
+        sections = [m.elements[e].section for e in chain]
+        assert sections == ["W24X104", "W24X131", "W24X131"]
+        assert all(m.elements[e].metadata.get("gdr.line") == "1"
+                   for e in chain)

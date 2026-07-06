@@ -243,12 +243,17 @@ def read_girder_model(path, *, tol=0.5) -> GirderBridge:
             prev = cur
         girder_lines.setdefault(line or f"_{len(girder_lines)}", []).extend(ids)
 
-    # attach bearings to the nearest existing node (their girder-line end/support)
+    # attach bearings to the nearest existing node (their girder-line
+    # end/support).  Girder curves break at shape transitions, not at piers,
+    # so an intermediate bearing usually lands mid-element: split that
+    # element at the bearing station so the restraint sits on a real node.
     for pt, fixity, line in supports_raw:
         nid = _nearest_node(model, pt, tol)
         if nid is None:
+            nid = _split_girder_at(model, girder_lines, pt, tol, line)
+        if nid is None:
             warnings.warn(f"gdr.kind=support on line {line!r} at {pt} has no "
-                          f"girder node within {tol} ft; skipping.")
+                          f"girder node or element within {tol} ft; skipping.")
             continue
         dof = FIXITY_DOF.get(fixity)
         if dof is None:
@@ -267,6 +272,56 @@ def _nearest_node(model, pt, tol):
         if bd is None or d < bd:
             best, bd = node.id, d
     return best if (bd is not None and bd <= tol) else None
+
+
+def _split_girder_at(model, girder_lines, pt, tol, line):
+    """Split the girder element whose axis passes within ``tol`` of ``pt``
+    into two elements sharing a new node at the projected point; returns the
+    new node id (or ``None`` if no element qualifies).
+
+    Elements on the bearing's own ``gdr.line`` are preferred; the split
+    preserves section/material/metadata on both halves and keeps the
+    ``girder_lines`` chain ordering (so splice placement still walks the
+    line end-to-end)."""
+    candidates = girder_lines.get(line) or [
+        eid for ids in girder_lines.values() for eid in ids]
+    best = None  # (distance, element id, projected point)
+    for eid in candidates:
+        e = model.elements.get(eid)
+        if e is None:
+            continue
+        a, b = model.nodes[e.node_a], model.nodes[e.node_b]
+        ax, bx = (a.x, a.y, a.z), (b.x, b.y, b.z)
+        ab = tuple(bx[i] - ax[i] for i in range(3))
+        len2 = sum(c * c for c in ab)
+        if len2 == 0.0:
+            continue
+        t = sum((pt[i] - ax[i]) * ab[i] for i in range(3)) / len2
+        if t <= 0.0 or t >= 1.0:
+            continue  # projects onto an end -- _nearest_node already ruled
+        proj = tuple(ax[i] + t * ab[i] for i in range(3))
+        d = math.dist(proj, pt)
+        if d <= tol and (best is None or d < best[0]):
+            best = (d, eid, proj)
+    if best is None:
+        return None
+
+    _, eid, proj = best
+    old = model.elements.pop(eid)
+    mid = model.add_node(*proj).id
+    halves = []
+    for na, nb in ((old.node_a, mid), (mid, old.node_b)):
+        e = model.add_element(na, nb, role=old.role,
+                              member_type=old.member_type,
+                              midas_type=old.midas_type,
+                              section=old.section, material=old.material)
+        e.metadata.update(old.metadata)
+        halves.append(e.id)
+    for ids in girder_lines.values():
+        if eid in ids:
+            i = ids.index(eid)
+            ids[i:i + 1] = halves
+    return mid
 
 
 def splice_writeback_tags(design) -> dict:
