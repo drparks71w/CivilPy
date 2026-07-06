@@ -35,6 +35,11 @@ Sub-modules:
     strand patterns, eccentricities, camber, and rating factors for the
     composite (CB) and non-composite (B) families at five depths.
 
+``deck_design``
+    ODOT BDM 309.3 reinforced concrete deck design: the minimum-thickness
+    formula, the mandatory design policy (LRFD 9.7.3 strip method, HL-93),
+    and the BDM Figure 309-3 standard deck designs by effective span.
+
 ``rocker_bolster``
     Structural steel rocker and bolster bearing dimensions and capacities
     (RB-1-55).
@@ -42,6 +47,11 @@ Sub-modules:
 ``headwall``
     Cast-in-place half-height headwall dimension table for circular pipe
     (HW-2.1).
+
+``approach_slab``
+    Reinforced concrete approach slab (AS-1-15): the reinforcing steel
+    table, bar count/length formulas, seat and joint details, and the
+    pure-Python layout generator behind the AS-1-15 Grasshopper component.
 """
 
 from civilpy.structural.odot.bridge_railing import (
@@ -114,8 +124,46 @@ from civilpy.structural.odot.box_beam_design import (
     box_beam_rating,
     designs_for_box,
 )
+from civilpy.structural.odot.approach_slab import (
+    APPROACH_SLAB_DESIGNS,
+    ApproachSlabDesign,
+    ApproachSlabInput,
+    ApproachSlabLayout,
+    anchor_bar_mark,
+    approach_slab_design,
+    layout_approach_slab,
+)
+from civilpy.structural.odot.deck_design import (
+    DESIGN_METHOD,
+    MIN_DESIGN_HAUNCH,
+    Haunch,
+    haunch_depth_at,
+    MAX_BEAM_SPACING_FT,
+    MAX_OVERHANG_FT,
+    MIN_BEAM_LINES,
+    MIN_OVERHANG_THICKNESS,
+    POLICY,
+    PROHIBITED_METHODS,
+    STANDARD_DECK_DESIGNS,
+    VALID_RAILINGS,
+    BarMat,
+    DeckDesignPolicy,
+    StandardDeckDesign,
+    minimum_deck_thickness,
+    overhang_thickness,
+    secondary_longitudinal_reinforcement,
+    standard_deck_design,
+    structural_design_thickness,
+)
 
 __all__ = [
+    "APPROACH_SLAB_DESIGNS",
+    "ApproachSlabDesign",
+    "ApproachSlabInput",
+    "ApproachSlabLayout",
+    "anchor_bar_mark",
+    "approach_slab_design",
+    "layout_approach_slab",
     "BridgeRailing",
     "BRIDGE_RAILINGS",
     "railing",
@@ -174,4 +222,24 @@ __all__ = [
     "box_beam_design",
     "designs_for_box",
     "box_beam_rating",
+    "DESIGN_METHOD",
+    "PROHIBITED_METHODS",
+    "DeckDesignPolicy",
+    "POLICY",
+    "minimum_deck_thickness",
+    "structural_design_thickness",
+    "BarMat",
+    "StandardDeckDesign",
+    "STANDARD_DECK_DESIGNS",
+    "MIN_BEAM_LINES",
+    "MAX_BEAM_SPACING_FT",
+    "MAX_OVERHANG_FT",
+    "VALID_RAILINGS",
+    "MIN_OVERHANG_THICKNESS",
+    "standard_deck_design",
+    "overhang_thickness",
+    "secondary_longitudinal_reinforcement",
+    "MIN_DESIGN_HAUNCH",
+    "Haunch",
+    "haunch_depth_at",
 ]
