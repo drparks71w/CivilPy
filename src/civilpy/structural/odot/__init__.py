@@ -64,6 +64,18 @@ Sub-modules:
     Portable concrete barrier geometry (PCB-91): the New Jersey shape
     section, segment/joint/anchor layout behind the PCB-91 component
     (crash test levels stay in ``bridge_railing``).
+
+``sleeper_slab``
+    Approach slab installation / sleeper slab (AS-2-15): the Type A/C
+    reinforced concrete sleeper slab under the approach-slab/pavement
+    joint, its SS501/SS502 reinforcement, underdrain and joint layout,
+    and the installation-type catalog (Type B has no sleeper slab).
+
+``full_height_headwall``
+    Full-height headwalls with wingwalls (HW-1.1): the pipe-diameter x
+    skew-angle dimension/quantity table (0-84 in, skew 0-45 deg) and the
+    ``layout_full_height_headwall`` generator behind the HW-1.1 component
+    -- Type A symmetric and Type B asymmetric (skewed) wingwalls.
 """
 
 from civilpy.structural.odot.bridge_railing import (
@@ -170,6 +182,29 @@ from civilpy.structural.odot.portable_barrier import (
     anchor_hole_stations_ft,
     barrier_run,
     profile_points_in as pcb_profile_points_in,
+)
+from civilpy.structural.odot.sleeper_slab import (
+    INSTALLATION_INDEX,
+    BarRun as SleeperBarRun,
+    Installation as SleeperInstallation,
+    SleeperSlabInput,
+    SleeperSlabLayout,
+    installations as sleeper_installations,
+    layout_sleeper_slab,
+    ss501_length_ft,
+    ss502_count,
+    ss502_length_ft,
+)
+from civilpy.structural.odot.full_height_headwall import (
+    FULL_HEIGHT_HEADWALLS,
+    SKEW_BUCKETS as HW_1_1_SKEW_BUCKETS,
+    FullHeightHeadwallDesign,
+    FullHeightHeadwallLayout,
+    HeadwallInput as FullHeightHeadwallInput,
+    SkewGroup as HeadwallSkewGroup,
+    full_height_headwall_design,
+    layout_full_height_headwall,
+    nearest_skew_bucket,
 )
 from civilpy.structural.odot.deck_design import (
     DESIGN_METHOD,
@@ -302,4 +337,23 @@ __all__ = [
     "MIN_DESIGN_HAUNCH",
     "Haunch",
     "haunch_depth_at",
+    "INSTALLATION_INDEX",
+    "SleeperBarRun",
+    "SleeperInstallation",
+    "SleeperSlabInput",
+    "SleeperSlabLayout",
+    "sleeper_installations",
+    "layout_sleeper_slab",
+    "ss501_length_ft",
+    "ss502_count",
+    "ss502_length_ft",
+    "FULL_HEIGHT_HEADWALLS",
+    "HW_1_1_SKEW_BUCKETS",
+    "FullHeightHeadwallDesign",
+    "FullHeightHeadwallLayout",
+    "FullHeightHeadwallInput",
+    "HeadwallSkewGroup",
+    "full_height_headwall_design",
+    "layout_full_height_headwall",
+    "nearest_skew_bucket",
 ]

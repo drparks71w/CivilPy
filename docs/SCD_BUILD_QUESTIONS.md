@@ -3,6 +3,21 @@
 Running record of judgment calls made while building the SCD components.
 Format: SCD — question — what was assumed — what to revisit if wrong.
 
+## Cross-cutting: Rhino layer taxonomy (2026-07-06)
+
+- **Culvert vs. Site assignment.** Every SCD component's GH script bakes
+  display-only, untagged geometry (no `gdr.kind`), so none of them are
+  touched by a C# import command's per-kind routing. Assumed: headwalls/
+  box culverts go under `Culvert::<SCD>` (HW-1.1, HW-2.1/2.2, later BCHW);
+  everything else at grade goes under `Site::<SCD>` (AS-1-15, AS-2-15,
+  DS-1-92, PCB-91), including DS-1-92 even though a drip strip physically
+  mounts on the deck fascia. Revisit — and move DS-1-92 to `Deck::` — if
+  the SCD components ever get real `gdr.kind` tags and start participating
+  in the girder/deck import pipeline. See `docs/Rhino Design
+  Philosophy.md`'s "Rhino layer taxonomy" section for the full rationale
+  and the authoritative Deck/Superstructure/Substructure paths this
+  extends.
+
 ## AS-1-15 (rev. 01-20-2023)
 
 - **Bar stacking at the covers.** Section B-B dimensions "3 in clear" to
@@ -42,6 +57,37 @@ Format: SCD — question — what was assumed — what to revisit if wrong.
   portion for integral curb/barrier, curb-height transitions, deck
   crown/cross slope, sheet-2 joint grooves/seals (cataloged as data in
   `JOINT_DETAILS` / `JOINT_NOTES` / `SEAT_CONFIGURATIONS`).
+
+## HW-1.1 (rev. 07-18-2025)
+
+- **Type A/B split pinned to the sheet's own 10 deg cutoff, not the
+  table's halfway point.** The dimension/quantity table only tabulates
+  quantities at skew ~= 0/15/30/45 deg, but the sheet separately states
+  Type A (symmetric wingwall) applies at skew <= 10 deg and Type B
+  (asymmetric) above it. Naive nearest-neighbor rounding would put an
+  11 deg skew's *quantities* at bucket 15 while an 9 deg skew's would stay
+  at bucket 0 — both correct — but a naive halfway split (7.5 deg) would
+  put a 9 deg skew (Type A per the sheet) at bucket 15's asymmetric L1/h1
+  data. `nearest_skew_bucket` special-cases the 0/15 boundary at 10 deg
+  (matching the Type A/B cutoff exactly) and uses plain halfway points
+  (22.5, 37.5) for the 15/30/45 buckets, which the sheet does not
+  otherwise constrain.
+- **Wingwall flare angle under skew is an assumption.** The plan view
+  labels one wingwall's flare as "45 - theta/2" off the culvert
+  centerline; the other wingwall's angle is not labeled. Assumed
+  (45 + theta/2) for the L2/h2 wingwall by symmetry/complement — a common
+  convention for these ODOT skewed flared-wingwall details — so the two
+  wingwalls' flares sum to 90 deg regardless of skew. Revisit if a project
+  plan shows a different obtuse-side angle.
+- **No explicit headwall width (W) is tabulated** (unlike HW-2.1/2.2).
+  The drawable center face uses the pipe diameter D directly as its width,
+  with the wingwalls springing from its edges — the table's `a`/`b`/`c`
+  corner-offset dimensions and the true battered wingwall cross-section
+  (HALF SECTION A-A) are cataloged only, not incorporated into the width.
+- **Not modeled** (reported by the component): wingwall batter/thickness
+  (`a_ft`/`b_ft`/`c_ft`/`ts_ft` cataloged only), the footing, reinforcing
+  bar layout, weepholes, porous backfill, chamfers, pipe-arch geometry,
+  and the rigid-vs-corrugated-pipe end treatment details (sheet 2).
 
 ## HW-2.1 (rev. 07-15-2022) / HW-2.2 (rev. 07-20-2018)
 

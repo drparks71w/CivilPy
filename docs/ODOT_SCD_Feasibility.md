@@ -37,7 +37,7 @@ exists, the catalog module should encode it alongside the drawing.
 |---|---|---|---|---|
 | HW-2.1 | Half-Height Headwalls, CMP/plastic | 2022-07 | **1** | ✅ DONE — `odot.headwall.layout_headwall` + `Notebooks/res/HW-2.1.py`, 10 tests. Rectangular circular-pipe headwall (end treatment "A", D 12–48 in); battered back, pipe opening. Treatment "B" / pipe-arch / elliptical guarded out (cover < 6 in raises). |
 | HW-2.2 | Half-Height Headwalls, concrete pipe | 2018-07 | **1** | ✅ DONE (circular) — same solid as HW-2.1 via `layout_headwall(..., concrete=True)` and the HW-2.1 GH component's `concrete` toggle (HW-2.2 concrete-pipe table, D 12–60 in). Elliptical table (`HEADWALLS_CONCRETE_ELLIPTICAL`) cataloged but not drawn. |
-| HW-1.1 | Full Height Headwalls | 2025-07 | **2** | Bigger dimension table (198 numeric entries), wingwall geometry adds work. |
+| HW-1.1 | Full Height Headwalls | 2025-07 | **2** | ✅ DONE — `odot.full_height_headwall` + `Notebooks/res/HW-1.1.py`, 11 tests. Center face + Type A/B wingwall planes; skew snapped to the tabulated 0/15/30/45 deg buckets (10 deg Type A/B cutoff pinned exactly); wall batter/footing/rebar cataloged, not drawn. |
 
 ## Wave 3 — bridge railings (replaces the generator's placeholder boxes)
 
