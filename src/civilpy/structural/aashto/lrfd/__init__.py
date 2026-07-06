@@ -213,6 +213,15 @@ from civilpy.structural.aashto.lrfd.creep_shrinkage import (
     shrinkage_strain,
     factor_time_development,
 )
+from civilpy.structural.aashto.lrfd.deck import (
+    A4_NEGATIVE_OFFSETS,
+    A4_SPANS,
+    deck_dead_load_moment,
+    deck_equivalent_strip,
+    deck_ll_negative_moment,
+    deck_ll_positive_moment,
+    deck_strip_checks,
+)
 
 __all__ = [
     "ARTICLES",
@@ -365,4 +374,11 @@ __all__ = [
     "creep_coefficient",
     "shrinkage_strain",
     "factor_time_development",
+    "A4_NEGATIVE_OFFSETS",
+    "A4_SPANS",
+    "deck_dead_load_moment",
+    "deck_equivalent_strip",
+    "deck_ll_negative_moment",
+    "deck_ll_positive_moment",
+    "deck_strip_checks",
 ]
