@@ -71,6 +71,7 @@ class DeckModel:
     n_deck: int
     n_parapet: int
     n_railing: int
+    n_rebar: int = 0
 
     @property
     def total_dc2_klf(self) -> float:
@@ -142,6 +143,9 @@ def build_deck(source, *, out_path, deck_t_in: float | None = None,
                overhang_ft: float = DEFAULT_OVERHANG_FT, haunch_in: float = 0.0,
                deck_bottom_z_ft: float = 0.0, parapet: str = DEFAULT_PARAPET,
                railing: str | None = None, railing_height_in: float = 42.0,
+               rebar: bool = False, rebar_cover_in: float = 2.5,
+               rebar_transverse_spacing_in: float = 6.0,
+               rebar_longitudinal_spacing_in: float = 12.0,
                concrete_pcf: float = CONCRETE_PCF, unit_system=None) -> DeckModel:
     """Generate the deck slab, edge parapets, and optional railing for a girder
     model and write them to ``out_path`` (a ``.3dm`` the ``GirderDeck`` command
@@ -185,6 +189,7 @@ def build_deck(source, *, out_path, deck_t_in: float | None = None,
     lay_deck = f.Layers.AddLayer("Bridge Deck", (170, 170, 175, 255))
     lay_par = f.Layers.AddLayer("Traffic Barriers", (150, 150, 155, 255))
     lay_rail = f.Layers.AddLayer("Traffic Barriers", (150, 150, 155, 255))
+    lay_rebar = f.Layers.AddLayer("Rebar", (60, 120, 200, 255))
 
     # ── deck slab ─────────────────────────────────────────────────────────
     deck_attr = r3.ObjectAttributes()
@@ -233,6 +238,22 @@ def build_deck(source, *, out_path, deck_t_in: float | None = None,
                           rail_z, rail_z + rail_t), ra)
             n_rail += 1
 
+    # ── deck reinforcing mats (top + bottom) ──────────────────────────────
+    n_rebar = 0
+    if rebar:
+        from civilpy.structural.rhino_barrier import (
+            deck_rebar_curves, _polyline_curve, _rebar_attrs, bar_diameter_in,
+        )
+        cover_ft = rebar_cover_in / 12.0
+        for form, pts in deck_rebar_curves(
+                x0, x1, edge_lo, edge_hi, z_bot, z_top, cover_ft=cover_ft,
+                transverse_spacing_ft=rebar_transverse_spacing_in / 12.0,
+                longitudinal_spacing_ft=rebar_longitudinal_spacing_in / 12.0):
+            size = 5 if form == "transverse" else 4
+            ra = _rebar_attrs(r3, lay_rebar, size=size, form=form, host="deck")
+            f.Objects.AddCurve(_polyline_curve(r3, pts), ra)
+            n_rebar += 1
+
     if not f.Write(str(out_path), 7):
         raise IOError(f"could not write deck model to {out_path}")
 
@@ -243,7 +264,7 @@ def build_deck(source, *, out_path, deck_t_in: float | None = None,
         parapet=parapet, parapet_height_in=par_h_in,
         parapet_dc2_klf_each=dc2_parapet, railing=railing,
         railing_dc2_klf_each=dc2_railing,
-        n_deck=1, n_parapet=n_par, n_railing=n_rail)
+        n_deck=1, n_parapet=n_par, n_railing=n_rail, n_rebar=n_rebar)
 
 
 def read_deck_model(path):
