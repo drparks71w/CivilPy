@@ -450,8 +450,11 @@ def midas_payloads(model: "StructuralModel", *, node_start: int = 1,
     intact.  Loads are grouped into ``STLD`` cases with their nodal forces and
     moments in ``CNLD``.
 
-    Every element references the shared placeholder section (id 1) and steel
-    material (id 1); replace them in Civil NX for flexural design.
+    Every element gets a real ``SECT`` per distinct AISC shape label
+    (:func:`hub_section_material_blocks`) and a real ``MATL`` per distinct
+    grade; an element with no shape label falls back to the placeholder
+    square section (still real steel material) so it always references a
+    valid section.
 
     .. note::
        The ``CNLD`` concentrated-nodal-load layout follows the API manual but is
@@ -467,10 +470,23 @@ def midas_payloads(model: "StructuralModel", *, node_start: int = 1,
     nodes = {str(i): {"X": round(x, 6), "Y": round(y, 6), "Z": round(z, 6)}
              for i, (x, y, z) in coords_by_id.items()}
 
+    blocks = hub_section_material_blocks(model, default_grade=material_name)
+    sect = dict(blocks["SECT"])
+    matl = dict(blocks["MATL"])
+    elem_assign = blocks["elem_assign"]
+
+    # Elements with no gdr.shape label (or no elements at all) get the
+    # placeholder square so every ELEM still references a valid SECT.
+    placeholder_id = None
+    if not sect or any(sid is None for sid, _ in elem_assign.values()):
+        placeholder_id = max((int(k) for k in sect), default=0) + 1
+        sect.update(placeholder_section_block(sect_id=placeholder_id))
+
     elements: dict[str, dict] = {}
     for j, elem in enumerate(model.elements.values(), start=elem_start):
+        sid, mid = elem_assign[elem.id]
         elements[str(j)] = {
-            "TYPE": elem.midas_type, "MATL": 1, "SECT": 1,
+            "TYPE": elem.midas_type, "MATL": mid, "SECT": sid if sid is not None else placeholder_id,
             "NODE": [node_int[elem.node_a], node_int[elem.node_b]],
             "ANGLE": 0,
         }
@@ -498,8 +514,8 @@ def midas_payloads(model: "StructuralModel", *, node_start: int = 1,
 
     payloads = {
         "UNIT": unit_block_for(model.units),
-        "MATL": steel_material_block(material_name),
-        "SECT": placeholder_section_block(),
+        "MATL": matl,
+        "SECT": sect,
         "NODE": nodes,
         "ELEM": elements,
     }

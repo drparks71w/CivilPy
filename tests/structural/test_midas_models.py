@@ -218,6 +218,56 @@ def test_midas_payloads_element_references_section_and_material():
     elem = next(iter(p["ELEM"].values()))
     assert elem["SECT"] == 1 and elem["MATL"] == 1
     assert "1" in p["SECT"] and "1" in p["MATL"]
+    # no element carries a real gdr.shape label -- placeholder square, not
+    # a rolled shape.
+    assert p["SECT"]["1"]["SECT_BEFORE"]["SHAPE"] == "SB"
+
+
+def test_midas_payloads_uses_real_shape_per_element():
+    """A girder-line hub with real AISC labels gets a real SECT per shape
+    (SHAPE="H") -- not the generic placeholder square. Regression test for
+    the box-beam-looking generic section that shipped when midas_payloads
+    always emitted a single placeholder regardless of elem.section."""
+    from civilpy.structural.structural_model import StructuralModel
+    m = StructuralModel()
+    a = m.add_node(0, 0, 0)
+    b = m.add_node(30, 0, 0)
+    c = m.add_node(60, 0, 0)
+    m.add_element(a.id, b.id, midas_type="BEAM", section="W24X104",
+                  material="Grade 50")
+    m.add_element(b.id, c.id, midas_type="BEAM", section="W24X131",
+                  material="Grade 50")
+
+    p = mm.midas_payloads(m)
+    assert len(p["SECT"]) == 2
+    for body in p["SECT"].values():
+        assert body["SECT_BEFORE"]["SHAPE"] == "H"
+    names = {body["SECT_NAME"] for body in p["SECT"].values()}
+    assert names == {"W24X104", "W24X131"}
+    elems = list(p["ELEM"].values())
+    assert elems[0]["SECT"] != elems[1]["SECT"]
+    assert len(p["MATL"]) == 1   # both elements share "Grade 50"
+
+
+def test_midas_payloads_mixed_labeled_and_unlabeled_elements():
+    """An element with no section label still gets a valid (placeholder)
+    SECT id distinct from the real per-shape ids, rather than crashing or
+    silently sharing a real shape's section."""
+    from civilpy.structural.structural_model import StructuralModel
+    m = StructuralModel()
+    a = m.add_node(0, 0, 0)
+    b = m.add_node(30, 0, 0)
+    c = m.add_node(60, 0, 0)
+    m.add_element(a.id, b.id, midas_type="BEAM", section="W24X104")
+    m.add_element(b.id, c.id, midas_type="BEAM")   # no shape label
+
+    p = mm.midas_payloads(m)
+    assert len(p["SECT"]) == 2   # 1 real shape + 1 placeholder
+    elems = list(p["ELEM"].values())
+    labeled_sect, unlabeled_sect = elems[0]["SECT"], elems[1]["SECT"]
+    assert labeled_sect != unlabeled_sect
+    assert p["SECT"][str(labeled_sect)]["SECT_BEFORE"]["SHAPE"] == "H"
+    assert p["SECT"][str(unlabeled_sect)]["SECT_BEFORE"]["SHAPE"] == "SB"
 
 
 def test_push_midas_reports_per_table():
