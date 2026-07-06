@@ -175,7 +175,7 @@ Excluded from the archive (reviewed on the index): DM-1.1/1.2/1.3
 
 | Sheet | Title | Rev | Rating | Notes |
 |---|---|---|---|---|
-| BCHW | Precast Concrete Box Culverts | 2022-01 | **3** | THE culvert entry point: pairs the ASTM C1577 standard precast sections (span x rise catalog to encode) with ODOT headwall/wingwall details and notes. High structural value; goes with Wave 2 headwalls. |
+| BCHW | Precast Concrete Box Culverts | 2022-01 | **3** | ✅ DONE (wingwall/foreslope wall) — `odot.box_culvert_headwall` + `Notebooks/res/BCHW.py`, 11 tests. This sheet is a detailing template, not a dimensioned standard (every length is project-supplied, no catalog); cataloged the general notes, payment items, and the 8-shape rebar bend legend (`bend_shape`), and generate the wingwall/foreslope-wall/footing geometry from supplied dimensions. The ASTM C1577 precast box section span x rise catalog itself is a separate, not-yet-encoded sheet. |
 | AJBCBBB | Abutment Joints in Bit. Concrete Box Beam Bridges | 2022-01 | **8** | Notes-dominated single sheet; catalog note on the box-beam modules at most. |
 | BC | Bridge Cleaning | 2022-01 | **10** | Pure notes; not archived. |
 | CRHS | Collision Repair & Heat Straightening Notes | 2022-01 | **10** | Pure notes; not archived. |

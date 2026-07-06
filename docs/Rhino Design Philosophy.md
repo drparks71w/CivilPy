@@ -1344,7 +1344,7 @@ deck, superstructure, nor substructure and were previously flat under an
 ad hoc `SCD::<name>` layer:
 
 ```
-Culvert   headwalls / box culverts: Culvert::HW-1.1, Culvert::HW-2.1 (HW-2.2 shares it), (later Culvert::BCHW)
+Culvert   headwalls / box culverts: Culvert::HW-1.1, Culvert::HW-2.1 (HW-2.2 shares it), Culvert::BCHW
 Site      off-structure roadway items: Site::AS-1-15, Site::AS-2-15, Site::DS-1-92, Site::PCB-91
 ```
 

@@ -76,6 +76,14 @@ Sub-modules:
     skew-angle dimension/quantity table (0-84 in, skew 0-45 deg) and the
     ``layout_full_height_headwall`` generator behind the HW-1.1 component
     -- Type A symmetric and Type B asymmetric (skewed) wingwalls.
+
+``box_culvert_headwall``
+    Precast box culvert headwall/wingwall plan insert (BCHW): a detailing
+    template rather than a dimensioned standard, so ``layout_wingwall``
+    takes every dimension as a project-supplied input; also catalogs the
+    general notes (payment items, waterproofing, weepholes, PEJF, lap
+    splices) and the eight standard rebar bend shapes (``bend_shape``,
+    ``TYPE-1``..``TYPE-8``) the bar list references.
 """
 
 from civilpy.structural.odot.bridge_railing import (
@@ -205,6 +213,14 @@ from civilpy.structural.odot.full_height_headwall import (
     full_height_headwall_design,
     layout_full_height_headwall,
     nearest_skew_bucket,
+)
+from civilpy.structural.odot.box_culvert_headwall import (
+    LAP_SPLICE_FT as BCHW_LAP_SPLICE_FT,
+    PAY_ITEMS as BCHW_PAY_ITEMS,
+    WingwallInput,
+    WingwallLayout,
+    bend_shape,
+    layout_wingwall,
 )
 from civilpy.structural.odot.deck_design import (
     DESIGN_METHOD,
@@ -356,4 +372,10 @@ __all__ = [
     "full_height_headwall_design",
     "layout_full_height_headwall",
     "nearest_skew_bucket",
+    "BCHW_LAP_SPLICE_FT",
+    "BCHW_PAY_ITEMS",
+    "WingwallInput",
+    "WingwallLayout",
+    "bend_shape",
+    "layout_wingwall",
 ]

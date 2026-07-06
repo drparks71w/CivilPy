@@ -8,7 +8,7 @@ Format: SCD — question — what was assumed — what to revisit if wrong.
 - **Culvert vs. Site assignment.** Every SCD component's GH script bakes
   display-only, untagged geometry (no `gdr.kind`), so none of them are
   touched by a C# import command's per-kind routing. Assumed: headwalls/
-  box culverts go under `Culvert::<SCD>` (HW-1.1, HW-2.1/2.2, later BCHW);
+  box culverts go under `Culvert::<SCD>` (HW-1.1, HW-2.1/2.2, BCHW);
   everything else at grade goes under `Site::<SCD>` (AS-1-15, AS-2-15,
   DS-1-92, PCB-91), including DS-1-92 even though a drip strip physically
   mounts on the deck fascia. Revisit — and move DS-1-92 to `Deck::` — if
@@ -57,6 +57,36 @@ Format: SCD — question — what was assumed — what to revisit if wrong.
   portion for integral curb/barrier, curb-height transitions, deck
   crown/cross slope, sheet-2 joint grooves/seals (cataloged as data in
   `JOINT_DETAILS` / `JOINT_NOTES` / `SEAT_CONFIGURATIONS`).
+
+## BCHW (rev. 01-21-2022)
+
+- **This sheet has no dimension table.** Every geometric value (wall
+  height, footing offsets a/b/c, foreslope/cutoff wall heights, footing
+  width, box wall thickness, wingwall length, bar spacings) is drawn as
+  `*` or a blank `@ _ c/c` for the project engineer to fill in, and the
+  sheet explicitly instructs "INSERT ODOT BOX CULVERT REINFORCING DESIGN
+  DESIGN HERE IF SPAN > 12'." — the box culvert's own reinforcing design
+  is out of scope by the sheet's own admission, not an omission on
+  civilpy's part. `layout_wingwall` therefore takes every dimension as a
+  required input with no catalog/defaults, unlike every other SCD module.
+- **Rebar bend-shape geometry (TYPE-1..TYPE-8) is a best-effort
+  transcription of the legend art**, not a measured dimension. The bar
+  list's actual leg lengths (A/B/C/D) are likewise always project-
+  supplied. Types 2/3/4/8 involve a diagonal or angled segment whose
+  exact vertex ordering was read off the rendered legend rather than
+  extracted text; revisit against a project bar list if a bend looks
+  wrong in Rhino.
+- **ASTM C1577 precast box section catalog (span x rise) is a separate,
+  not-yet-encoded sheet** — BCHW is the cast-in-place wingwall/foreslope-
+  wall wrap-around only, referenced from (but not containing) the
+  precast box culvert details ("FOR PRECAST BOX CULVERT DETAILS, SEE
+  SHEET xx/xx").
+- **Not modeled**: rebar placement (only the bend-shape generator is
+  provided, not a full bar list/schedule), weepholes, porous backfill,
+  PEJF, waterproofing (Type 2/3, payment-only), and the wingwall
+  corner-configuration "SUBSET" sheets 3-8 (skew-dependent corner
+  return details) — the drawable subset is one flared wingwall +
+  foreslope wall + footing.
 
 ## HW-1.1 (rev. 07-18-2025)
 
