@@ -92,11 +92,11 @@ exists, the catalog module should encode it alongside the drawing.
 
 | SCD | Title | Rev | Rating | Notes |
 |---|---|---|---|---|
-| VPF-1-24 | Vandal Protection Fencing | 2025-01 | **5** | Posts/fabric/curved tops parametric in principle; many mounting cases. |
-| TVPF-1-18 | Temporary Vandal Protection Fencing | 2025-01 | **6** | Temporary variant; DD sheet exists. |
-| GSD-1-19 | General Steel Details | 2024-07 | **7** | A library of unrelated details (stiffeners, cross-frames, welds) — encode as a reference catalog, not one component. |
-| NBS-1-09 | Noise Barrier Specifications | 2025-01 | **8** | Verified by profile: 13.6k words of specification text; only generic post/panel geometry. Catalog data only. |
-| WU-1-26 | Wildlife Underpass | 2026-01 | **8** | Verified by render: site grading/aggregate path guidance + pay items under an existing bridge; no parametric structure. Notes module at most. |
+| VPF-1-24 | Vandal Protection Fencing | 2025-01 | **5** | ✅ DONE — `odot.vandal_fence` + `Notebooks/res/VPF-1-24.py`, 9 tests. The three post sections (PS-1 curved/BP-3, PS-2/BP-1, PS-2/BP-2) and their max spacings; fence-run post/rail layout. Fabric, tension wire, base plate/anchor hardware, and the PS-1 curve geometry are cataloged, not drawn. |
+| TVPF-1-18 | Temporary Vandal Protection Fencing | 2025-01 | **6** | Not built — a temporary variant of VPF-1-24 with its own DD (design detail) sheet to build against if this becomes worth doing; `vandal_fence.py`'s pattern would extend directly. |
+| GSD-1-19 | General Steel Details | 2024-07 | **7** | Not built as a component — a library of unrelated details (stiffeners, cross-frames, welds) better suited as a reference doc than one parametric module; referenced by name from CPA-1-08/CPP-1-08 already. |
+| NBS-1-09 | Noise Barrier Specifications | 2025-01 | **8** | Not built — 13.6k words of specification text, only generic post/panel geometry (rated 8, per the original SCD-program rule: 8-10 gets a note only). |
+| WU-1-26 | Wildlife Underpass | 2026-01 | **8** | Not built — site grading/aggregate path guidance + pay items under an existing bridge, no parametric structure (rated 8, note only). |
 
 ## Not applicable
 

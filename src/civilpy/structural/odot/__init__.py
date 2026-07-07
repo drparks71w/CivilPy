@@ -368,6 +368,14 @@ from civilpy.structural.odot.ps_i_beam import (
     layout_ps_i_beam,
     ps_i_beam_section,
 )
+from civilpy.structural.odot.vandal_fence import (
+    POST_SECTIONS,
+    FenceRunInput,
+    FenceRunLayout,
+    PostSection,
+    layout_fence_run,
+    post_section,
+)
 from civilpy.structural.odot.deck_design import (
     DESIGN_METHOD,
     MIN_DESIGN_HAUNCH,
@@ -598,4 +606,10 @@ __all__ = [
     "PSIBeamSection",
     "layout_ps_i_beam",
     "ps_i_beam_section",
+    "POST_SECTIONS",
+    "FenceRunInput",
+    "FenceRunLayout",
+    "PostSection",
+    "layout_fence_run",
+    "post_section",
 ]

@@ -29,3 +29,5 @@ skipped-by-rating. Companion decisions and open questions live in
 | PSBD-1-25 | done (earlier work) | `structural/odot/box_beam.py` + `box_beam_design.py` | `rhino_box_beam.build_box_beams` (full pipeline, not a single GH script) | shared with box-beam tests |
 | PSID-1-13 | done | `structural/odot/ps_i_beam.py` | `Notebooks/res/PSID-1-13.py` | 7 (`test_odot_ps_i_beam.py`) |
 | ICD-1-20, ICD-2-18, SICD-1-21, SICD-2-14 | not built (by design) | — | — | end-condition add-ons / guide sheets, not standalone structures |
+| VPF-1-24 | done | `structural/odot/vandal_fence.py` | `Notebooks/res/VPF-1-24.py` | 9 (`test_odot_vandal_fence.py`) |
+| TVPF-1-18, GSD-1-19, NBS-1-09, WU-1-26 | not built (by design) | — | — | temporary-variant/reference-catalog/notes-only sheets, rated 6-8 |
