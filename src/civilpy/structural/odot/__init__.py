@@ -105,6 +105,13 @@ Sub-modules:
     ``layout_capped_pile_pier`` -- unlike the other capped-pile-cap
     sheets, this one is genuinely parametric (no blank "insert design
     here"), only pile count/spacing stay project-supplied.
+
+``continuous_slab_bridge``
+    Three-span continuous slab bridges (CS-1-24), SB-1-24's continuous
+    sibling: the end-span-keyed ``SLAB DATA`` table (thickness + A/B
+    bottom, C/D top, E top-at-pier bar schedule, 14-46 ft -- the largest
+    table in the SCD program, 779 numeric entries), the fixed 1.25x
+    interior-span ratio, and ``layout_continuous_slab``.
 """
 
 from civilpy.structural.odot.bridge_railing import (
@@ -278,6 +285,18 @@ from civilpy.structural.odot.capped_pile_pier import (
     pier_bar,
     pier_length_ft,
     q_bend_height_ft,
+)
+from civilpy.structural.odot.continuous_slab_bridge import (
+    CS_SLAB_DESIGNS,
+    LAP_SPLICE_FT as CS_1_24_LAP_SPLICE_FT,
+    BarRun as CSBarRun,
+    CSSlabDesign,
+    ContinuousSlabInput,
+    ContinuousSlabLayout,
+    cs_slab_design,
+    interior_span_ft,
+    layout_continuous_slab,
+    m_bar_offset_in,
 )
 from civilpy.structural.odot.deck_design import (
     DESIGN_METHOD,
@@ -465,4 +484,14 @@ __all__ = [
     "pier_bar",
     "pier_length_ft",
     "q_bend_height_ft",
+    "CS_SLAB_DESIGNS",
+    "CS_1_24_LAP_SPLICE_FT",
+    "CSBarRun",
+    "CSSlabDesign",
+    "ContinuousSlabInput",
+    "ContinuousSlabLayout",
+    "cs_slab_design",
+    "interior_span_ft",
+    "layout_continuous_slab",
+    "m_bar_offset_in",
 ]

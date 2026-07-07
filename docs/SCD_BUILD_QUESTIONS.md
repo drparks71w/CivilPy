@@ -58,6 +58,47 @@ Format: SCD — question — what was assumed — what to revisit if wrong.
   crown/cross slope, sheet-2 joint grooves/seals (cataloged as data in
   `JOINT_DETAILS` / `JOINT_NOTES` / `SEAT_CONFIGURATIONS`).
 
+## CS-1-24 (rev. 01-16-2026)
+
+- **Transcription methodology for the 779-entry table.** Given the size
+  (33 spans x ~20 fields), the SLAB DATA table was transcribed by
+  rendering the sheet at high DPI *and* independently extracting
+  PyMuPDF's word-position text, then cross-checking every column
+  (B/C/D/E-bar lengths, N/M-bar counts, U-bar counts — every field except
+  A-bar, which the render alone made unambiguous) programmatically
+  against the raw extracted strings. Zero mismatches on the second pass.
+- **Caught and fixed two real bugs during that verification, not just
+  documenting assumptions:**
+  1. D-bar SIZE was initially inferred from slab thickness the same way
+     A/B-bar size is (a threshold on `T`) — but D-bar steps 8->9 at span
+     30 and 9->10 at span 38, which do **not** align with the A/B
+     thickness thresholds (span 35, 45). Fixed by transcribing D-bar
+     SIZE explicitly per row instead of deriving it.
+  2. The E-bar tuple was built as (size, spacing, length) matching the
+     sheet's own SIZE/SPA/LENGTH column order, but passed positionally
+     into `LenBarSpec(spacing_in, size, length_ft)` — silently swapping
+     size and spacing for every E-bar row. Fixed by swapping the tuple
+     indices at the construction site with a comment explaining why.
+
+  Both were caught by writing tests that check specific rows against the
+  sheet rather than only checking a formula's output against itself —
+  worth remembering as a general lesson for any future large-table SCD.
+- **Interior span is a fixed ratio (1.25x end span), not tabulated
+  separately** — the sheet's own "SPANS (FEET)" column bakes this in
+  (e.g. "14 - 17.50 - 14"). Additional interior spans (same length as the
+  middle span) may be added per the sheet's own General note without
+  changing thickness or reinforcing — not modeled as a >3-span option
+  here, but the same `CSSlabDesign` row would still apply.
+- **A/B-bar size inferred from thickness, verified exact.** Unlike D-bar,
+  A/B-bar size genuinely does correlate 1:1 with slab thickness
+  (threshold at T=21.5 and T=26.5) across all 33 rows — verified, kept as
+  a formula for readability rather than 33 explicit values.
+- **Not modeled**: haunches / thickness transition over the piers
+  (uniform T assumed across the whole 3-span length — the real elevation
+  tapers), edge beam, bent A/B-bar ends, transverse N/M bars (cataloged
+  by count only, not drawn), camber, and the companion abutment/pier
+  (CPA-1-08/CPP-1-08).
+
 ## CPP-1-08 (rev. 07-21-2017)
 
 - **Genuinely parametric, unlike BCHW/CPA-1-08.** The pier cap length is

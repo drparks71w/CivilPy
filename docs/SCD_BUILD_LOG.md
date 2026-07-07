@@ -19,3 +19,4 @@ skipped-by-rating. Companion decisions and open questions live in
 | SB-1-24 | done | `structural/odot/slab_bridge.py` | `Notebooks/res/SB-1-24.py` | 14 (`test_odot_slab_bridge.py`) |
 | CPA-1-08 | done | `structural/odot/capped_pile_abutment.py` | `Notebooks/res/CPA-1-08.py` | 16 (`test_odot_capped_pile_abutment.py`) |
 | CPP-1-08 | done | `structural/odot/capped_pile_pier.py` | `Notebooks/res/CPP-1-08.py` | 11 (`test_odot_capped_pile_pier.py`) |
+| CS-1-24 | done | `structural/odot/continuous_slab_bridge.py` | `Notebooks/res/CS-1-24.py` | 17 (`test_odot_continuous_slab_bridge.py`) |
