@@ -33,6 +33,26 @@ Baked geometry is display-only and carries no gdr.* tags. Uses the
 Substructure:: layer group (a true NBIS substructure element).
 """
 
+"""
+# //TODO - The following notes are all issues that are appearing in the resulting Rhino Object
+
+- The Wingwall is being represented as a square wireframe, not as an actual wingwall.
+- The 'width' and 'depth' parameters are flopped, The "Right" viewport shows the wingwall getting longer, when the "Front" viewport
+    should probably be the one getting wider when you adjust the width parameter. 
+- All views should be assumed to be along a roadway alignment. So width should adjust from a centerpoint (located on the alignment)
+- The wingwall orientation similarly should be able to be adjusted so they turn back away from the span
+- Need a toggle for "near"/"far" abutment to be able to determine things like which way the wingwall orientations go (away from the span)
+- Wingwalls need a terrain model of some form to interact with to determine things like necessary height. The SCD shows a 2:1 slope from
+    the outside of the wingwall that isn't possible to depict without an understanding of the terrain (can be generated in python from
+    Ohio "OGRIP" data sources).
+- Missing multiple components of the actual backwall. The footing is mostly generating correctly, but piles are non-existent,
+    The stem/backwall isn't represented, the bridge seat in front of it is missing, none of those things appear to be
+    sloped the way they're depicted in the actual SCDs (3/4" between beam seats for water drainage, 1/8" / ft terrain slope along front of abutment).
+- Drainage components not shown (6" NPCPP pipe)
+- Completely missing important details like Rebar, PEJF, Construction Joints, Rock Channel protection, etc.
+- Need some kind of distiction which types of structure designs it's appropriate to utilize with, semi-integral, integral, neither) 
+"""
+
 import Rhino
 import Rhino.Geometry as rg
 
