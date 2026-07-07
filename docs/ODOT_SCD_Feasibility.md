@@ -62,7 +62,7 @@ exists, the catalog module should encode it alongside the drawing.
 | CS-1-24 | Continuous Slab Bridge | 2026-01 | **2** | ✅ DONE — `odot.continuous_slab_bridge` + `Notebooks/res/CS-1-24.py`, 17 tests. Full SLAB DATA table (end spans 14-46 ft, interior = 1.25x end span, 779 numeric entries, cross-checked programmatically against the extracted PDF text). Haunches over piers not modeled (uniform T assumed). |
 | CPA-1-08 | Capped Pile Abutment (slab bridges) | 2024-01 | **2** | ✅ DONE — `odot.capped_pile_abutment` + `Notebooks/res/CPA-1-08.py`, 16 tests. Like BCHW, a detailing template (overall dims project-supplied); cataloged fixed section constants + the 5-shape rebar bend legend (Type 6/D801 cross-references `approach_slab`). Cap + pile line + one flared wingwall drawn. |
 | CPP-1-08 | Capped Pile Pier (continuous slabs) | 2017-07 | **2** | ✅ DONE — `odot.capped_pile_pier` + `Notebooks/res/CPP-1-08.py`, 11 tests. Genuinely parametric (unlike BCHW/CPA-1-08): sheet's own `pier_length_ft` formula + fixed cap width/end-radius; only pile count/spacing project-supplied. |
-| A-1-20 | Typical Abutment Details (expansion joints) | 2024-01 | **3** | Parametric by beam depth/seat/skew; more project-specific inputs than CPA. |
+| A-1-20 | Typical Abutment Details (expansion joints) | 2024-01 | **3** | ✅ DONE — `odot.typical_abutment` + `Notebooks/res/A-1-20.py`, 7 tests. Explicitly guidance/minimum-values (sheet's own note: "do not use as standalone construction drawings") — cataloged the 2 literal formulas (bearing seat, wingwall limit) + section minimums; backwall/footing/wingwall drawn as a visual check only. |
 
 ## Wave 5 — bearings & expansion joints
 

@@ -58,6 +58,33 @@ Format: SCD — question — what was assumed — what to revisit if wrong.
   crown/cross slope, sheet-2 joint grooves/seals (cataloged as data in
   `JOINT_DETAILS` / `JOINT_NOTES` / `SEAT_CONFIGURATIONS`).
 
+## A-1-20 (rev. 01-19-2024) -- Wave 4 complete
+
+- **Strongest "not a standalone standard" disclaimer of any SCD so far.**
+  Sheet 1's General note explicitly says to treat every dimension as a
+  minimum and perform a complete design; do not reference this drawing in
+  contract plans. Scope kept correspondingly light: only two literal
+  formulas (`bearing_seat_dim_a_ft` = 2'-0"/cos(skew); the 8'-0" wingwall
+  unsupported-length limit) plus section minimums (cover, bar spacing,
+  bar size default) are cataloged; `layout_typical_abutment` takes every
+  overall dimension as project-supplied and is explicitly framed (in its
+  own docstring and the GH report) as a visual check, not a design
+  artifact.
+- **Backwall/footing width and wingwall flare angle assumed**, same
+  posture as `capped_pile_abutment`: `BACKWALL_TOP_WIDTH_FT` (1'-8", from
+  SECTION A-A "with piles") is used regardless of the with/without-piles
+  variant shown on the sheet, and the wingwall flare is assumed 45 deg
+  (not dimensioned on this sheet either). Revisit if a specific project's
+  variant matters for the visual check.
+- **Not modeled**: reinforcing (bars are #5 unless noted, max 1'-6"
+  spacing — no bend/placement generator, unlike BCHW/CPA-1-08's
+  `bend_shape()`), drainage (PGD/NPCPP/PCPP), PEJF joints, beam-seat bars,
+  rock channel protection, and the with-piles vs. without-piles footing
+  variants (one generic footing prism drawn for both).
+
+This closes Wave 4 (slab bridges & substructure): SB-1-24, CS-1-24,
+CPA-1-08, CPP-1-08, A-1-20 all done.
+
 ## CS-1-24 (rev. 01-16-2026)
 
 - **Transcription methodology for the 779-entry table.** Given the size

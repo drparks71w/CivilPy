@@ -112,6 +112,13 @@ Sub-modules:
     bottom, C/D top, E top-at-pier bar schedule, 14-46 ft -- the largest
     table in the SCD program, 779 numeric entries), the fixed 1.25x
     interior-span ratio, and ``layout_continuous_slab``.
+
+``typical_abutment``
+    Typical abutment detail for girder bridges with expansion joints
+    (A-1-20): explicitly guidance/minimum-values, not a standalone
+    standard (see the module docstring). The bearing-seat and
+    wingwall-limit formulas, section minimums, and
+    ``layout_typical_abutment`` for a visual check only.
 """
 
 from civilpy.structural.odot.bridge_railing import (
@@ -297,6 +304,12 @@ from civilpy.structural.odot.continuous_slab_bridge import (
     interior_span_ft,
     layout_continuous_slab,
     m_bar_offset_in,
+)
+from civilpy.structural.odot.typical_abutment import (
+    AbutmentInput as TypicalAbutmentInput,
+    AbutmentLayout as TypicalAbutmentLayout,
+    bearing_seat_dim_a_ft,
+    layout_typical_abutment,
 )
 from civilpy.structural.odot.deck_design import (
     DESIGN_METHOD,
@@ -494,4 +507,8 @@ __all__ = [
     "interior_span_ft",
     "layout_continuous_slab",
     "m_bar_offset_in",
+    "TypicalAbutmentInput",
+    "TypicalAbutmentLayout",
+    "bearing_seat_dim_a_ft",
+    "layout_typical_abutment",
 ]
