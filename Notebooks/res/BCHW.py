@@ -30,6 +30,18 @@ Outputs:
 Baked geometry is display-only and carries no gdr.* tags.
 """
 
+"""
+# //TODO - Missing civilpy import/design input
+- Might be the worst of all the SCDs in terms of geometry, no rebar at all, There's a vaguely wingwall shaped pentagram 
+    in the front orientation, the front and right perspectives are flipped again, There's a random rising line along the 
+    y-axis leading to nothing. there's a random box beneath the Z=0 axis, the skew seems to work.
+- wall_height input doesn't seem to actually do anything
+- foreslope_height is another input that will likely have to rely on a terrain model input, it shouldn't be user defined
+- cutoff_height seems to be bottom of footing depth below the Z=0 axis
+- footing_width should be renamed to footing depth probably (distance along the alignment
+- box_wall_thickness doesn't seem to do anything
+"""
+
 import Rhino
 import Rhino.Geometry as rg
 
