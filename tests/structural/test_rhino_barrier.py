@@ -97,6 +97,18 @@ def test_nj_profile_shape():
     assert max(z for _, z in prof) == pytest.approx(3.0)   # 36 in tall
 
 
+def test_single_slope_freestanding_profile_is_symmetric():
+    # side=0 (a freestanding median/roadway barrier, not backed against a
+    # deck edge) must be symmetric about the placement line -- regression
+    # guard for the "side or 1" fallback silently drawing a one-sided
+    # trapezoid offset entirely to +Y instead.
+    r = BRIDGE_RAILINGS["SBR-2 (57 in median)"]
+    prof = barrier_profile(r, 57.0 / 12.0, side=0)
+    offs = [o for o, _ in prof]
+    assert min(offs) == pytest.approx(-max(offs))
+    assert max(offs) == pytest.approx(33.75 / 2 / 12)
+
+
 class TestBuildBarriers:
     def test_edges_with_rebar(self, girders, tmp_path):
         out = tmp_path / "barriers.3dm"

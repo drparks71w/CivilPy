@@ -182,6 +182,11 @@ def barrier_profile(r, height_ft: float, side: int) -> list[tuple[float, float]]
         return [(0.0, 0.0), (s * B, 0.0), (s * B, toe),
                 (s * brk, brk_h), (s * T, H), (0.0, H)]
 
+    if fam == "single slope" and side == 0:
+        # freestanding (e.g. a roadway median/at-grade barrier): symmetric
+        # about the placement line, both faces battered.
+        return [(-B / 2, 0.0), (B / 2, 0.0), (T / 2, H), (-T / 2, H)]
+
     # single slope / generic trapezoid: one straight battered face
     s = side or 1
     return [(0.0, 0.0), (s * B, 0.0), (s * T, H), (0.0, H)]

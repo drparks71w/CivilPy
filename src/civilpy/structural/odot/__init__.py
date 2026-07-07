@@ -376,6 +376,14 @@ from civilpy.structural.odot.vandal_fence import (
     layout_fence_run,
     post_section,
 )
+from civilpy.structural.odot.roadway_barrier import (
+    ROADWAY_BARRIERS,
+    RoadwayBarrier,
+    RoadwayBarrierInput,
+    RoadwayBarrierLayout,
+    layout_roadway_barrier,
+    roadway_barrier,
+)
 from civilpy.structural.odot.deck_design import (
     DESIGN_METHOD,
     MIN_DESIGN_HAUNCH,
@@ -612,4 +620,10 @@ __all__ = [
     "PostSection",
     "layout_fence_run",
     "post_section",
+    "ROADWAY_BARRIERS",
+    "RoadwayBarrier",
+    "RoadwayBarrierInput",
+    "RoadwayBarrierLayout",
+    "layout_roadway_barrier",
+    "roadway_barrier",
 ]

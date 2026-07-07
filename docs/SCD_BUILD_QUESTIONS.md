@@ -528,3 +528,59 @@ CPA-1-08, CPP-1-08, A-1-20 all done.
   elevations in the hinged-connection detail) is cataloged as constants
   only where legible and is not drawn; the joint is represented by its
   gap.
+
+## RM-4.3 / RM-4.5 / RM-4.8 / RM-4.9 (roadway single-slope barrier family)
+
+- **Feasibility doc assumed "identical profile-sweep engine" as the SBR
+  bridge parapets; mostly true, but the freestanding-symmetric case was
+  actually broken.** `rhino_barrier.barrier_profile`'s single-slope
+  fallback computed `s = side or 1`, so a `side=0` (freestanding) call —
+  which a roadway median/at-grade barrier is, having no deck edge to back
+  against — fell through to `s=1` and drew a one-sided trapezoid offset
+  entirely to +Y instead of a symmetric section. Fixed by adding an
+  explicit `fam == "single slope" and side == 0` branch that returns a
+  centerline-symmetric trapezoid. This also silently fixes
+  `SBR-2 (57 in median)`/`(back-to-back)` if ever placed via
+  `build_barriers(..., placements="median")`, which nobody had exercised
+  before (`test_rhino_barrier.py::test_single_slope_freestanding_profile_is_symmetric`
+  added as a regression guard).
+- **Types C/C1 (RM-4.3, sheet 2) are not fully dimensioned — they are
+  project-variable-height siblings of B/B1.** The sheet shows a "Varies,
+  24 in max. See Plans for dimensions." extension added above the fixed
+  B/B1 body, giving overall height ranges of 42-66 in (C) / 57-81 in
+  (C1) with no formula for how the extension's own taper is dimensioned.
+  Cataloged C/C1 with the same height/top/base as their B/B1 base body
+  (not the full variable range) and documented the extension as
+  project-defined in `notes` — consistent with the "detailing template,
+  don't invent a formula" precedent from BCHW/CPA-1-08/A-1-20.
+- **Type D's (RM-4.5) concrete face was cross-checked against its slope,
+  not read directly off a base-width dimension line.** The sheet
+  dimensions the compacted-soil foundation detail (20 in min shoulder,
+  20:1 batter, 2:1 max embankment, 6 in toe) more prominently than the
+  barrier body itself, which shares Type B's 42 in / 12 in top / 5.25:1
+  slope. Computed `base = top + 2*(height/slope) = 12 + 2*(42/5.25) =
+  28 in`, matching Type B exactly (expected, since Type D differs from
+  Type B only in foundation, not barrier cross-section).
+- **Type N (RM-4.8) base width (42.875 in) likewise derived from
+  height/slope** (`12 + 2*(81/5.25)`) rather than read off a single
+  dimension line, since the sheet dimensions the top split
+  (1'-3-7/16" + 1'-0" + 1'-3-7/16" = 42.875 in) across three segments at
+  the *top* callout row, not a single base-width figure; confirmed the
+  three segments sum to the same value the slope formula predicts.
+- **Type E (RM-4.9) concrete face envelope is genuinely not on the
+  sheet — not just hard to read.** RM-4.9 dimensions the rebar cage (Bar
+  S/Bar U, #4/#5) and the moment-slab foundation in detail but never
+  calls out the barrier's own top/base width; the "14 1/2", "7 1/2""
+  etc. callouts at the top of the section view are rebar/cover
+  dimensions, not the concrete edge. Rather than back-fill a guessed
+  profile, `RoadwayBarrier("Type E").top_width`/`.base_width` are left
+  `None` and `layout_roadway_barrier` raises `ValueError` if asked to
+  build it — same "guarded lookup, never silently invent" discipline
+  used for A-1-20 and CPA-1-08's Type 6 bend. Revisit if a cleaner sheet
+  render turns up an explicit face dimension.
+- **Joint spacing differs by sheet and was transcribed per-sheet, not
+  assumed uniform across the family:** RM-4.3/RM-4.5 state 20 ft max
+  unsealed-joint spacing, RM-4.8 states 10 ft, RM-4.9 states a 20 ft
+  min/100 ft max *expansion*-joint (not contraction-joint) spacing —
+  cataloged as `joint_spacing_ft` per entry rather than a shared module
+  constant.

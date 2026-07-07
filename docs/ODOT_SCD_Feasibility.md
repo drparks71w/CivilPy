@@ -119,10 +119,10 @@ excluded.
 
 | SCD | Title | Rev | Rating | Notes |
 |---|---|---|---|---|
-| RM-4.3 | Single Slope Barrier, Types B, C, B1, C1 | 2025-07 | **1** | Roadway counterparts of the SBR bridge railings; identical profile-sweep engine. |
-| RM-4.5 | Single Slope Barrier, Type D | 2026-01 | **1** | Same family. |
-| RM-4.8 | Single Slope Barrier, Type N | 2026-01 | **1** | Same family (largest table of the group). |
-| RM-4.9 | Single Slope Barrier, Type E | 2025-07 | **1** | Same family. |
+| RM-4.3 | Single Slope Barrier, Types B, C, B1, C1 | 2025-07 | **1** | ✅ DONE — Roadway counterparts of the SBR bridge railings; identical profile-sweep engine (fixed a latent `side=0` symmetric-profile bug in the engine along the way). C/C1 catalog as their fixed-height B/B1 base body; the project-variable upper extension is not modeled (see SCD_BUILD_QUESTIONS.md). |
+| RM-4.5 | Single Slope Barrier, Type D | 2026-01 | **1** | ✅ DONE — Same family, founded on compacted soil instead of pavement. |
+| RM-4.8 | Single Slope Barrier, Type N | 2026-01 | **1** | ✅ DONE — Same family (largest table of the group). |
+| RM-4.9 | Single Slope Barrier, Type E | 2025-07 | **1** | ✅ DONE (catalog only) — turned out NOT to be the same family: 36 in barrier on a cast-in-place moment slab, and the sheet dimensions the rebar cage, not the concrete face envelope. Cataloged foundation/rebar data; `layout_roadway_barrier` refuses to draw its (undimensioned) profile rather than invent one. |
 | RM-4.2 | 32" Portable Concrete Barrier | 2026-01 | **2** | Segment + connection hardware; successor family to PCB-91. |
 | RM-4.1 | 50" Portable Concrete Barrier | 2020-01 | **2** | Same pattern, taller. |
 | BP-5.1 | Concrete Curbs and Curb & Gutter | 2026-01 | **1** | Simple profile sweeps (all curb types); interfaces with approach slabs. |

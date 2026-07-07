@@ -31,3 +31,5 @@ skipped-by-rating. Companion decisions and open questions live in
 | ICD-1-20, ICD-2-18, SICD-1-21, SICD-2-14 | not built (by design) | — | — | end-condition add-ons / guide sheets, not standalone structures |
 | VPF-1-24 | done | `structural/odot/vandal_fence.py` | `Notebooks/res/VPF-1-24.py` | 9 (`test_odot_vandal_fence.py`) |
 | TVPF-1-18, GSD-1-19, NBS-1-09, WU-1-26 | not built (by design) | — | — | temporary-variant/reference-catalog/notes-only sheets, rated 6-8 |
+| RM-4.3, RM-4.5, RM-4.8 | done | `structural/odot/roadway_barrier.py` (Types B, B1, C, C1, D, N) | `Notebooks/res/RM-4.x_RoadwayBarrier.py` | 14 (`test_odot_roadway_barrier.py`, shared) |
+| RM-4.9 | done (catalog only, Type E) | `structural/odot/roadway_barrier.py` (Type E; concrete face not dimensioned on sheet, `layout_roadway_barrier` refuses) | — | shared with above |
