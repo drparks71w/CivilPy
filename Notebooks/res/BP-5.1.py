@@ -24,6 +24,13 @@ Outputs:
 Baked geometry is display-only and carries no gdr.* tags.
 """
 
+"""
+# //TODOs -
+- Missing Civilpy input, Orientation is swapped
+- Creates a hollow shell
+- Needs to take in an alignment + offset and either be pushed along a centerline or adapt to things like deck geometry
+"""
+
 import Rhino
 import Rhino.Geometry as rg
 
