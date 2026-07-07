@@ -259,6 +259,6 @@ django/
 /.claude/settings.local.json
 /.venv/
 /Notebooks/NHI17071_Ex_1_results.3dm
-
+*.rhl
 # ODOT SCD PDF archive (~190 MB, re-downloadable from dot.state.oh.us)
 /res/odot_scds/*
