@@ -31,6 +31,8 @@ A 600-ft crest curve, +3% to -2%, PVI at sta 25+00 el 482.00:
 5.0
 """
 
+from __future__ import annotations
+
 #  CivilPy
 #  Copyright (C) 2019-2026 Dane Parks
 #

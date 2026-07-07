@@ -12,6 +12,8 @@ functions — no I/O, no global state — so they can be vectorized or looped
 over candidate member sizes.
 """
 
+from __future__ import annotations
+
 from dataclasses import dataclass, field
 
 # Registry of check functions keyed by LRFD article number, populated by the

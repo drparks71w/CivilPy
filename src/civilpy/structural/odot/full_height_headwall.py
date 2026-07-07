@@ -35,6 +35,8 @@ wall base.  Feet in plan, inches only where the sheet itself uses them
 (pipe diameter, chamfer, weepholes).
 """
 
+from __future__ import annotations
+
 import math
 from dataclasses import dataclass, field
 

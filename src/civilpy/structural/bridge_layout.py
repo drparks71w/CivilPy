@@ -31,6 +31,8 @@ Supports are parallel (constant skew).  Decks are flat (no crown or cross
 slope yet) and deck plan edges stop at the end support lines.
 """
 
+from __future__ import annotations
+
 import math
 from dataclasses import dataclass, field
 

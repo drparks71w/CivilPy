@@ -12,6 +12,8 @@ web/flange/bracing limits enforced by the checks below.  Units: kips,
 inches, ksi; moments kip-in.
 """
 
+from __future__ import annotations
+
 #  CivilPy
 #  Copyright (C) 2019-2026 Dane Parks
 #

@@ -34,6 +34,8 @@ Lengths are in inches.
 Source: BP-5.1 (rev. 01-16-2026).
 """
 
+from __future__ import annotations
+
 from dataclasses import dataclass
 
 SCD = "BP-5.1"

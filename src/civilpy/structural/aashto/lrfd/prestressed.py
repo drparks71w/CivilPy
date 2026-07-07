@@ -13,6 +13,8 @@ limit checks: pass magnitudes — compression checks take compressive stress
 as positive, tension checks take tensile stress as positive.
 """
 
+from __future__ import annotations
+
 import math
 
 from civilpy.structural.aashto.lrfd.core import CheckResult, article

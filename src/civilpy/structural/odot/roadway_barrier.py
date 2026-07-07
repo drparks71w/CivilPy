@@ -36,6 +36,8 @@ Sources (SCD number — drawing date / latest cited revision):
     RM-4.9  Single slope barrier, Type E, moment slab foundation (rev. 2025-07-18)
 """
 
+from __future__ import annotations
+
 from dataclasses import dataclass, field
 
 

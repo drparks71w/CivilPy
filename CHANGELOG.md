@@ -7,6 +7,14 @@ Versions follow [Semantic Versioning](https://semver.org/) (major.minor.patch).
 
 ## [Unreleased]
 
+- **Python 3.9 support (Rhino compatibility).** Lowered `requires-python` to
+  `>=3.9` so civilpy installs into Rhino's bundled Python 3.9 (`rhinoinside` /
+  Rhino 8 CPython). Added `from __future__ import annotations` to the ~40
+  modules that used PEP 604 `X | Y` union type hints, which only evaluate
+  natively on 3.10+; deferred evaluation makes the same annotations safe on
+  3.9 without changing any typing. `tox.ini` now runs the suite under `py39`
+  in addition to `py311`.
+
 - **Bolted field splice — plate sizing tools.** Added
   `size_flange_splice_plates` (C6.13.6.1.3b) and `size_web_splice_plate`
   (6.13.6.1.3c / seal spacing 6.13.2.6.2) to `aashto.lrfd.splices`, so the

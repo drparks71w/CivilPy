@@ -20,6 +20,8 @@ Dimensions in inches, weights in pounds, load in pounds.  Spot-checked
 against the drawing in the test suite.
 """
 
+from __future__ import annotations
+
 from dataclasses import dataclass, field
 
 #: Dimension letters in RB-1-55 table column order.

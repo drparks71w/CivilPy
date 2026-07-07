@@ -37,6 +37,8 @@ origin sits on the abutment centerline at the bridge-seat elevation
 (z = 0), y = 0 at the cap centerline.
 """
 
+from __future__ import annotations
+
 import math
 from dataclasses import dataclass, field
 

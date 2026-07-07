@@ -34,6 +34,8 @@ origin sits on the pier centerline (X = 0) at the top-of-cap elevation
 (Z = 0), Y = 0 on the roadway centerline.
 """
 
+from __future__ import annotations
+
 import math
 from dataclasses import dataclass, field
 

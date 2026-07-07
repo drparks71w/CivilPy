@@ -15,6 +15,8 @@ a decimal (0.04 = 4%) unless a name says ``_pct``, cross slopes / relative
 gradients as a decimal.
 """
 
+from __future__ import annotations
+
 #  CivilPy
 #  Copyright (C) 2019-2026 Dane Parks
 #

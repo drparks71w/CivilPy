@@ -31,6 +31,8 @@ Year       Article (current num.)  Change
 ========== ======================= ====================================
 """
 
+from __future__ import annotations
+
 # (first publication year, label) for each LRFD edition
 LRFD_EDITIONS = [
     (1994, "1st"),

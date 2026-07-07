@@ -4,17 +4,18 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "civilpy"
-version = "0.3.9rc1"
+version = "0.3.9rc2"
 description = "Civil Engineering Tools in Python"
 readme = "README.md"
 license = { text = "MIT" }
 authors = [
     { name = "Dane Parks", email = "Dane@daneparks.com" },
 ]
-requires-python = ">=3.10"
+requires-python = ">=3.9"
 classifiers = [
     "Development Status :: 4 - Beta",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",

@@ -40,6 +40,8 @@ US designators resolved through :class:`civilpy.structural.steel.Rebar`.
 Lengths in inches unless a name says otherwise; spans in feet.
 """
 
+from __future__ import annotations
+
 import math
 from dataclasses import dataclass
 

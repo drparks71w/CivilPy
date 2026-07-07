@@ -27,6 +27,8 @@ support (bridge-limit) line counterclockwise in plan, so points at +Y
 shift toward +X.
 """
 
+from __future__ import annotations
+
 import math
 from dataclasses import dataclass, field
 

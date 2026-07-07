@@ -12,6 +12,8 @@ member forces, implemented directly from the specification.
 Units: kip, inch, ksi.  Pass strut forces as magnitudes (positive).
 """
 
+from __future__ import annotations
+
 # //TODO - Add tie anchorage and development length capacity check behind the nodal zone
 
 # //TODO - Add strut bursting/splitting transverse reinforcement checks for bottle-shaped struts

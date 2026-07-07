@@ -34,6 +34,8 @@ dimensions. The layout origin sits at the first (upstream) abutment
 bearing line, y = 0 at one slab edge, z = 0 at the top of slab.
 """
 
+from __future__ import annotations
+
 import math
 from dataclasses import dataclass, field
 

@@ -23,6 +23,8 @@ transverse (fixed at the railing face), Z up; feet in plan. The origin
 sits at the first post, z = 0 at the base plate.
 """
 
+from __future__ import annotations
+
 from dataclasses import dataclass, field
 
 Point = tuple[float, float, float]  # (x, y, z) feet

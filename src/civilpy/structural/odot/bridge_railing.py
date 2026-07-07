@@ -32,6 +32,8 @@ Sources (SCD number — drawing date / latest cited revision):
     PCB-91    Portable concrete barrier                     (rev. 2020-07-17)
 """
 
+from __future__ import annotations
+
 from dataclasses import dataclass
 
 from civilpy.structural.aashto.lrfd.railing import (

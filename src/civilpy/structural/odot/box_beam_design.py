@@ -43,6 +43,8 @@ f'c = 7 ksi (f'ci = 5 ksi), Grade 60 reinforcing, 0.5 in 270 ksi
 low-relaxation strand (0.167 sq in).
 """
 
+from __future__ import annotations
+
 import csv
 import os
 from dataclasses import dataclass, field

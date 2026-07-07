@@ -14,6 +14,8 @@ are then checked with the existing primitives (
 ``block_shear_resistance``).  Units: kip, inch, ksi.
 """
 
+from __future__ import annotations
+
 import math
 from dataclasses import dataclass
 
