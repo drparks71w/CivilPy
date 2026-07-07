@@ -342,3 +342,58 @@ def load_plate_bevel(
         longitudinal_grade * math.sin(theta),
         longitudinal_grade * math.cos(theta),
     )
+
+
+PointXYZ = tuple[float, float, float]  # (x, y, z) inches
+
+
+@dataclass(frozen=True)
+class LoadPlateLayout:
+    """The generated BD-1-11 beveled load plate, sized to a bearing pad's
+    plan footprint (``bearing_pad(name).length`` x ``.width``).
+
+    ``top_face`` carries the bevel: each corner's Z is offset by its (x, y)
+    distance from plate center times the transverse/longitudinal bevel
+    slope, so the plate top is a single tilted plane (not warped)."""
+
+    bevel_plate: BeveledLoadPlate
+    bottom_face: tuple[PointXYZ, PointXYZ, PointXYZ, PointXYZ]
+    top_face: tuple[PointXYZ, PointXYZ, PointXYZ, PointXYZ]
+    notes: tuple[str, ...] = ()
+
+
+def layout_load_plate(
+    bearing_pad_name: str, longitudinal_grade: float = 0.0,
+    skew_deg: float = 0.0, plate: BeveledLoadPlate = BEVELED_LOAD_PLATE,
+) -> "LoadPlateLayout":
+    """Generate the BD-1-11 beveled load plate sized to ``bearing_pad_name``
+    (``"B1"`` or ``"B2"``, :func:`bearing_pad`), tilted per
+    :func:`load_plate_bevel`. Origin at plate-bottom center, z = 0 at the
+    bottom face; x = bearing length (beam axis), y = bearing width."""
+    pad = bearing_pad(bearing_pad_name)
+    half_l, half_w = pad.length / 2.0, pad.width / 2.0
+    trans_bevel, long_bevel = load_plate_bevel(longitudinal_grade, skew_deg)
+    t = plate.min_thickness
+
+    bottom_face = ((-half_l, -half_w, 0.0), (half_l, -half_w, 0.0),
+                   (half_l, half_w, 0.0), (-half_l, half_w, 0.0))
+
+    def top_z(x: float, y: float) -> float:
+        return t + x * long_bevel + y * trans_bevel
+
+    top_face = tuple((x, y, top_z(x, y)) for (x, y, _) in bottom_face)
+
+    notes = (
+        f"BD-1-11 beveled load plate on a {bearing_pad_name} bearing pad "
+        f"({pad.length:g} x {pad.width:g} in), grade {longitudinal_grade:.3f}, "
+        f"skew {skew_deg:g} deg: transverse bevel {trans_bevel:.4f}, "
+        f"longitudinal bevel {long_bevel:.4f}",
+        "Not modeled: anchor rods/recesses, plate washers, preformed "
+        "bearing pad, bearing markings, box-beam anchor hole spacing "
+        "(varies by 36 in vs 48 in box width -- not tabulated here).",
+    )
+
+    return LoadPlateLayout(
+        bevel_plate=plate, bottom_face=bottom_face, top_face=top_face,
+        notes=notes,
+    )

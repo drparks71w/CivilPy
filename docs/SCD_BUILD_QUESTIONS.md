@@ -82,6 +82,23 @@ Format: SCD — question — what was assumed — what to revisit if wrong.
   crown/cross slope, sheet-2 joint grooves/seals (cataloged as data in
   `JOINT_DETAILS` / `JOINT_NOTES` / `SEAT_CONFIGURATIONS`).
 
+## BD-1-11 (rev. 07-20-2018)
+
+- **Catalog was already done, layout was the gap.** `BeveledLoadPlate`,
+  `BEVELED_LOAD_PLATE`, and `load_plate_bevel` already existed in
+  `odot/box_beam.py` from earlier box-beam work but had zero test
+  coverage and no drawable geometry — same "catalog done, add the
+  layout" pattern as RB-1-55. Added `layout_load_plate` there (not a new
+  module) since BD-1-11's only content is this one plate detail, already
+  living alongside PSBD-1-25's bearing pad catalog it's sized from.
+- **Anchor-hole spacing (varies by 36 in vs. 48 in box width, PLAN view)
+  not transcribed.** The dimension strings for the two box widths were
+  not cleanly separable in the rendered sheet without a much closer
+  read, and this is a hardware/layout detail, not the plate itself; left
+  as "not modeled" rather than guessing.
+- **Not modeled**: anchor rods/recesses, plate washers, the preformed
+  bearing pad, permanent bearing markings, box-beam anchor hole spacing.
+
 ## FB-1-82 (rev. 07-19-2024)
 
 - **E used as masonry plate thickness, H as pin clearance above it** --

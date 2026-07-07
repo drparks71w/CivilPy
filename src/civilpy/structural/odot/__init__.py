@@ -179,6 +179,8 @@ from civilpy.structural.odot.box_beam import (
     diaphragm_stations_ft,
     BEVELED_LOAD_PLATE,
     BeveledLoadPlate,
+    LoadPlateLayout,
+    layout_load_plate,
     load_plate_bevel,
 )
 from civilpy.structural.odot.rocker_bolster import (
@@ -418,6 +420,8 @@ __all__ = [
     "BeveledLoadPlate",
     "BEVELED_LOAD_PLATE",
     "load_plate_bevel",
+    "LoadPlateLayout",
+    "layout_load_plate",
     "RockerBolster",
     "ROCKER_BOLSTERS",
     "MAX_MOVEMENT",

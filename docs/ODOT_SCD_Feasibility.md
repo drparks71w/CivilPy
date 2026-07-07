@@ -70,7 +70,7 @@ exists, the catalog module should encode it alongside the drawing.
 |---|---|---|---|---|
 | RB-1-55 | Rockers and Bolsters | 2024-07 | **2** | ✅ DONE — added `layout_rocker_bolster` to the already-encoded `odot.rocker_bolster` catalog + `Notebooks/res/RB-1-55.py`, 5 new tests (22 total in the shared rocker/headwall test file). Simplified tapered-body solids (flat top for bolster, curved TOP BEARING DETAIL radius for rocker); flange plate, welds, anchor bolts/dowels not drawn. |
 | FB-1-82 | Fixed Bearings, steel bridges | 2024-07 | **3** | ✅ DONE — `odot.fixed_bearing` + `Notebooks/res/FB-1-82.py`, 14 tests. F-50..F-400 dimension/capacity table; masonry plate + pin + top plate solids. Anchor rods, welds, seat reinforcing not drawn. |
-| BD-1-11 | Bearing Details, box beams | 2018-07 | **3** | Elastomeric pad + dowels per beam depth (`odot.box_beam` has the pads). |
+| BD-1-11 | Bearing Details, box beams | 2018-07 | **3** | ✅ DONE — catalog (`BeveledLoadPlate`/`load_plate_bevel`) already existed in `odot.box_beam`; added `layout_load_plate` + `Notebooks/res/BD-1-11.py`, 7 new tests (41 total in `test_odot_box_beam.py`). Beveled plate sized to the B1/B2 bearing pad; anchor recesses/box-width-dependent hole spacing not drawn. |
 | EXJ-4-87 | Strip Seal EXJ, steel stringers | 2024-01 | **4** | Joint cross-section placed along a skewed joint line; gland/extrusion shapes are manufacturer-generic. |
 | EXJ-5-93 | Strip Seal EXJ, box beams | 2024-01 | **4** | Same pattern. |
 | EXJ-6-17 | Strip Seal EXJ, I-beams | 2024-01 | **4** | Same pattern. |

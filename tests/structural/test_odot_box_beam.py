@@ -12,6 +12,7 @@ import pytest
 from civilpy.structural.odot import (
     ANCHOR_DOWEL,
     BEARING_DESIGN_DATA,
+    BEVELED_LOAD_PLATE,
     BOX_BEAM_DEPTHS,
     BOX_SECTION_PROPERTIES,
     BOX_WALL_THICKNESS_IN,
@@ -27,6 +28,8 @@ from civilpy.structural.odot import (
     diaphragm_count,
     diaphragm_end_offset,
     diaphragm_stations_ft,
+    layout_load_plate,
+    load_plate_bevel,
     strand_group_height_in,
 )
 
@@ -243,3 +246,49 @@ class TestStrandGroupHeight:
             bearing_type="B1")
         with pytest.raises(ValueError, match="no strands"):
             strand_group_height_in(d)
+
+
+class TestBeveledLoadPlate:
+    """BD-1-11 beveled steel load plate."""
+
+    def test_catalog_constants(self):
+        assert BEVELED_LOAD_PLATE.min_thickness == 1.5
+        assert BEVELED_LOAD_PLATE.anchor_rod_diameter == 0.75
+        assert BEVELED_LOAD_PLATE.expansion_anchor_hole == 1.25
+
+    def test_bevel_formula(self):
+        import math
+        trans, long_ = load_plate_bevel(0.04, 30.0)
+        assert trans == pytest.approx(0.04 * math.sin(math.radians(30.0)))
+        assert long_ == pytest.approx(0.04 * math.cos(math.radians(30.0)))
+
+    def test_bevel_zero_skew_is_pure_longitudinal(self):
+        trans, long_ = load_plate_bevel(0.04, 0.0)
+        assert trans == pytest.approx(0.0)
+        assert long_ == pytest.approx(0.04)
+
+    def test_layout_sized_to_bearing_pad(self):
+        pad = bearing_pad("B1")
+        lay = layout_load_plate("B1")
+        length = lay.bottom_face[1][0] - lay.bottom_face[0][0]
+        width = lay.bottom_face[2][1] - lay.bottom_face[1][1]
+        assert length == pytest.approx(pad.length)
+        assert width == pytest.approx(pad.width)
+
+    def test_layout_flat_when_no_grade(self):
+        lay = layout_load_plate("B1", longitudinal_grade=0.0, skew_deg=0.0)
+        zs = {round(p[2], 9) for p in lay.top_face}
+        assert len(zs) == 1
+        assert zs.pop() == pytest.approx(BEVELED_LOAD_PLATE.min_thickness)
+
+    def test_layout_tilts_with_grade(self):
+        lay = layout_load_plate("B1", longitudinal_grade=0.04, skew_deg=0.0)
+        zs = [p[2] for p in lay.top_face]
+        assert len(set(round(z, 6) for z in zs)) > 1
+        # higher x (downstream in longitudinal grade direction) is higher
+        by_x = sorted(lay.top_face, key=lambda p: p[0])
+        assert by_x[-1][2] > by_x[0][2]
+
+    def test_layout_rejects_unknown_pad(self):
+        with pytest.raises(KeyError):
+            layout_load_plate("B99")

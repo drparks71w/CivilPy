@@ -23,3 +23,4 @@ skipped-by-rating. Companion decisions and open questions live in
 | A-1-20 | done (guidance only) | `structural/odot/typical_abutment.py` | `Notebooks/res/A-1-20.py` | 7 (`test_odot_typical_abutment.py`) |
 | RB-1-55 | done | `structural/odot/rocker_bolster.py` (`layout_rocker_bolster`, added) | `Notebooks/res/RB-1-55.py` | 22 total in `test_odot_rocker_headwall.py` (5 new) |
 | FB-1-82 | done | `structural/odot/fixed_bearing.py` | `Notebooks/res/FB-1-82.py` | 14 (`test_odot_fixed_bearing.py`) |
+| BD-1-11 | done | `structural/odot/box_beam.py` (`layout_load_plate`, added; catalog pre-existing) | `Notebooks/res/BD-1-11.py` | 41 total in `test_odot_box_beam.py` (7 new) |
