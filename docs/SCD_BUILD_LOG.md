@@ -17,3 +17,4 @@ skipped-by-rating. Companion decisions and open questions live in
 | SBR-1-20, SBR-3-20, BR-1-13, SBR-2-20, TST-1-99, TST-2-21, DBR-2-73, DBR-3-11, TBR-1-11 | done | `structural/odot/bridge_railing.py` (catalog, pre-existing) | `structural/rhino_barrier.py` `build_barriers()` (shared pipeline, not per-SCD scripts) | covered by `test_rhino_barrier.py` + `test_odot_bridge_railing.py` |
 | BR-2-15 | done (bugfix) | `structural/odot/bridge_railing.py` (added `base_width`, `rail_height_above_in`) + `structural/rhino_barrier.py` (new `"combination"` shape family) | `build_barriers()` | `test_rhino_barrier.py::test_combination_*` (2 new tests) |
 | SB-1-24 | done | `structural/odot/slab_bridge.py` | `Notebooks/res/SB-1-24.py` | 14 (`test_odot_slab_bridge.py`) |
+| CPA-1-08 | done | `structural/odot/capped_pile_abutment.py` | `Notebooks/res/CPA-1-08.py` | 16 (`test_odot_capped_pile_abutment.py`) |

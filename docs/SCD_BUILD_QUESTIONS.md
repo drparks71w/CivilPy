@@ -58,6 +58,37 @@ Format: SCD — question — what was assumed — what to revisit if wrong.
   crown/cross slope, sheet-2 joint grooves/seals (cataloged as data in
   `JOINT_DETAILS` / `JOINT_NOTES` / `SEAT_CONFIGURATIONS`).
 
+## CPA-1-08 (rev. 01-19-2024)
+
+- **Detailing template, like BCHW.** Only a handful of dimensions are
+  fixed on this sheet (cap width 3'-0", the 1'-6"/1'-6" pile-zone split,
+  max bar spacings); wingwall length, pile count/spacing, and footing
+  depth are project design outputs, and the S501/S502/S503 bar lengths
+  carry a literal ``base/COS(theta)`` skew term rather than a tabulated
+  number. `layout_capped_pile_abutment` takes all of these as required
+  inputs, same posture as `box_culvert_headwall`.
+- **Wingwall flare angle assumed 45 deg.** Unlike HW-1.1 (which tabulates
+  a skew-dependent flare split) or BCHW (which labels one angle
+  explicitly), CPA-1-08's part-plan views don't dimension the wingwall
+  flare angle at all — the "PART PLAN AT ABUTMENT" sheets show it
+  schematically. Assumed a fixed 45 deg flare regardless of skew (a
+  common default for this style of abutment wingwall). Revisit if a
+  project plan shows a skew-dependent flare like HW-1.1's.
+- **Cap/footing modeled as one prism** at the project-supplied
+  `footing_depth_ft`; the true Section C-C/D-D profile (bridge-seat
+  construction joint, battered wingwall-side face, separate cap vs.
+  footing steps) is not distinguished.
+- **layer group: `Substructure::CPA-1-08`.** This is a true NBIS
+  substructure element (an abutment), unlike the SCD accessories that
+  land in the civilpy-proposed `Culvert::`/`Site::` groups — it uses the
+  C#-authoritative `Substructure` group directly (currently empty/reserved
+  on the C# side; this is the first thing to populate it).
+- **Not modeled**: reinforcing bar layout (only `rebar_mark()`/
+  `bend_shape()` catalog the bar list, not a full placed schedule),
+  drainage pipes, neoprene sheeting/PEJF joints, and the three
+  railing-transition detail sheets (deflector parapet / three-tube /
+  twin-tube).
+
 ## SB-1-24 (rev. 01-16-2026)
 
 - **M/N-bar orientation assumed longitudinal.** The SLAB PLAN view only

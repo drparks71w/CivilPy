@@ -90,6 +90,13 @@ Sub-modules:
     (thickness + A/B/M/N bar schedule, 11-38 ft) and ``EDGE BEAM SLAB
     DATA`` table (over-the-side-drainage vs. parapet edge conditions), and
     the ``layout_slab_bridge`` generator behind the SB-1-24 component.
+
+``capped_pile_abutment``
+    Capped pile abutment for slab bridges (CPA-1-08), SB-1-24's
+    companion: fixed section constants, the reinforcing bend legend
+    (``bend_shape``, Types 1-5; Type 6/D801 is ``approach_slab``'s bar),
+    and ``layout_capped_pile_abutment`` -- another detailing-template
+    sheet (like BCHW) whose overall dimensions are project-supplied.
 """
 
 from civilpy.structural.odot.bridge_railing import (
@@ -243,6 +250,16 @@ from civilpy.structural.odot.slab_bridge import (
     layout_slab_bridge,
     slab_design,
     standard_hook_bar_length_ft,
+)
+from civilpy.structural.odot.capped_pile_abutment import (
+    REBAR_TABLE as CPA_REBAR_TABLE,
+    AbutmentInput,
+    AbutmentLayout,
+    RebarMark as CpaRebarMark,
+    bend_shape as cpa_bend_shape,
+    layout_capped_pile_abutment,
+    rebar_mark as cpa_rebar_mark,
+    s_bar_length_ft,
 )
 from civilpy.structural.odot.deck_design import (
     DESIGN_METHOD,
@@ -414,4 +431,12 @@ __all__ = [
     "layout_slab_bridge",
     "slab_design",
     "standard_hook_bar_length_ft",
+    "CPA_REBAR_TABLE",
+    "AbutmentInput",
+    "AbutmentLayout",
+    "CpaRebarMark",
+    "cpa_bend_shape",
+    "layout_capped_pile_abutment",
+    "cpa_rebar_mark",
+    "s_bar_length_ft",
 ]
