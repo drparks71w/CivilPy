@@ -390,6 +390,14 @@ from civilpy.structural.odot.roadway_portable_barrier import (
     TransitionSection,
     roadway_portable_barrier,
 )
+from civilpy.structural.odot.concrete_curb import (
+    CURB_TYPES,
+    DEFAULT_GUTTER_PLATE_T_IN,
+    CurbType,
+    curb_height_in,
+    curb_profile_in,
+    curb_type,
+)
 from civilpy.structural.odot.deck_design import (
     DESIGN_METHOD,
     MIN_DESIGN_HAUNCH,
@@ -636,4 +644,10 @@ __all__ = [
     "TRANSITION_50_TO_32",
     "TransitionSection",
     "roadway_portable_barrier",
+    "CURB_TYPES",
+    "DEFAULT_GUTTER_PLATE_T_IN",
+    "CurbType",
+    "curb_height_in",
+    "curb_profile_in",
+    "curb_type",
 ]

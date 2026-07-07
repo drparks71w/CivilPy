@@ -584,3 +584,40 @@ CPA-1-08, CPP-1-08, A-1-20 all done.
   min/100 ft max *expansion*-joint (not contraction-joint) spacing —
   cataloged as `joint_spacing_ft` per entry rather than a shared module
   constant.
+
+## BP-5.1 (concrete curbs and combined curb & gutter)
+
+- **19 sheet-labeled curb types consolidated into 13 catalog entries.**
+  Several labels differ only by the pavement/base course the same curb
+  face sits on, not by the face geometry itself: Types 2/2-A/2-B,
+  3/3-A/3-B, and 4/4-A/4-B each share one profile across their lettered
+  substrate variants. Consolidated via a `CurbType.sheet_labels: tuple`
+  field and a `CURB_TYPES` dict mapping every individual sheet name to
+  the same shared object (`curb_type("Type 2-A") is curb_type("Type
+  2-B")`), rather than duplicating near-identical dataclass instances —
+  every sheet label still resolves, and `test_all_sheet_labels_present`
+  guards that the full 19-name set stays resolvable if the catalog is
+  ever refactored.
+- **Rolled/mountable curbs (Type 3/3-A/3-B) and Type 11's compound-curve
+  face are approximated as straight-line chamfers, not the true arcs.**
+  Type 3 rounds flush with the pavement over a 10 in radius arc; Type
+  11's face is a compound curve (18 in toe radius plus an X=4-3/4 in /
+  Y=4-5/8 in offset break). Neither is dimensioned in a way that maps
+  cleanly onto the module's 4-point trapezoid representation, so both
+  are drawn as straight ramps/segmented trapezoids instead of true
+  arcs — documented in both the module docstring and each entry's
+  `notes` field, consistent with the "schematic profile, sheet remains
+  controlling" precedent used for bridge-railing toe kicks.
+- **Types 9, 10, and 11 have no fixed height** — the sheet's general
+  note states the gutter-plate thickness `T` "shall be 9 in unless
+  otherwise shown on the plans," and these three types key their curb
+  height directly to `T`. Cataloged `height=None` for these three and
+  added `DEFAULT_GUTTER_PLATE_T_IN = 9.0` plus a `curb_height_in(label,
+  gutter_plate_t_in=None)` resolver that defaults to 9 in but accepts a
+  project override — the same variable-dimension pattern used for
+  `A-1-20` and `CPA-1-08`'s Type 6 bend.
+- **Type 4's back width and Type 3's exact back-of-curb tie-in are
+  project-specified ("as shown on Typical Sections in Plans")**, not
+  given as a fixed sheet dimension; both are cataloged with the
+  concrete-face-only trapezoid and documented as not modeling the
+  variable tie-in width, rather than guessing a value.

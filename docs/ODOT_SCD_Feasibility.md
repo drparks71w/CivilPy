@@ -125,7 +125,7 @@ excluded.
 | RM-4.9 | Single Slope Barrier, Type E | 2025-07 | **1** | ✅ DONE (catalog only) — turned out NOT to be the same family: 36 in barrier on a cast-in-place moment slab, and the sheet dimensions the rebar cage, not the concrete face envelope. Cataloged foundation/rebar data; `layout_roadway_barrier` refuses to draw its (undimensioned) profile rather than invent one. |
 | RM-4.2 | 32" Portable Concrete Barrier | 2026-01 | **2** | ✅ DONE — Segment + connection hardware; successor family to PCB-91 (pin & loop vs. hinge bar + bolt). |
 | RM-4.1 | 50" Portable Concrete Barrier | 2020-01 | **2** | ✅ DONE — Same pattern, taller; includes the 50"->32" transition section tying it to RM-4.2/PCB-91. |
-| BP-5.1 | Concrete Curbs and Curb & Gutter | 2026-01 | **1** | Simple profile sweeps (all curb types); interfaces with approach slabs. |
+| BP-5.1 | Concrete Curbs and Curb & Gutter | 2026-01 | **1** | ✅ DONE — 19 sheet labels consolidated into 13 catalog entries (substrate-only variants share a profile); rolled curbs and Type 11's compound curve approximated as straight chamfers; Types 9/10/11 use the project-variable gutter-plate thickness T. |
 | RM-2.1 | Concrete Steps | 2013-07 | **2** | Small parametric stair. |
 | RM-5.2 | Bikeway Railing | 2023-07 | **2** | Post-and-rail on structures; pairs with BR-2-15. |
 | RM-4.6 | Concrete Barrier End Sections | 2025-07 | **2** | Lofted end tapers of the RM-4.x profiles. |

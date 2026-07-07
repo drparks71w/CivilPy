@@ -35,3 +35,4 @@ skipped-by-rating. Companion decisions and open questions live in
 | RM-4.9 | done (catalog only, Type E) | `structural/odot/roadway_barrier.py` (Type E; concrete face not dimensioned on sheet, `layout_roadway_barrier` refuses) | — | shared with above |
 | RM-4.2 | done | `structural/odot/roadway_portable_barrier.py` (32 in, pin & loop) | `Notebooks/res/RM-4.1_RM-4.2.py` | 8 (`test_odot_roadway_portable_barrier.py`, shared) |
 | RM-4.1 | done | `structural/odot/roadway_portable_barrier.py` (50 in, hinge bar + `TRANSITION_50_TO_32`) | `Notebooks/res/RM-4.1_RM-4.2.py` | shared with above |
+| BP-5.1 | done | `structural/odot/concrete_curb.py` (13 catalog entries, 19 sheet labels) | `Notebooks/res/BP-5.1.py` | 10 (`test_odot_concrete_curb.py`) |
