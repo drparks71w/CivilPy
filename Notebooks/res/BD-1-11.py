@@ -31,6 +31,17 @@ Baked geometry is display-only and carries no gdr.* tags. Uses the
 Superstructure:: layer group (bearings are a superstructure element).
 """
 
+"""
+# //TODO - Civilpy Import, verify orientation similar to other objects.
+- Generates no preview geometry whatsover.
+- Should probably have the threaded anchor rod included in the output
+- skew has no effect
+- Needs to generate 2 plates along a beam centerline, the beam will be dependent on the roadway centerline
+- Layer it generates to should probably be called "Load Plate" within the "Superstructure Category" (not BD-1-11)
+- Doesn't have any of the necessary user-text attributes that are expected (goes for basically all items generated from
+    this stuff. The goal is to have a fully enabled 
+"""
+
 import Rhino
 import Rhino.Geometry as rg
 
