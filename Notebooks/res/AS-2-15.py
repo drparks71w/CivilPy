@@ -29,6 +29,13 @@ Outputs:
 Baked geometry is display-only and carries no gdr.* tags.
 """
 
+"""
+# //TODO - Missing civilpy import (same as the others # r: civilpy)
+- Skew is Okay, but rebar extends well beyond the actual sleeper slab, shape doesn't represent the actual
+    sleeper slab, it's two rectangles one inside the larger one instead of being an L shape as expected
+    front/right orientation flipped like with other SCDs tested so far.
+"""
+
 import Rhino
 import Rhino.Geometry as rg
 
