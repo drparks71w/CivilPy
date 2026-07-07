@@ -33,3 +33,5 @@ skipped-by-rating. Companion decisions and open questions live in
 | TVPF-1-18, GSD-1-19, NBS-1-09, WU-1-26 | not built (by design) | — | — | temporary-variant/reference-catalog/notes-only sheets, rated 6-8 |
 | RM-4.3, RM-4.5, RM-4.8 | done | `structural/odot/roadway_barrier.py` (Types B, B1, C, C1, D, N) | `Notebooks/res/RM-4.x_RoadwayBarrier.py` | 14 (`test_odot_roadway_barrier.py`, shared) |
 | RM-4.9 | done (catalog only, Type E) | `structural/odot/roadway_barrier.py` (Type E; concrete face not dimensioned on sheet, `layout_roadway_barrier` refuses) | — | shared with above |
+| RM-4.2 | done | `structural/odot/roadway_portable_barrier.py` (32 in, pin & loop) | `Notebooks/res/RM-4.1_RM-4.2.py` | 8 (`test_odot_roadway_portable_barrier.py`, shared) |
+| RM-4.1 | done | `structural/odot/roadway_portable_barrier.py` (50 in, hinge bar + `TRANSITION_50_TO_32`) | `Notebooks/res/RM-4.1_RM-4.2.py` | shared with above |

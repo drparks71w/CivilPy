@@ -123,8 +123,8 @@ excluded.
 | RM-4.5 | Single Slope Barrier, Type D | 2026-01 | **1** | ✅ DONE — Same family, founded on compacted soil instead of pavement. |
 | RM-4.8 | Single Slope Barrier, Type N | 2026-01 | **1** | ✅ DONE — Same family (largest table of the group). |
 | RM-4.9 | Single Slope Barrier, Type E | 2025-07 | **1** | ✅ DONE (catalog only) — turned out NOT to be the same family: 36 in barrier on a cast-in-place moment slab, and the sheet dimensions the rebar cage, not the concrete face envelope. Cataloged foundation/rebar data; `layout_roadway_barrier` refuses to draw its (undimensioned) profile rather than invent one. |
-| RM-4.2 | 32" Portable Concrete Barrier | 2026-01 | **2** | Segment + connection hardware; successor family to PCB-91. |
-| RM-4.1 | 50" Portable Concrete Barrier | 2020-01 | **2** | Same pattern, taller. |
+| RM-4.2 | 32" Portable Concrete Barrier | 2026-01 | **2** | ✅ DONE — Segment + connection hardware; successor family to PCB-91 (pin & loop vs. hinge bar + bolt). |
+| RM-4.1 | 50" Portable Concrete Barrier | 2020-01 | **2** | ✅ DONE — Same pattern, taller; includes the 50"->32" transition section tying it to RM-4.2/PCB-91. |
 | BP-5.1 | Concrete Curbs and Curb & Gutter | 2026-01 | **1** | Simple profile sweeps (all curb types); interfaces with approach slabs. |
 | RM-2.1 | Concrete Steps | 2013-07 | **2** | Small parametric stair. |
 | RM-5.2 | Bikeway Railing | 2023-07 | **2** | Post-and-rail on structures; pairs with BR-2-15. |

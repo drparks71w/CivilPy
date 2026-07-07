@@ -384,6 +384,12 @@ from civilpy.structural.odot.roadway_barrier import (
     layout_roadway_barrier,
     roadway_barrier,
 )
+from civilpy.structural.odot.roadway_portable_barrier import (
+    ROADWAY_PORTABLE_BARRIERS,
+    TRANSITION_50_TO_32,
+    TransitionSection,
+    roadway_portable_barrier,
+)
 from civilpy.structural.odot.deck_design import (
     DESIGN_METHOD,
     MIN_DESIGN_HAUNCH,
@@ -626,4 +632,8 @@ __all__ = [
     "RoadwayBarrierLayout",
     "layout_roadway_barrier",
     "roadway_barrier",
+    "ROADWAY_PORTABLE_BARRIERS",
+    "TRANSITION_50_TO_32",
+    "TransitionSection",
+    "roadway_portable_barrier",
 ]
