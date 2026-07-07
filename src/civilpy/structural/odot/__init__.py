@@ -127,6 +127,17 @@ Sub-modules:
     the F-50..F-400 dimension/capacity table and
     ``layout_fixed_bearing`` (masonry plate + bearing pin + top plate)
     behind the FB-1-82 component.
+
+``strip_seal_joint``
+    Strip seal expansion joints, steel stringer structures (EXJ-4-87):
+    the support-angle length formulas (a1-a4, skew-dependent) and
+    ``layout_strip_seal_joint`` -- the gland itself is manufacturer-
+    generic and not modeled.
+
+``strip_seal_joint_box_beam``
+    Strip seal expansion joints, concrete box beam structures (EXJ-5-93):
+    the plate "A"/"B"/"C" spacing table (36/48 in beams), the joint-
+    length formula, and ``layout_box_beam_joint``.
 """
 
 from civilpy.structural.odot.bridge_railing import (
@@ -333,6 +344,22 @@ from civilpy.structural.odot.fixed_bearing import (
     lateral_clearance_in,
     layout_fixed_bearing,
     smallest_for_load as fixed_bearing_smallest_for_load,
+)
+from civilpy.structural.odot.strip_seal_joint import (
+    StripSealJointInput,
+    StripSealJointLayout,
+    SupportAngleRun,
+    layout_strip_seal_joint,
+    support_angle_lengths_in,
+)
+from civilpy.structural.odot.strip_seal_joint_box_beam import (
+    PLATE_SPACING,
+    BoxBeamJointInput,
+    BoxBeamJointLayout,
+    PlateSpacing,
+    joint_length_ft,
+    layout_box_beam_joint,
+    plate_spacing,
 )
 from civilpy.structural.odot.deck_design import (
     DESIGN_METHOD,
@@ -547,4 +574,16 @@ __all__ = [
     "lateral_clearance_in",
     "layout_fixed_bearing",
     "fixed_bearing_smallest_for_load",
+    "StripSealJointInput",
+    "StripSealJointLayout",
+    "SupportAngleRun",
+    "layout_strip_seal_joint",
+    "support_angle_lengths_in",
+    "PLATE_SPACING",
+    "BoxBeamJointInput",
+    "BoxBeamJointLayout",
+    "PlateSpacing",
+    "joint_length_ft",
+    "layout_box_beam_joint",
+    "plate_spacing",
 ]

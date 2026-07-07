@@ -82,6 +82,32 @@ Format: SCD — question — what was assumed — what to revisit if wrong.
   crown/cross slope, sheet-2 joint grooves/seals (cataloged as data in
   `JOINT_DETAILS` / `JOINT_NOTES` / `SEAT_CONFIGURATIONS`).
 
+## EXJ-4-87 / EXJ-5-93 (rev. 01-19-2024) -- Wave 5 complete
+
+- **Both sheets are detailing templates for a manufacturer-generic strip
+  seal gland** -- the gland/extrusion cross-section itself is never
+  drawn on either SCD (it's a proprietary product), so neither module
+  attempts to model it; only the skewed joint line and the steel
+  hardware that varies by structure type (support angles for steel
+  stringers, plate spacing for box beams) are cataloged/drawn.
+- **EXJ-4-87's a1-a4 formulas assume a uniform stringer top flange
+  width** across all stringers (a single `top_flange_width_in` input);
+  the real structure could have different flange widths at different
+  stringer lines (e.g. near a haunch), which would need a per-stringer
+  input — not implemented, since the sheet itself computes one length
+  per stringer from one flange width.
+- **EXJ-5-93's beam-gap stations assume uniform beam width** (`n_beams *
+  beam_width_in` evenly spaced) — real adjacent box-beam layouts are
+  built this way by design (edge-to-edge, no gap per PSBD-1-25), so this
+  is a faithful simplification, not an assumption to revisit.
+- **Not modeled** (both): the strip seal gland, retainer angles/plates,
+  anchor bars/threaded rods, abutment backwall armor, stainless steel
+  deflector (EXJ-3-82, box beam sheet's own cross-reference), end
+  cross-frames (GSD-1-19, steel stringer sheet's own cross-reference).
+
+This closes Wave 5 (bearings & expansion joints): RB-1-55, FB-1-82,
+BD-1-11, EXJ-4-87, EXJ-5-93 all done.
+
 ## BD-1-11 (rev. 07-20-2018)
 
 - **Catalog was already done, layout was the gap.** `BeveledLoadPlate`,
