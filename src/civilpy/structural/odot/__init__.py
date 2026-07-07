@@ -97,6 +97,14 @@ Sub-modules:
     (``bend_shape``, Types 1-5; Type 6/D801 is ``approach_slab``'s bar),
     and ``layout_capped_pile_abutment`` -- another detailing-template
     sheet (like BCHW) whose overall dimensions are project-supplied.
+
+``capped_pile_pier``
+    Capped pile pier for continuous slab bridges (CPP-1-08), CS-1-24's
+    companion: the sheet's own pier-length formula (``pier_length_ft``),
+    fixed cap width/end-radius, the P501-P504 bar bend data, and
+    ``layout_capped_pile_pier`` -- unlike the other capped-pile-cap
+    sheets, this one is genuinely parametric (no blank "insert design
+    here"), only pile count/spacing stay project-supplied.
 """
 
 from civilpy.structural.odot.bridge_railing import (
@@ -260,6 +268,16 @@ from civilpy.structural.odot.capped_pile_abutment import (
     layout_capped_pile_abutment,
     rebar_mark as cpa_rebar_mark,
     s_bar_length_ft,
+)
+from civilpy.structural.odot.capped_pile_pier import (
+    PIER_REBAR,
+    PierBarMark,
+    PierInput,
+    PierLayout,
+    layout_capped_pile_pier,
+    pier_bar,
+    pier_length_ft,
+    q_bend_height_ft,
 )
 from civilpy.structural.odot.deck_design import (
     DESIGN_METHOD,
@@ -439,4 +457,12 @@ __all__ = [
     "layout_capped_pile_abutment",
     "cpa_rebar_mark",
     "s_bar_length_ft",
+    "PIER_REBAR",
+    "PierBarMark",
+    "PierInput",
+    "PierLayout",
+    "layout_capped_pile_pier",
+    "pier_bar",
+    "pier_length_ft",
+    "q_bend_height_ft",
 ]

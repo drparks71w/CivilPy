@@ -18,3 +18,4 @@ skipped-by-rating. Companion decisions and open questions live in
 | BR-2-15 | done (bugfix) | `structural/odot/bridge_railing.py` (added `base_width`, `rail_height_above_in`) + `structural/rhino_barrier.py` (new `"combination"` shape family) | `build_barriers()` | `test_rhino_barrier.py::test_combination_*` (2 new tests) |
 | SB-1-24 | done | `structural/odot/slab_bridge.py` | `Notebooks/res/SB-1-24.py` | 14 (`test_odot_slab_bridge.py`) |
 | CPA-1-08 | done | `structural/odot/capped_pile_abutment.py` | `Notebooks/res/CPA-1-08.py` | 16 (`test_odot_capped_pile_abutment.py`) |
+| CPP-1-08 | done | `structural/odot/capped_pile_pier.py` | `Notebooks/res/CPP-1-08.py` | 11 (`test_odot_capped_pile_pier.py`) |

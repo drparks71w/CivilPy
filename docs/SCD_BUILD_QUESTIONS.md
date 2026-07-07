@@ -58,6 +58,29 @@ Format: SCD — question — what was assumed — what to revisit if wrong.
   crown/cross slope, sheet-2 joint grooves/seals (cataloged as data in
   `JOINT_DETAILS` / `JOINT_NOTES` / `SEAT_CONFIGURATIONS`).
 
+## CPP-1-08 (rev. 07-21-2017)
+
+- **Genuinely parametric, unlike BCHW/CPA-1-08.** The pier cap length is
+  a literal sheet formula (`3'-0" + (slab width - 4'-4")/cos(skew)`), and
+  cap width/end-radius are fixed constants regardless of span — only pile
+  count/spacing are project-supplied (with a stated 7'-6" max spacing,
+  same "not a table, just a limit" pattern as the abutment sheets).
+- **Cap depth (2'-0") read off the HALF ELEVATION's overall dimension
+  bracket**, not a separately labeled "T" or "D" callout on this sheet
+  (unlike SB-1-24/HW-1.1's explicit depth columns) — treated as a fixed
+  default (`CAP_DEPTH_FT`) but exposed as a `PierInput` override since
+  it's the least certain of the fixed dimensions transcribed here.
+- **Rebar bend shapes not fully modeled.** `pier_bar()` catalogs the
+  P501-P504 leg dimensions and the `Q = T + 1'-4"` formula (T = the
+  companion CS-1-24 slab thickness) but does not generate bend polylines
+  the way `box_culvert_headwall.bend_shape()` /
+  `capped_pile_abutment.bend_shape()` do — P501/P502/P503 are closed
+  U-shapes and P504 is a diagonal corner bar with an inside radius;
+  revisit if a drawn bar cage becomes valuable.
+- **Not modeled**: reinforcing bar layout/placement, pile encasement
+  (Item Special, for steel piles only), pile sections themselves, shear
+  keys, and the slab edge beam (shared detail with SB-1-24).
+
 ## CPA-1-08 (rev. 01-19-2024)
 
 - **Detailing template, like BCHW.** Only a handful of dimensions are
