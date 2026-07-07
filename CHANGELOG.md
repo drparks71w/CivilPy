@@ -7,6 +7,8 @@ Versions follow [Semantic Versioning](https://semver.org/) (major.minor.patch).
 
 ## [Unreleased]
 
+## [0.3.9] - 2026-07-07
+
 - **Python 3.9 support (Rhino compatibility).** Lowered `requires-python` to
   `>=3.9` so civilpy installs into Rhino's bundled Python 3.9 (`rhinoinside` /
   Rhino 8 CPython). Added `from __future__ import annotations` to the ~40
