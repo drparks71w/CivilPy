@@ -29,6 +29,20 @@ Baked geometry is display-only and carries no gdr.* tags (per the
 contract, readers ignore untagged geometry).
 """
 
+"""
+# //TODO - Most of these files are missing the Rhino civilpy import at the start `# r: civilpy` that is necessary to
+utilize the civilpy library.
+- Update inputs to specify what Kind of Rhino component should be used with them, length only has 4 options, so dropdown 
+    makes more sense than a number slider, etc. 
+- Similar to A-1-20 will rely on an "alignment" object to do station and offsets for it's location, width should be based
+    off of roadway centerline.
+- The orientation is off similar to A-1-20, the bent bars that are embedded into the abutment stem are appearing on the left
+    side of the slab, again, needs a "near"/"far" toggle to work properly. Current layout is assuming the "far" abutment, but 
+    the "front" and "right" views are flopped from what a user would probably expect.
+- Not sure if rebar is encoded with an actual diameter, but clash detection would be a long term goal of the rhino models
+    not a native Rhino feature, so would likely have to be built out in Python somehow.
+"""
+
 import Rhino
 import Rhino.Geometry as rg
 
