@@ -82,6 +82,26 @@ Format: SCD — question — what was assumed — what to revisit if wrong.
   crown/cross slope, sheet-2 joint grooves/seals (cataloged as data in
   `JOINT_DETAILS` / `JOINT_NOTES` / `SEAT_CONFIGURATIONS`).
 
+## PSID-1-13 (rev. 07-18-2025) -- Wave 6
+
+- **Top/bottom flange widths for Type 3/4 are published AASHTO standard
+  values, not individually re-measured from the rendered sheet.** Type 2's
+  12/18 in flanges were confirmed directly against this sheet's own
+  dimensions; Type 3 (16/22) and Type 4 (20/26, shared by all three
+  Modified Type 4 depths) are the well-known standard AASHTO I-girder
+  values. Revisit with a closer render if a project needs an exact
+  flange-width citation from this specific sheet.
+- **No PSIDD-1-xx design-data companion sheet is archived** (unlike
+  PSBD-1-25/PSBDD-1-25), so strand patterns, camber, and load ratings
+  have no source to encode yet — only section geometry and the general
+  bar-mark/bend-type legend are cataloged.
+- **ICD-1-20/ICD-2-18/SICD-1-21/SICD-2-14 intentionally not built.** All
+  four are end-condition add-ons to an existing girder line (integral or
+  semi-integral abutment details) rather than standalone structures with
+  their own geometry to generate; SICD-2-14 is additionally a half-
+  guidance "guide" sheet with a full companion (SICDD-2-14) to build
+  against instead if this becomes worth doing later.
+
 ## EXJ-4-87 / EXJ-5-93 (rev. 01-19-2024) -- Wave 5 complete
 
 - **Both sheets are detailing templates for a manufacturer-generic strip

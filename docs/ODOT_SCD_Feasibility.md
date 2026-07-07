@@ -81,12 +81,12 @@ exists, the catalog module should encode it alongside the drawing.
 
 | SCD | Title | Rev | Rating | Notes |
 |---|---|---|---|---|
-| PSBD-1-25 | PS Box Beam Details | 2026-01 | **2** | Sections/strands/ties already encoded (`odot.box_beam`, `box_beam_design`); component is mostly geometry emission. |
-| PSID-1-13 | PS I-Beam Details | 2025-07 | **3** | I-beam sections + strand patterns; encode like the box beams first. |
-| ICD-1-20 | Integral details, steel on flexible abutments | 2024-01 | **4** | End-condition add-on to the girder generator, not standalone. |
-| ICD-2-18 | Integral details, PS I-beams | 2024-01 | **4** | Same. |
-| SICD-1-21 | Semi-integral details, steel on rigid abutments | 2024-01 | **4** | Same. |
-| SICD-2-14 | Semi-Integral Abutment Diaphragm Guide | 2021-01 | **5** | "Guide" sheet — half guidance; DD sheet exists (SICDD-2-14). |
+| PSBD-1-25 | PS Box Beam Details | 2026-01 | **2** | ✅ DONE (earlier work) — sections/strands/ties/bearing pads in `odot.box_beam`/`box_beam_design`; full Rhino pipeline in `rhino_box_beam.build_box_beams`, tested (`test_odot_box_beam.py`, `test_rhino_box_beam.py`). |
+| PSID-1-13 | PS I-Beam Details | 2025-07 | **3** | ✅ DONE — `odot.ps_i_beam` + `Notebooks/res/PSID-1-13.py`, 7 tests. Section-properties table (6 standard sections) + a simplified straight-line I-shape solid (no bulb/fillet radii). Strand pattern, rebar (A-G series bars), end-block details not modeled — no PSIDD companion design-data sheet is archived yet. |
+| ICD-1-20 | Integral details, steel on flexible abutments | 2024-01 | **4** | Not built as a standalone component — it's an end-condition add-on to the girder generator (`rhino_gdr`), not a separate structure. Revisit if/when the girder generator grows an abutment-type option. |
+| ICD-2-18 | Integral details, PS I-beams | 2024-01 | **4** | Same as ICD-1-20, for `odot.ps_i_beam` girders. |
+| SICD-1-21 | Semi-integral details, steel on rigid abutments | 2024-01 | **4** | Same posture as ICD-1-20/2-18. |
+| SICD-2-14 | Semi-Integral Abutment Diaphragm Guide | 2021-01 | **5** | Not built — a "guide" sheet (half guidance, per its own title), and a full design-detail sheet (SICDD-2-14) exists to build against instead if this becomes worth doing. |
 
 ## Wave 7 — fencing & guidance-heavy sheets
 

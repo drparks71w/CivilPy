@@ -361,6 +361,13 @@ from civilpy.structural.odot.strip_seal_joint_box_beam import (
     layout_box_beam_joint,
     plate_spacing,
 )
+from civilpy.structural.odot.ps_i_beam import (
+    PS_I_BEAM_SECTIONS,
+    PSIBeamLayout,
+    PSIBeamSection,
+    layout_ps_i_beam,
+    ps_i_beam_section,
+)
 from civilpy.structural.odot.deck_design import (
     DESIGN_METHOD,
     MIN_DESIGN_HAUNCH,
@@ -586,4 +593,9 @@ __all__ = [
     "joint_length_ft",
     "layout_box_beam_joint",
     "plate_spacing",
+    "PS_I_BEAM_SECTIONS",
+    "PSIBeamLayout",
+    "PSIBeamSection",
+    "layout_ps_i_beam",
+    "ps_i_beam_section",
 ]

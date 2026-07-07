@@ -26,3 +26,6 @@ skipped-by-rating. Companion decisions and open questions live in
 | BD-1-11 | done | `structural/odot/box_beam.py` (`layout_load_plate`, added; catalog pre-existing) | `Notebooks/res/BD-1-11.py` | 41 total in `test_odot_box_beam.py` (7 new) |
 | EXJ-4-87 | done | `structural/odot/strip_seal_joint.py` | `Notebooks/res/EXJ-4-87.py` | 8 (`test_odot_strip_seal_joint.py`) |
 | EXJ-5-93 | done | `structural/odot/strip_seal_joint_box_beam.py` | `Notebooks/res/EXJ-5-93.py` | 8 (`test_odot_strip_seal_joint_box_beam.py`) |
+| PSBD-1-25 | done (earlier work) | `structural/odot/box_beam.py` + `box_beam_design.py` | `rhino_box_beam.build_box_beams` (full pipeline, not a single GH script) | shared with box-beam tests |
+| PSID-1-13 | done | `structural/odot/ps_i_beam.py` | `Notebooks/res/PSID-1-13.py` | 7 (`test_odot_ps_i_beam.py`) |
+| ICD-1-20, ICD-2-18, SICD-1-21, SICD-2-14 | not built (by design) | — | — | end-condition add-ons / guide sheets, not standalone structures |
