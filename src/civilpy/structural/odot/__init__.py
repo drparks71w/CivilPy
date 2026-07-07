@@ -121,6 +121,12 @@ Sub-modules:
     standard (see the module docstring). The bearing-seat and
     wingwall-limit formulas, section minimums, and
     ``layout_typical_abutment`` for a visual check only.
+
+``fixed_bearing``
+    Fixed (pin) bearings for steel beam and girder bridges (FB-1-82):
+    the F-50..F-400 dimension/capacity table and
+    ``layout_fixed_bearing`` (masonry plate + bearing pin + top plate)
+    behind the FB-1-82 component.
 """
 
 from civilpy.structural.odot.bridge_railing import (
@@ -316,6 +322,15 @@ from civilpy.structural.odot.typical_abutment import (
     AbutmentLayout as TypicalAbutmentLayout,
     bearing_seat_dim_a_ft,
     layout_typical_abutment,
+)
+from civilpy.structural.odot.fixed_bearing import (
+    FIXED_BEARINGS,
+    FixedBearing,
+    FixedBearingLayout,
+    fixed_bearing,
+    lateral_clearance_in,
+    layout_fixed_bearing,
+    smallest_for_load as fixed_bearing_smallest_for_load,
 )
 from civilpy.structural.odot.deck_design import (
     DESIGN_METHOD,
@@ -521,4 +536,11 @@ __all__ = [
     "TypicalAbutmentLayout",
     "bearing_seat_dim_a_ft",
     "layout_typical_abutment",
+    "FIXED_BEARINGS",
+    "FixedBearing",
+    "FixedBearingLayout",
+    "fixed_bearing",
+    "lateral_clearance_in",
+    "layout_fixed_bearing",
+    "fixed_bearing_smallest_for_load",
 ]

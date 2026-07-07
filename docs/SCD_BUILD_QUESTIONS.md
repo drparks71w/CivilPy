@@ -3,6 +3,30 @@
 Running record of judgment calls made while building the SCD components.
 Format: SCD — question — what was assumed — what to revisit if wrong.
 
+## Cross-cutting: module-name/function-name collisions in `odot/__init__.py`
+
+- **Pitfall found while testing FB-1-82.** Several submodules define a
+  guarded-lookup function with the *same name* as the module itself
+  (`rocker_bolster.py` has `def rocker_bolster(...)`, `fixed_bearing.py`
+  has `def fixed_bearing(...)`). `odot/__init__.py` re-exports that
+  function into the package namespace, which — because Python sets the
+  package's submodule attribute as an import side effect and then the
+  `from .foo import foo` statement rebinds that same attribute name to
+  the function — silently shadows the submodule. `from
+  civilpy.structural.odot import fixed_bearing as fb` (or `import
+  civilpy.structural.odot.fixed_bearing as fb`) then binds `fb` to the
+  *function*, not the module, and `fb.SCD` etc. raise `AttributeError`.
+  Only affects code that wants the *module itself* aliased through the
+  package (GH scripts and `__init__.py` are unaffected — they use `from
+  civilpy.structural.odot.fixed_bearing import NAME`, the direct
+  dotted-submodule form, which always resolves correctly). Fix in test
+  code: import the specific names you need directly from the dotted
+  submodule path instead of aliasing the module through the package
+  (see `test_odot_fixed_bearing.py`'s top-of-file comment for the
+  worked example). Worth remembering before adding any new
+  `<name>.py` module whose primary lookup function is also called
+  `<name>`.
+
 ## Cross-cutting: Rhino layer taxonomy (2026-07-06)
 
 - **Culvert vs. Site assignment.** Every SCD component's GH script bakes
@@ -57,6 +81,26 @@ Format: SCD — question — what was assumed — what to revisit if wrong.
   portion for integral curb/barrier, curb-height transitions, deck
   crown/cross slope, sheet-2 joint grooves/seals (cataloged as data in
   `JOINT_DETAILS` / `JOINT_NOTES` / `SEAT_CONFIGURATIONS`).
+
+## FB-1-82 (rev. 07-19-2024)
+
+- **E used as masonry plate thickness, H as pin clearance above it** --
+  neither is explicitly labeled "plate thickness" on the sheet, but a
+  literal read of H as "overall height" (mirroring RB-1-55's H) placed
+  the pin partially below the base plate for several rows (checked and
+  rejected during development, not shipped). E is the smallest tabulated
+  dimension across every row, consistent with a base-plate thickness;
+  the stack (base + pin + top plate, all self-consistent) is verified in
+  `test_layout_stack_is_self_consistent`. Revisit if a clean render of
+  the ELEVATIONS OF FIXED BEARINGS view clarifies H/E's true roles.
+- **Anchor rod count and bearing-stiffener requirements are per-row
+  booleans** (notes 1 and 2 on the sheet), not geometry -- cataloged on
+  `FixedBearing` (`two_anchor_rods`, `stiffeners_required`) and reported,
+  not drawn.
+- **Not modeled**: anchor rods (1-1/4" dia x 1'-7", 2 or 4 depending on
+  the row), welds, bearing seat reinforcing, 1/8" preformed bearing pad,
+  the roadway-grade bevel (note: upper plate bevels to match grade over
+  2%, keeping dimension C at plate center).
 
 ## RB-1-55 (rev. 07-19-2024) -- Wave 5 begins
 
