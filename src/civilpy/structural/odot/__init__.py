@@ -42,7 +42,9 @@ Sub-modules:
 
 ``rocker_bolster``
     Structural steel rocker and bolster bearing dimensions and capacities
-    (RB-1-55).
+    (RB-1-55), plus ``layout_rocker_bolster``: the shared base plate, the
+    bolster's flat-top tapered body, and the rocker's curved-top body
+    (TOP BEARING DETAIL radius formula) behind the RB-1-55 component.
 
 ``headwall``
     Cast-in-place half-height headwall dimension tables (HW-2.1 corrugated-
@@ -177,8 +179,12 @@ from civilpy.structural.odot.rocker_bolster import (
     MAX_MOVEMENT,
     ROCKER_BOLSTERS,
     RockerBolster,
+    RockerBolsterLayout,
+    layout_rocker_bolster,
     rocker_bolster,
     smallest_for_load,
+    top_bearing_plate_radius_in,
+    top_bearing_web_radius_in,
 )
 from civilpy.structural.odot.headwall import (
     HEADWALLS_BY_DIAMETER,
@@ -402,6 +408,10 @@ __all__ = [
     "MAX_MOVEMENT",
     "rocker_bolster",
     "smallest_for_load",
+    "RockerBolsterLayout",
+    "layout_rocker_bolster",
+    "top_bearing_plate_radius_in",
+    "top_bearing_web_radius_in",
     "Headwall",
     "HEADWALLS_CIRCULAR",
     "HEADWALLS_BY_DIAMETER",

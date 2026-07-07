@@ -58,6 +58,32 @@ Format: SCD — question — what was assumed — what to revisit if wrong.
   crown/cross slope, sheet-2 joint grooves/seals (cataloged as data in
   `JOINT_DETAILS` / `JOINT_NOTES` / `SEAT_CONFIGURATIONS`).
 
+## RB-1-55 (rev. 07-19-2024) -- Wave 5 begins
+
+- **Dimension-letter roles inferred from the 1955 sheet's four sub-views**
+  (bolster front/side, rocker front/side) plus the existing catalog's own
+  test comment ("H ... 13-3/8 in overall height"). Confirmed: H = overall
+  height, T = base/masonry plate thickness (labeled "T MIN." on both
+  elevations), A = top bearing width (also the input to the TOP BEARING
+  DETAIL's r1/r2 formulas), B = base plate width in the front-view
+  (span) direction, L = base plate length in the side-view (transverse)
+  direction (shared by both bolster and rocker — same base footprint).
+  C is used as the tapered body height for both bolster and rocker (no
+  separate rocker-body-height letter exists on the sheet). D, F, G, K, M,
+  R, Y are cataloged but not incorporated into the drawn solid — their
+  precise roles (K = flange plate width; F = flange plate edge offset; G,
+  M = secondary/inner dimensions visible in the drawing but not
+  cross-verified against a clean render) are less certain and not needed
+  for a proportioned visual check.
+- **Rocker curved top uses a half-cylinder sweep** at radius r2 = A/2 +
+  3/32" (the sheet's own "TOP PLATE" formula), not the true rocker
+  contact geometry (which is a compound curve per the TOP BEARING DETAIL's
+  r1-vs-r2 relationship, r1 being the tighter web curve). Good enough for
+  a proportioned visual check, not for contact-stress verification.
+- **Not modeled**: flange plate + fillet weld, anchor bolts (2 x 1-1/4"
+  swedge bolts per bolster), 1-1/2" dowels (rocker), bearing seat
+  reinforcing steel, 1/8" preformed bearing pad.
+
 ## A-1-20 (rev. 01-19-2024) -- Wave 4 complete
 
 - **Strongest "not a standalone standard" disclaimer of any SCD so far.**
