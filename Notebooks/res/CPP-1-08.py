@@ -26,6 +26,18 @@ Baked geometry is display-only and carries no gdr.* tags. Uses the
 Substructure:: layer group (a true NBIS substructure element).
 """
 
+"""
+# //TODO - Missing # r: civilpy
+- Orientation (front/right) is backwards causing skew to not work correctly
+- Piles are never generated or rendered
+- No rebar
+- No option for Pile (steel, concrete, concrete encased), needs sized as well
+- No Shear key option
+- No elevation/terrain/station/offset components to dictate where the pier is located wrt the overall bridge
+- Add safety checks from standard into code, piles must be > 10' driven into the ground, max span length 57.5', skew 
+    max < 30°, unsupported length of pile  
+"""
+
 import Rhino
 import Rhino.Geometry as rg
 
