@@ -26,6 +26,12 @@ Outputs:
 Baked geometry is display-only and carries no gdr.* tags.
 """
 
+"""
+# //TODO - missing civilpy import
+- 1. Error running script: No overload for method 'Surface.ToBrep{}' takes '1' arguments(<class 'bool'>) [54:1]
+- Probably all the same issues as HW-1.1.py too, check it's TODOs
+"""
+
 import Rhino
 import Rhino.Geometry as rg
 

@@ -39,4 +39,5 @@ linework typed as the appropriate type of line
 | ✅     | DS-1-92 - Reviewed  |     8/10      |
 | ✅     | EXJ-4-87 - Reviewed |     4/10      |
 | ✅     | EXJ-5-93 - Reviewed |     4/10      |
-
+| ✅     | FB-1-82 - Reviewed  |     5/10      |
+| ✅     |  HW-1.1 - Reviewed  |     4/10      |
