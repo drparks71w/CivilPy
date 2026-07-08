@@ -28,6 +28,11 @@ Outputs:
 Baked geometry is display-only and carries no gdr.* tags.
 """
 
+"""
+# //TODO - add # r: civilpy
+- Ignoring these SCDs for now, focus on PCB
+"""
+
 import Rhino
 import Rhino.Geometry as rg
 

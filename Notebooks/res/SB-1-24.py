@@ -28,6 +28,18 @@ Deck:: layer group (this is the deck/superstructure itself, not an SCD
 plan-insert accessory) -- see docs/Rhino Design Philosophy.md.
 """
 
+"""
+# //TODO - add # r: civilpy
+- Span/Width/Skew seem to work properly
+- No transverse rebar shown
+- Rebar appears below concrete deck when baked
+- Doesn't Rely on alignment/abutment elevation (which would be dependent on terrain)
+- Standard shows hooked "A-Bars" not shown in Rhino Model
+- No Edge Beam Detail
+- Needs approach slabs/abutments to check for rebar conflicts coming from both
+- Same rebar conflict checks with most Parapet/Barrier Types
+"""
+
 import Rhino
 import Rhino.Geometry as rg
 
