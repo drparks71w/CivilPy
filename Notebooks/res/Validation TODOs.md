@@ -25,12 +25,12 @@ linework typed as the appropriate type of line
 - When inputs have very limited numbers of string options as inputs, design them for use with a drop down.
 - 
 
-| Status |   SCD Name/Notes   | Quality Score |
-|:-------|:------------------:|:-------------:|
-| ✅     | A-1-20 - Reviewed  |     2/10      |
-| ✅     | AS-1-15 - Reviewed |     7/10      |
-| ✅     | AS-2-15 - Reviewed |     5/10      |
-| ✅     |  BCHW - Reviewed   |     2/10      |
-| ✅     | BD-1-11 - Reviewed |     4/10      |
-
+| Status |   SCD Name/Notes    | Quality Score |
+|:-------|:-------------------:|:-------------:|
+| ✅     |  A-1-20 - Reviewed  |     2/10      |
+| ✅     | AS-1-15 - Reviewed  |     7/10      |
+| ✅     | AS-2-15 - Reviewed  |     5/10      |
+| ✅     |   BCHW - Reviewed   |     2/10      |
+| ✅     | BD-1-11 - Reviewed  |     4/10      |
+| ✅     | CPA-1-08 - Reviewed |     4/10      |
 

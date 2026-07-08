@@ -30,6 +30,19 @@ Substructure:: layer group (this is the abutment, an NBIS substructure
 element) -- see docs/Rhino Design Philosophy.md.
 """
 
+"""
+# //TODOs - 
+- missing # r: civilpy
+- Skew input has no effect
+- Wingwall only appears on one side, only appearing as a rectangular square, doesn't have the near/far/alignment based properties
+- Cap appears at z=0, which seems low, probably needs to have a height value and needs to take into account the terrain
+- Abutment is coming through as a rectangle, not a true abutment, no rebar components included
+- missing neoprene sheeting/drainage elements/PEJF/etc. and other materials that need to be conveyed in a actual drawing
+- no inputs/outputs for the actual piles.
+- Needs to take slab into account for things like edge beams and rebar coordination
+- Should probably be seperated into three distinct components for practical reasons, footing, backwall/stem, wingwalls
+"""
+
 import Rhino
 import Rhino.Geometry as rg
 
