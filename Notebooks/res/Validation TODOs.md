@@ -24,7 +24,12 @@ to "hidden" internal components like rebar.
 linework typed as the appropriate type of line
 - When inputs have very limited numbers of string options as inputs, design them for use with a drop down.
 - Missing 3 Expansion Joint Standards - EXJ-2-81, EXJ-3-82, EXJ-6-17
+- Missing HW-2.2 Half-Height Headwalls for Concrete Pipe
+- Missing ICD-1-20 and ICD-2-18 (both very important details)
+- Missing NBS-1-09
 - 
+
+
 
 | Status |   SCD Name/Notes    | Quality Score |
 |:-------|:-------------------:|:-------------:|
@@ -41,3 +46,9 @@ linework typed as the appropriate type of line
 | ✅     | EXJ-5-93 - Reviewed |     4/10      |
 | ✅     | FB-1-82 - Reviewed  |     5/10      |
 | ✅     |  HW-1.1 - Reviewed  |     4/10      |
+| ✅     |  HW-2.1 - Reviewed  |     1/10      |
+| ✅     |  HW-2.1 - Reviewed  |     1/10      |
+| ✅     |  PCB-91 - Reviewed  |     8/10      |
+
+
+

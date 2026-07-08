@@ -25,6 +25,16 @@ Outputs:
 Baked geometry is display-only and carries no gdr.* tags.
 """
 
+"""
+# //TODO - Missing # r: civilpy
+- Front/Right Views swapped
+- Needs to follow a deck/road elevation elevation vertically and either a CL or a Construction joint offset
+- Ideally would be able to articulate them to accomodate a curve, but that's nit-picky compared to the other SCDs
+- No Rebar/Anchor bolts shown
+- The void doesn't extend fully out the sides (meant to be for drainage)
+- Probably need components like CL and UDL to be transferred to MIDAS to be able to run an analysis.
+"""
+
 import Rhino
 import Rhino.Geometry as rg
 
