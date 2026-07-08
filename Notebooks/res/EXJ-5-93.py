@@ -22,6 +22,14 @@ Outputs:
 Baked geometry is display-only and carries no gdr.* tags.
 """
 
+"""
+# //TODO - Missing # r: civilpy
+- just shows string points in preview, no joint or 3D object
+- needs to display plates, shear studs, cover plates, retainers glands
+- should take stringers, deck, curbs, etc. into consideration, station is really probably the only designer dependent 
+    variable
+"""
+
 import Rhino
 import Rhino.Geometry as rg
 
