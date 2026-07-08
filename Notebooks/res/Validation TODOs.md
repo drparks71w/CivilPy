@@ -27,28 +27,29 @@ linework typed as the appropriate type of line
 - Missing HW-2.2 Half-Height Headwalls for Concrete Pipe
 - Missing ICD-1-20 and ICD-2-18 (both very important details)
 - Missing NBS-1-09
+- Missing PSBD-1-25 (Pretty major one to leave out)
 - 
 
 
 
-| Status |   SCD Name/Notes    | Quality Score |
-|:-------|:-------------------:|:-------------:|
-| ✅     |  A-1-20 - Reviewed  |     2/10      |
-| ✅     | AS-1-15 - Reviewed  |     7/10      |
-| ✅     | AS-2-15 - Reviewed  |     5/10      |
-| ✅     |   BCHW - Reviewed   |     2/10      |
-| ✅     | BD-1-11 - Reviewed  |     4/10      |
-| ✅     | CPA-1-08 - Reviewed |     5/10      |
-| ✅     | CPP-1-08 - Reviewed |     5/10      |
-| ✅     | CS-1-24 - Reviewed  |     4/10      |
-| ✅     | DS-1-92 - Reviewed  |     8/10      |
-| ✅     | EXJ-4-87 - Reviewed |     4/10      |
-| ✅     | EXJ-5-93 - Reviewed |     4/10      |
-| ✅     | FB-1-82 - Reviewed  |     5/10      |
-| ✅     |  HW-1.1 - Reviewed  |     4/10      |
-| ✅     |  HW-2.1 - Reviewed  |     1/10      |
-| ✅     |  HW-2.1 - Reviewed  |     1/10      |
-| ✅     |  PCB-91 - Reviewed  |     8/10      |
-
+| Status |    SCD Name/Notes    | Quality Score |
+|:-------|:--------------------:|:------------:|
+| ✅     |  A-1-20 - Reviewed   |     2/10     |
+| ✅     |  AS-1-15 - Reviewed  |     7/10     |
+| ✅     |  AS-2-15 - Reviewed  |     5/10     |
+| ✅     |   BCHW - Reviewed    |     2/10     |
+| ✅     |  BD-1-11 - Reviewed  |     4/10     |
+| ✅     | CPA-1-08 - Reviewed  |     5/10     |
+| ✅     | CPP-1-08 - Reviewed  |     5/10     |
+| ✅     |  CS-1-24 - Reviewed  |     4/10     |
+| ✅     |  DS-1-92 - Reviewed  |     8/10     |
+| ✅     | EXJ-4-87 - Reviewed  |     4/10     |
+| ✅     | EXJ-5-93 - Reviewed  |     4/10     |
+| ✅     |  FB-1-82 - Reviewed  |     5/10     |
+| ✅     |  HW-1.1 - Reviewed   |     4/10     |
+| ✅     |  HW-2.1 - Reviewed   |     1/10     |
+| ✅     |  HW-2.1 - Reviewed   |     1/10     |
+| ✅     |  PCB-91 - Reviewed   |     8/10     |
+| ✅     | PSID-1-13 - Reviewed |     /10      |
 
 

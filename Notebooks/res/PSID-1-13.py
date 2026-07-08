@@ -22,6 +22,18 @@ Outputs:
 Baked geometry is display-only and carries no gdr.* tags.
 """
 
+"""
+# //TODO - Add # r: civilpy
+- Didn't Generate a preview
+- One of the most complicated to generate, used test values "AASHTO Type 3", length=60.00, bake=true
+- No prestressing strands or details shown like rebar.
+- Uses default layer, needs to be in the correct superstructure -> girders -> rebar or similar 
+- Needs to be able to interact with deck (integral)
+- Needs to have section type and strand details to be able to communicate w/ Midas
+- Needs shipping holes, extra rebar along debonded length of strand, etc.
+- Need to be able to design diaphragms between the girders
+"""
+
 import Rhino
 import Rhino.Geometry as rg
 
