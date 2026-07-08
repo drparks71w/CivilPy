@@ -22,6 +22,12 @@ Baked geometry is display-only and carries no gdr.* tags. Uses the
 Superstructure:: layer group (bearings are a superstructure element).
 """
 
+"""
+# //TODO - Missing # r: civilpy
+- Preview only shows connecting pin and top plate, doesn't show bottom plate, top pin retainer or any anchor rods
+- Needs to take into account abutment seat and skew, girders should probably an input, 
+"""
+
 import Rhino
 import Rhino.Geometry as rg
 
