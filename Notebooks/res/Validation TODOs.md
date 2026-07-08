@@ -28,8 +28,20 @@ linework typed as the appropriate type of line
 - Missing ICD-1-20 and ICD-2-18 (both very important details)
 - Missing NBS-1-09
 - Missing PSBD-1-25 (Pretty major one to leave out)
-- 
-
+- Missing DBR-2-73 (Deep Beam Bridge Railing)
+- Missing DBR-3-11 (Deep Beam Bridge Retrofit Railing)
+- Missing SBR-1-20 (42" Single Slope Concrete Bridge Railing)
+- Missing SBR-2-20 (57" Single Slope Concrete Median Bridge Railing)
+- Missing TBR-1-11 (Tube Bridge Railing)
+- Missing TST-1-99/TST-2-21 (Twin Steel Tube Bridge Railings)
+- Missing BR-2-15 (Pedestrian Railing/Concrete Parapet)
+- Missing MSE-1-07 (Mechanically Stabilized Earth Walls)
+- Missing PMW-1-12 (Prefabricated Modular Walls)
+- Missing GRS-1-13 (Geosynthetic Reinforced Soil (Integrated Bridge System))
+- Missing AS-3-15
+- Missing CHW-1.1/2.1 Concrete Headwalls
+- Missing PSBD-2-14 (Prestressed Concrete Box Beams (companion to PSBD-1-25))
+- Missing EAB-1-22 (Elastomeric Bearings Very important - High priority)
 
 
 | Status |    SCD Name/Notes    | Quality Score |
