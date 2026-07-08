@@ -27,6 +27,18 @@ Superstructure:: layer group (bearings are a superstructure element, per
 Gdr.cs's LayerBearings).
 """
 
+"""
+# //TODO - Missing r: civilpy
+- No Preview of objects
+- Front/Right Orientation Swapped
+- displays two objects, neither really look like a bolster or a rocker
+- Outputs to a dedicated layer fine (under superstructure) should use it's common name though in the layer
+- Needs 3 distinct parts bottom flange plate 
+- Needs to generate a bolster or a rocker, not both
+- Needs to be oriented off of a steel girder's bottom flange and abutment seat
+- Needs Anchor bolts
+"""
+
 import Rhino
 import Rhino.Geometry as rg
 
