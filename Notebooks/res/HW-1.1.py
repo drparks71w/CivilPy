@@ -30,6 +30,19 @@ Outputs:
 Baked geometry is display-only and carries no gdr.* tags.
 """
 
+"""
+# //TODO - Missing # r: civilpy
+- One of the few who's orientation does not need corrected (front and right are the correct viewpoints.
+- Needs a "Near"/"Far" designation and an alignment to determine which way the wing walls point
+- Walls are currently 2D instead of 3D
+- Needs to take terrain and groundlines into account
+- Doesn't currently account for drainage weep holes or slab underneath headwalls
+- Once baked the "diameter becomes 2D, still missing thickness and rebar though
+- No control over wingwall
+- Skew only seems to change the wingwalls, not the opening itself
+- 
+"""
+
 import Rhino
 import Rhino.Geometry as rg
 
