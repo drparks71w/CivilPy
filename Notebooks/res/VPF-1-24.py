@@ -22,6 +22,12 @@ Outputs:
 Baked geometry is display-only and carries no gdr.* tags.
 """
 
+"""
+# //TODO - add # r: civilpy
+- Currently just shows 2 lines and post base points. Fine for now, minor detail for Midas Workflow
+- Probably needs to be based on a parapet/bridge railing in the majority of cases
+"""
+
 import Rhino
 import Rhino.Geometry as rg
 

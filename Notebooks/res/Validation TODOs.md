@@ -33,23 +33,23 @@ linework typed as the appropriate type of line
 
 
 | Status |    SCD Name/Notes    | Quality Score |
-|:-------|:--------------------:|:------------:|
-| ✅     |  A-1-20 - Reviewed   |     2/10     |
-| ✅     |  AS-1-15 - Reviewed  |     7/10     |
-| ✅     |  AS-2-15 - Reviewed  |     5/10     |
-| ✅     |   BCHW - Reviewed    |     2/10     |
-| ✅     |  BD-1-11 - Reviewed  |     4/10     |
-| ✅     | CPA-1-08 - Reviewed  |     5/10     |
-| ✅     | CPP-1-08 - Reviewed  |     5/10     |
-| ✅     |  CS-1-24 - Reviewed  |     4/10     |
-| ✅     |  DS-1-92 - Reviewed  |     8/10     |
-| ✅     | EXJ-4-87 - Reviewed  |     4/10     |
-| ✅     | EXJ-5-93 - Reviewed  |     4/10     |
-| ✅     |  FB-1-82 - Reviewed  |     5/10     |
-| ✅     |  HW-1.1 - Reviewed   |     4/10     |
-| ✅     |  HW-2.1 - Reviewed   |     1/10     |
-| ✅     |  HW-2.1 - Reviewed   |     1/10     |
-| ✅     |  PCB-91 - Reviewed   |     8/10     |
-| ✅     | PSID-1-13 - Reviewed |     /10      |
-
-
+|:-------|:--------------------:|:-------------:|
+| ✅     |  A-1-20 - Reviewed   |     2/10      |
+| ✅     |  AS-1-15 - Reviewed  |     7/10      |
+| ✅     |  AS-2-15 - Reviewed  |     5/10      |
+| ✅     |   BCHW - Reviewed    |     2/10      |
+| ✅     |  BD-1-11 - Reviewed  |     4/10      |
+| ✅     | CPA-1-08 - Reviewed  |     5/10      |
+| ✅     | CPP-1-08 - Reviewed  |     5/10      |
+| ✅     |  CS-1-24 - Reviewed  |     4/10      |
+| ✅     |  DS-1-92 - Reviewed  |     8/10      |
+| ✅     | EXJ-4-87 - Reviewed  |     4/10      |
+| ✅     | EXJ-5-93 - Reviewed  |     4/10      |
+| ✅     |  FB-1-82 - Reviewed  |     5/10      |
+| ✅     |  HW-1.1 - Reviewed   |     4/10      |
+| ✅     |  HW-2.1 - Reviewed   |     1/10      |
+| ✅     |  HW-2.1 - Reviewed   |     1/10      |
+| ✅     |  PCB-91 - Reviewed   |     8/10      |
+| ✅     | PSID-1-13 - Reviewed |     5/10      |
+| ✅     |  SB-1-24 - Reviewed  |     7/10      |
+| ✅     | VPF-1-24 - Reviewed  |     5/10      |
