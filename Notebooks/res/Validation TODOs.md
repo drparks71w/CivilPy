@@ -23,6 +23,7 @@ to "hidden" internal components like rebar.
 - Objects that output "reference" lines, like "Girder Centerline" that tools like midas will rely on should output that 
 linework typed as the appropriate type of line
 - When inputs have very limited numbers of string options as inputs, design them for use with a drop down.
+- Missing 3 Expansion Joint Standards - EXJ-2-81, EXJ-3-82, EXJ-6-17
 - 
 
 | Status |   SCD Name/Notes    | Quality Score |
@@ -34,5 +35,8 @@ linework typed as the appropriate type of line
 | ✅     | BD-1-11 - Reviewed  |     4/10      |
 | ✅     | CPA-1-08 - Reviewed |     5/10      |
 | ✅     | CPP-1-08 - Reviewed |     5/10      |
-| ✅     |  CS-1-24 - Reviewed |     4/10     |
+| ✅     | CS-1-24 - Reviewed  |     4/10      |
+| ✅     | DS-1-92 - Reviewed  |     8/10      |
+| ✅     | EXJ-4-87 - Reviewed |     4/10      |
+
 

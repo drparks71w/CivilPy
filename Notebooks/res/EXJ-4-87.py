@@ -23,6 +23,14 @@ Outputs:
 Baked geometry is display-only and carries no gdr.* tags.
 """
 
+"""
+# //TODO - Missing r: civilpy
+- Shows up as only a single line with a has mark over each stringer, no 3D shape
+- Should take in as inputs other objects instead of a series, stringer object, station, alignment, etc.
+- Missing a ton of details including shear studs, cover plates, retainers glands
+- Missing 3 other standards EXJ-2-81, EXJ-3-82, EXJ-6-17
+"""
+
 import Rhino
 import Rhino.Geometry as rg
 
