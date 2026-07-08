@@ -29,6 +29,21 @@ Baked geometry is display-only and carries no gdr.* tags. Uses the
 Deck:: layer group (this SCD is the deck/superstructure itself).
 """
 
+"""
+# //TODO - Missing # r: civilpy
+- Right and Front orientation flipped
+- Rebar appears under the slab
+- No option for "edge beams"
+- Slab doesn't preview, only rebar
+- No transverse Rebar
+- Needs an "over the side drainage" boolean toggle
+- End span is kind of a weird input, should either probably be total span, or main/center span
+- Width doesn't actually change the # of A/B/C/D Bars (might actually be correct, I need to verify that aspect)
+- A/B bars are correctly centered over the piers like the standard outlines
+- Future improvements: figure out calculation formulas the standard is based on and integrate those into the functions
+    to allow for changes like modifying rebar from epoxy to stainless or GFRP
+"""
+
 import Rhino
 import Rhino.Geometry as rg
 
