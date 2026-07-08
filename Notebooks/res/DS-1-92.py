@@ -24,6 +24,13 @@ Outputs:
 Baked geometry is display-only and carries no gdr.* tags.
 """
 
+"""
+# //TODO - missing # r: civilpy
+- Orientation wrong (Front/Right) flipped
+- Probably needs to take a "Deck Object" and "Railing Object/s" of some kind as an input so that it knows the station + 
+    offsets to occupy. Tested as a series as a "list access" input
+"""
+
 import math
 
 import Rhino

@@ -34,5 +34,5 @@ linework typed as the appropriate type of line
 | ✅     | BD-1-11 - Reviewed  |     4/10      |
 | ✅     | CPA-1-08 - Reviewed |     5/10      |
 | ✅     | CPP-1-08 - Reviewed |     5/10      |
-
+| ✅     |  CS-1-24 - Reviewed |     4/10     |
 
