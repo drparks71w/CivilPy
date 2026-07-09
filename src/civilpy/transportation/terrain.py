@@ -1,0 +1,264 @@
+"""Terrain: a source-agnostic ground surface that answers ``elevation_at``.
+
+The bridge/analysis pipeline places objects by station and offset along an
+:class:`~civilpy.transportation.alignment.Alignment`; the vertical position of
+anything that meets grade (abutment seats, wingwall foreslopes, footing cutoff,
+approach grades) comes from the ground surface, which this object models as a
+triangulated irregular network (TIN).
+
+The **query core** (``elevation_at`` by barycentric interpolation over the TIN)
+is pure ``numpy`` + ``scipy`` so it runs and tests anywhere.  The heavier
+ingestion paths are lazy:
+
+* :meth:`from_las` reads OGRIP LiDAR ``.las``/``.laz`` (imports ``laspy`` only
+  when called) — the early-design / demo source.
+* :meth:`from_landxml` reads a survey-shot TIN (LandXML ``Surface``) with its
+  own faces/breaklines — the Stage-3 production source.
+* :meth:`to_open3d_mesh` exports a mesh (imports ``open3d`` only when called).
+
+Coordinates are ``(x=East, y=North, z=Elevation)`` in feet, matching
+:mod:`civilpy.transportation.alignment`.
+
+Examples
+--------
+>>> import numpy as np
+>>> # a plane tilted 2% east, 1% north, sampled on a coarse grid
+>>> gx, gy = np.meshgrid(np.linspace(0, 100, 6), np.linspace(0, 100, 6))
+>>> z = 500.0 + 0.02 * gx + 0.01 * gy
+>>> pts = np.column_stack([gx.ravel(), gy.ravel(), z.ravel()])
+>>> t = Terrain.from_points(pts)
+>>> round(t.elevation_at(50.0, 50.0), 6)      # 500 + 1.0 + 0.5
+501.5
+>>> t.elevation_at(-10.0, 50.0) is None        # outside the hull
+True
+"""
+
+from __future__ import annotations
+
+#  CivilPy
+#  Copyright (C) 2019-2026 Dane Parks
+#
+#  SPDX-License-Identifier: MIT
+#  See the LICENSE file in the project root for full license text.
+
+import numpy as np
+from scipy.spatial import Delaunay, cKDTree
+
+
+class Terrain:
+    """A triangulated ground surface.
+
+    Parameters
+    ----------
+    points : array_like, shape (N, 3)
+        ``(x, y, z)`` ground points, feet.
+    faces : array_like, shape (M, 3), optional
+        Triangle vertex indices (a supplied TIN, e.g. from a survey with
+        breaklines).  When omitted the XY projection is Delaunay-triangulated.
+    """
+
+    def __init__(self, points, faces=None):
+        pts = np.asarray(points, dtype=float)
+        if pts.ndim != 2 or pts.shape[1] != 3:
+            raise ValueError("points must be an (N, 3) array of x, y, z")
+        if len(pts) < 3:
+            raise ValueError("a terrain needs at least three points")
+        self.points = pts
+        self._xy = pts[:, :2]
+        self._z = pts[:, 2]
+        if faces is None:
+            self._delaunay = Delaunay(self._xy)
+            self.faces = self._delaunay.simplices
+            self._kdtree = None
+        else:
+            self._delaunay = None
+            self.faces = np.asarray(faces, dtype=int)
+            if self.faces.ndim != 2 or self.faces.shape[1] != 3:
+                raise ValueError("faces must be an (M, 3) array of indices")
+            self._centroids = self._xy[self.faces].mean(axis=1)
+            self._kdtree = cKDTree(self._centroids)
+
+    # -- constructors ------------------------------------------------------
+
+    @classmethod
+    def from_points(cls, points, faces=None) -> "Terrain":
+        """Build from an ``(N, 3)`` array of ground points."""
+        return cls(points, faces=faces)
+
+    @classmethod
+    def from_xyz_file(cls, path, *, skiprows: int = 0,
+                      cols: tuple[int, int, int] = (0, 1, 2)) -> "Terrain":
+        """Build from a whitespace/CSV ``.xyz``/``.txt`` file of point rows."""
+        data = np.loadtxt(path, skiprows=skiprows)
+        return cls(data[:, list(cols)])
+
+    @classmethod
+    def from_las(cls, path, *, ground_only: bool = True, bbox=None,
+                 thin: int = 1) -> "Terrain":
+        """Build from an OGRIP LiDAR ``.las``/``.laz`` file (lazy ``laspy``).
+
+        ``ground_only`` keeps only ASPRS class 2 (ground) returns; ``bbox`` is
+        an optional ``(xmin, ymin, xmax, ymax)`` clip; ``thin`` keeps every
+        ``thin``-th point to cap density.
+        """
+        try:
+            import laspy
+        except ImportError as exc:                       # pragma: no cover
+            raise ImportError(
+                "reading LiDAR needs 'laspy' (pip install laspy[laszip]); "
+                "the Terrain query core does not require it") from exc
+        las = laspy.read(str(path))
+        x = np.asarray(las.x, dtype=float)
+        y = np.asarray(las.y, dtype=float)
+        z = np.asarray(las.z, dtype=float)
+        keep = np.ones(len(x), dtype=bool)
+        if ground_only and hasattr(las, "classification"):
+            keep &= np.asarray(las.classification) == 2
+        if bbox is not None:
+            xmin, ymin, xmax, ymax = bbox
+            keep &= (x >= xmin) & (x <= xmax) & (y >= ymin) & (y <= ymax)
+        idx = np.nonzero(keep)[0]
+        if thin > 1:
+            idx = idx[::thin]
+        return cls(np.column_stack([x[idx], y[idx], z[idx]]))
+
+    @classmethod
+    def from_landxml(cls, path, *, surface: str | None = None) -> "Terrain":
+        """Build from a LandXML ``Surface`` TIN (survey deliverable).
+
+        Honors the supplied faces (breaklines preserved).  LandXML point
+        coordinates are ``northing easting elevation``; they are stored as
+        ``(easting, northing, elevation)``.  Faces are 1-indexed; faces with a
+        negative index (LandXML's deleted/invisible marker) are dropped.
+        """
+        import xml.etree.ElementTree as ET
+
+        root = ET.parse(str(path)).getroot()
+
+        def _local(tag):                     # strip the LandXML namespace
+            return tag.rsplit("}", 1)[-1]
+
+        surf = None
+        for el in root.iter():
+            if _local(el.tag) == "Surface" and (
+                    surface is None or el.get("name") == surface):
+                surf = el
+                break
+        if surf is None:
+            raise ValueError(f"no Surface {surface!r} found in {path}")
+
+        pnts, id_map, faces = [], {}, []
+        for el in surf.iter():
+            lt = _local(el.tag)
+            if lt == "P":
+                vals = [float(v) for v in (el.text or "").split()]
+                northing, easting, elev = vals[0], vals[1], vals[2]
+                id_map[el.get("id")] = len(pnts)
+                pnts.append((easting, northing, elev))
+            elif lt == "F":
+                ids = [int(v) for v in (el.text or "").split()]
+                if any(i < 0 for i in ids):
+                    continue
+                faces.append([i - 1 for i in ids[:3]])     # 1- to 0-indexed
+        if not pnts or not faces:
+            raise ValueError(f"Surface in {path} has no points/faces")
+        return cls(np.asarray(pnts, float), faces=np.asarray(faces, int))
+
+    # -- query core --------------------------------------------------------
+
+    def elevation_at(self, x: float, y: float) -> float | None:
+        """Ground elevation at plan ``(x, y)`` by barycentric interpolation on
+        the TIN; ``None`` when the point is outside the triangulated area."""
+        p = np.array([float(x), float(y)])
+        if self._delaunay is not None:
+            s = int(self._delaunay.find_simplex(p))
+            if s < 0:
+                return None
+            tr = self._delaunay.transform[s]
+            b = tr[:2].dot(p - tr[2])
+            bary = np.array([b[0], b[1], 1.0 - b[0] - b[1]])
+            verts = self._delaunay.simplices[s]
+            return float(bary.dot(self._z[verts]))
+        # supplied faces: search nearest centroids, test containment
+        k = min(16, len(self.faces))
+        _, cand = self._kdtree.query(p, k=k)
+        for f in np.atleast_1d(cand):
+            bary = self._barycentric(p, self.faces[f])
+            if bary is not None and (bary >= -1e-9).all():
+                return float(bary.dot(self._z[self.faces[f]]))
+        return None
+
+    def _barycentric(self, p, face) -> np.ndarray | None:
+        (x1, y1), (x2, y2), (x3, y3) = self._xy[face]
+        det = (y2 - y3) * (x1 - x3) + (x3 - x2) * (y1 - y3)
+        if abs(det) < 1e-12:
+            return None
+        l1 = ((y2 - y3) * (p[0] - x3) + (x3 - x2) * (p[1] - y3)) / det
+        l2 = ((y3 - y1) * (p[0] - x3) + (x1 - x3) * (p[1] - y3)) / det
+        return np.array([l1, l2, 1.0 - l1 - l2])
+
+    # -- alignment-aware helpers ------------------------------------------
+
+    def elevation_along(self, alignment, station_ft: float,
+                        offset_ft: float = 0.0) -> float | None:
+        """Ground elevation at ``(station, offset)`` on ``alignment``."""
+        x, y, _ = alignment.point_at(station_ft, offset_ft)
+        return self.elevation_at(x, y)
+
+    def profile(self, alignment, stations, offset_ft: float = 0.0) -> list:
+        """Ground elevations along ``alignment`` at each of ``stations``."""
+        return [self.elevation_along(alignment, s, offset_ft) for s in stations]
+
+    # -- utilities ---------------------------------------------------------
+
+    @property
+    def bounds(self) -> tuple[float, float, float, float]:
+        """``(xmin, ymin, xmax, ymax)`` of the point set."""
+        lo = self._xy.min(axis=0)
+        hi = self._xy.max(axis=0)
+        return float(lo[0]), float(lo[1]), float(hi[0]), float(hi[1])
+
+    @property
+    def n_points(self) -> int:
+        return len(self.points)
+
+    @property
+    def n_triangles(self) -> int:
+        return len(self.faces)
+
+    def clip_to_bbox(self, xmin: float, ymin: float, xmax: float,
+                     ymax: float) -> "Terrain":
+        """Return a new re-triangulated ``Terrain`` of the points inside the
+        box (used to keep just the project corridor)."""
+        m = ((self._xy[:, 0] >= xmin) & (self._xy[:, 0] <= xmax)
+             & (self._xy[:, 1] >= ymin) & (self._xy[:, 1] <= ymax))
+        return Terrain(self.points[m])
+
+    def clip_to_corridor(self, alignment, half_width_ft: float, *,
+                         step_ft: float = 25.0) -> "Terrain":
+        """Return a new ``Terrain`` of points within ``half_width_ft`` of the
+        alignment (a station-sampled corridor), for trimming LiDAR to a site."""
+        stations = np.arange(alignment.start_station,
+                             alignment.end_station + step_ft, step_ft)
+        centers = np.array([alignment.point_at(s)[:2] for s in stations])
+        tree = cKDTree(centers)
+        d, _ = tree.query(self._xy, k=1)
+        return Terrain(self.points[d <= half_width_ft])
+
+    def to_open3d_mesh(self):                                # pragma: no cover
+        """Build an ``open3d`` triangle mesh (lazy import) for display/Rhino."""
+        try:
+            import open3d as o3d
+        except ImportError as exc:
+            raise ImportError(
+                "to_open3d_mesh needs 'open3d' (pip install open3d)") from exc
+        mesh = o3d.geometry.TriangleMesh()
+        mesh.vertices = o3d.utility.Vector3dVector(self.points)
+        mesh.triangles = o3d.utility.Vector3iVector(self.faces)
+        mesh.compute_vertex_normals()
+        return mesh
+
+    def __repr__(self):
+        x0, y0, x1, y1 = self.bounds
+        return (f"Terrain({self.n_points} pts, {self.n_triangles} tris, "
+                f"bounds=({x0:.1f}, {y0:.1f})-({x1:.1f}, {y1:.1f}))")
