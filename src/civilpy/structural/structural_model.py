@@ -72,7 +72,7 @@ DOF_NAMES = ("x", "y", "z", "rx", "ry", "rz")
 
 #: ``stm.member`` hint values (contract: ``auto`` is the never-written default;
 #: ``tie`` / ``strut`` are optional author overrides).
-MEMBER_TYPES = ("auto", "tie", "strut")
+MEMBER_TYPES = ("auto", "tie", "strut", "beam")
 
 #: Friendly support presets, expressed in the **2D analysis-plane** axes the
 #: ``stm.support`` contract uses (x = in-plane horizontal, y = in-plane
@@ -184,13 +184,13 @@ class Restraint:
 
 @dataclass
 class Element:
-    """A line member between two nodes -- IFC ``IfcStructuralCurveMember``.
+    """A member between nodes -- IFC ``IfcStructuralCurveMember`` or ``IfcStructuralSurfaceMember``.
 
     ``role`` is the typed-component taxonomy (e.g. ``member``, ``top_chord``,
     ``diagonal``) that later drives capacity-check routing and the MIDAS element
     type.  ``member_type`` is the ``stm.member`` hint: ``auto`` (default; the
     solver classifies by sign) or a forced ``tie`` / ``strut``.  ``midas_type``
-    is the export element type (``TRUSS`` / ``BEAM`` / ``TENS``).
+    is the export element type (``TRUSS`` / ``BEAM`` / ``TENS`` / ``PLATE``).
     """
 
     node_a: str
@@ -201,6 +201,8 @@ class Element:
     section: str | None = None
     material: str | None = None
     id: str = field(default_factory=_new_id)
+    # For area elements (Plate/Shell), more than two nodes are needed.
+    nodes: list[str] = field(default_factory=list)
     # free-form source tags (e.g. the authoring ``gdr.line`` / ``gdr.id`` /
     # ``stm.id``) preserved through read -> analysis -> write-back.
     metadata: dict = field(default_factory=dict)
@@ -211,9 +213,23 @@ class Element:
                 f"member_type must be one of {MEMBER_TYPES}, "
                 f"got {self.member_type!r}"
             )
+        if not self.nodes:
+            self.nodes = [self.node_a, self.node_b]
 
 
 # ── Loads ─────────────────────────────────────────────────────────────────────
+
+
+@dataclass
+class BeamLoad:
+    """A distributed load on a beam element."""
+
+    element_id: str
+    w_start: float  # kip/ft
+    w_end: float | None = None  # if None, uniform
+    case: str = "default"
+    direction: str = "GZ"  # Global Z
+    id: str = field(default_factory=_new_id)
 
 
 @dataclass
@@ -285,6 +301,7 @@ class StructuralModel:
     elements: dict[str, Element] = field(default_factory=dict)
     restraints: dict[str, Restraint] = field(default_factory=dict)
     loads: list[Load] = field(default_factory=list)
+    beam_loads: list[BeamLoad] = field(default_factory=list)
     load_cases: dict[str, LoadCase] = field(default_factory=dict)
     results: dict[str, Result] = field(default_factory=dict)
     units: Units = field(default_factory=Units)
@@ -301,13 +318,16 @@ class StructuralModel:
     def add_element(self, node_a: str, node_b: str, *, role: str = "member",
                     member_type: str = "auto", midas_type: str = "TRUSS",
                     section: str | None = None, material: str | None = None,
+                    nodes: list[str] | None = None,
                     id: str | None = None) -> Element:
-        for n in (node_a, node_b):
+        element_nodes = nodes if nodes else [node_a, node_b]
+        for n in element_nodes:
             if n not in self.nodes:
                 raise KeyError(f"element references unknown node id {n!r}")
         elem = Element(node_a, node_b, role=role, member_type=member_type,
                        midas_type=midas_type, section=section,
-                       material=material, **({"id": id} if id else {}))
+                       material=material, nodes=element_nodes,
+                       **({"id": id} if id else {}))
         self.elements[elem.id] = elem
         return elem
 
@@ -337,6 +357,20 @@ class StructuralModel:
         load = Load(node_id, fx=fx, fy=fy, fz=fz, mx=mx, my=my, mz=mz,
                     case=case, **({"id": id} if id else {}))
         self.loads.append(load)
+        return load
+
+    def add_beam_load(self, element_id: str, w_start: float,
+                      w_end: float | None = None, *,
+                      case: str = "default", direction: str = "GZ",
+                      id: str | None = None) -> BeamLoad:
+        if element_id not in self.elements:
+            raise KeyError(f"beam load references unknown element id {element_id!r}")
+        if case not in self.load_cases:
+            self.load_cases[case] = LoadCase(name=case)
+        load = BeamLoad(element_id, w_start=w_start, w_end=w_end,
+                        case=case, direction=direction,
+                        **({"id": id} if id else {}))
+        self.beam_loads.append(load)
         return load
 
     # ── Lookup ──────────────────────────────────────────────────────────────

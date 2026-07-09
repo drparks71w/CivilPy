@@ -207,9 +207,50 @@ def cs_slab_design(end_span_ft: int) -> CSSlabDesign:
 
 @dataclass(frozen=True)
 class ContinuousSlabInput:
+    """Project dimensions for a 3-span continuous slab bridge (CS-1-24)."""
     end_span_ft: int
     width_ft: float
     skew_deg: float = 0.0
+
+    @property
+    def total_length_ft(self) -> float:
+        """Total length: 2 * end_span + interior_span."""
+        return 2 * self.end_span_ft + interior_span_ft(self.end_span_ft)
+
+class ContinuousSlabComponent:
+    """Analytical component for a 3-span continuous slab (CS-1-24)."""
+
+    def __init__(self, inp: ContinuousSlabInput):
+        self.inp = inp
+
+    def structural_model(self, level: str = "L1") -> "StructuralModel":
+        """Returns a MIDAS-ready StructuralModel (L1 strip or L2 grillage)."""
+        from civilpy.structural.structural_model import StructuralModel
+        hub = StructuralModel()
+        design = cs_slab_design(int(self.inp.end_span_ft))
+
+        l_end = self.inp.end_span_ft
+        l_int = interior_span_ft(l_end)
+
+        stations = [0.0, l_end, l_end + l_int, 2 * l_end + l_int]
+
+        if level == "L1":
+            # Nodes at supports
+            nodes = [hub.add_node(s, 0, 0) for s in stations]
+
+            # Elements
+            for i in range(3):
+                hub.add_element(nodes[i].id, nodes[i+1].id,
+                               role="continuous_slab", midas_type="BEAM",
+                               section=f"Slab_{design.thickness_in}in")
+
+            # Restraints
+            hub.add_restraint(nodes[0].id, preset="pin")
+            hub.add_restraint(nodes[1].id, preset="roller-v")
+            hub.add_restraint(nodes[2].id, preset="roller-v")
+            hub.add_restraint(nodes[3].id, preset="roller-v")
+
+        return hub
 
 
 @dataclass(frozen=True)

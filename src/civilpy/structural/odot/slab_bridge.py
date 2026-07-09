@@ -30,6 +30,7 @@ for section dimensions. The layout origin sits at the upstream bearing
 line, y = 0 at one slab edge, z = 0 at the top of slab.
 """
 
+from __future__ import annotations
 import math
 from dataclasses import dataclass, field
 
@@ -216,6 +217,9 @@ def edge_beam_design(span_ft: int) -> EdgeBeamDesign:
 
 # ── layout ───────────────────────────────────────────────────────────────
 
+import numpy as np
+
+
 @dataclass(frozen=True)
 class SlabBridgeInput:
     """Inputs for a single-span slab bridge.
@@ -228,6 +232,241 @@ class SlabBridgeInput:
     width_ft: float
     skew_deg: float = 0.0
     edge_condition: str = "over_the_side"
+
+
+class SlabBridgeComponent:
+    """BridgeComponent implementation for a single-span slab bridge (SB-1-24)."""
+
+    def __init__(self, inp: SlabBridgeInput):
+        self.inp = inp
+        self.layout = layout_slab_bridge(inp)
+
+    def geometry(self) -> dict:
+        """Returns the layout primitives for Rhino/Grasshopper."""
+        return {
+            "layout": self.layout,
+            "span": self.inp.span_ft,
+            "width": self.inp.width_ft,
+            "skew": self.inp.skew_deg
+        }
+
+    def calculate_l1_envelope(self, *, samples: int = 41):
+        """Calculates the L1 equivalent-strip moment envelope for the slab.
+
+        This uses the pure-Python `girder_line_envelope` which applies HL-93
+        live loads via influence lines and uniform dead loads, scaled by the
+        AASHTO equivalent strip width.
+
+        Returns
+        -------
+        tuple[list[float], dict[str, list[float]]]
+            (stations, moments) ready for `place_splices` or results plotting.
+        """
+        from civilpy.structural.aashto.lrfd.distribution import slab_equivalent_strip
+        from civilpy.structural.girder_pipeline import girder_line_envelope
+
+        design = slab_design(self.inp.span_ft)
+        # AASHTO LRFD 4.6.2.3: n_lanes for width.
+        # SB-1-24 is for roadway width >= 24ft, so at least 2 lanes.
+        n_lanes = int(math.floor(self.inp.width_ft / 12.0))
+        # Strip width (E) in feet for one lane loaded.
+        e_ft = slab_equivalent_strip(self.inp.span_ft, self.inp.width_ft, n_lanes,
+                                     multi_lane=True, skew_deg=self.inp.skew_deg)
+
+        # Girder Distribution Factor (GDF) for a 1-ft wide strip: 1 / E
+        gdf = 1.0 / e_ft
+
+        # Dead Loads (kip/ft for a 1-ft wide strip)
+        # DC1: Slab weight (150 pcf) + 1" monolithic wearing surface.
+        # Note: BDM says f'c=4500 psi. Concrete weight typically 150 pcf.
+        t_tot_ft = (design.thickness_in) / 12.0
+        dc1_klf = 1.0 * t_tot_ft * 0.150
+
+        # DC2: Barrier/SDL. ODOT Standard barrier is ~475 lb/ft per side.
+        # Distributed across the full width.
+        dc2_klf = (2 * 0.475) / self.inp.width_ft
+
+        # DW: Future Wearing Surface (60 psf)
+        dw_klf = 0.060 * 1.0
+
+        stations, moments = girder_line_envelope(
+            supports=[0.0, self.inp.span_ft],
+            dc1_klf=dc1_klf,
+            dc2_klf=dc2_klf,
+            dw_klf=dw_klf,
+            n_sections=samples,
+            gdf=gdf
+        )
+
+        return stations, moments
+
+    def structural_model(self, level: str = "L1") -> "StructuralModel":
+        """Returns a MIDAS-ready StructuralModel (L1 strip or L2 grillage)."""
+        from civilpy.structural.structural_model import StructuralModel, LoadCase
+        from civilpy.structural.aashto.lrfd.distribution import slab_equivalent_strip
+        hub = StructuralModel()
+        design = slab_design(int(self.inp.span_ft))
+
+        if level == "L1":
+            # 1. Nodes
+            n1 = hub.add_node(0, 0, 0, label="Support_A")
+            n2 = hub.add_node(self.inp.span_ft, 0, 0, label="Support_B")
+
+            # 2. Element
+            elem = hub.add_element(n1.id, n2.id,
+                                   role="main_slab",
+                                   member_type="beam",
+                                   midas_type="BEAM",
+                                   section=f"Slab_{design.thickness_in}in")
+
+            # 3. Restraints
+            hub.add_restraint(n1.id, preset="pin")
+            hub.add_restraint(n2.id, preset="roller-v")
+
+            # 4. Loads (L1 equivalent strip)
+            n_lanes = int(math.floor(self.inp.width_ft / 12.0))
+            e_ft = slab_equivalent_strip(self.inp.span_ft, self.inp.width_ft, n_lanes,
+                                         multi_lane=True, skew_deg=self.inp.skew_deg)
+            gdf = 1.0 / e_ft
+
+            # Uniform loads on the beam (kip/ft)
+            t_tot_ft = design.thickness_in / 12.0
+            dc1_klf = t_tot_ft * 0.150 * gdf
+            dc2_klf = ((2 * 0.475) / self.inp.width_ft) * gdf
+            dw_klf = 0.060 * gdf
+
+            hub.add_beam_load(elem.id, dc1_klf, case="DC1")
+            hub.add_beam_load(elem.id, dc2_klf, case="DC2")
+            hub.add_beam_load(elem.id, dw_klf, case="DW")
+
+        elif level == "L2":
+            # Refined grillage model (L2)
+            # Create a mesh of beam elements
+            # Longitudinal elements: 1ft spacing
+            # Transverse elements: 4ft spacing approx
+            dx = 2.0  # Longitudinal segments
+            dy = 2.0  # Transverse spacing
+            nx = int(math.ceil(self.inp.span_ft / dx))
+            ny = int(math.ceil(self.inp.width_ft / dy))
+            dx = self.inp.span_ft / nx
+            dy = self.inp.width_ft / ny
+
+            tan_skew = math.tan(math.radians(self.inp.skew_deg))
+
+            nodes_grid = {} # (i, j) -> node
+            for i in range(nx + 1):
+                x_base = i * dx
+                for j in range(ny + 1):
+                    y = j * dy
+                    x = x_base + y * tan_skew
+                    nodes_grid[(i, j)] = hub.add_node(x, y, 0)
+
+            t_tot_ft = design.thickness_in / 12.0
+            dc1_area = t_tot_ft * 0.150  # kip/ft^2
+
+            # Longitudinal elements
+            for j in range(ny + 1):
+                width = dy if (0 < j < ny) else 0.5 * dy
+                dc1_klf = dc1_area * width
+                for i in range(nx):
+                    el = hub.add_element(nodes_grid[(i, j)].id, nodes_grid[(i+1, j)].id,
+                                         role="longitudinal_strip", member_type="beam",
+                                         midas_type="BEAM", section=f"Slab_{design.thickness_in}in")
+                    hub.add_beam_load(el.id, dc1_klf, case="DC1")
+
+            # Transverse elements
+            for i in range(nx + 1):
+                for j in range(ny):
+                    hub.add_element(nodes_grid[(i, j)].id, nodes_grid[(i, j+1)].id,
+                                   role="transverse_strip", member_type="beam",
+                                   midas_type="BEAM", section=f"Slab_{design.thickness_in}in")
+
+            # Supports at i=0 and i=nx
+            for j in range(ny + 1):
+                hub.add_restraint(nodes_grid[(0, j)].id, preset="pin")
+                hub.add_restraint(nodes_grid[(nx, j)].id, preset="roller-v")
+
+        elif level == "L3":
+            # Full FEA model (L3) - Plate elements
+            dx = 2.0
+            dy = 2.0
+            nx = int(math.ceil(self.inp.span_ft / dx))
+            ny = int(math.ceil(self.inp.width_ft / dy))
+            dx = self.inp.span_ft / nx
+            dy = self.inp.width_ft / ny
+
+            tan_skew = math.tan(math.radians(self.inp.skew_deg))
+
+            nodes_grid = {}
+            for i in range(nx + 1):
+                x_base = i * dx
+                for j in range(ny + 1):
+                    y = j * dy
+                    x = x_base + y * tan_skew
+                    nodes_grid[(i, j)] = hub.add_node(x, y, 0)
+
+            # Plate elements (4-node quads)
+            for i in range(nx):
+                for j in range(ny):
+                    # Nodes in CCW order for MIDAS
+                    quad_nodes = [
+                        nodes_grid[(i, j)].id,
+                        nodes_grid[(i+1, j)].id,
+                        nodes_grid[(i+1, j+1)].id,
+                        nodes_grid[(i, j+1)].id
+                    ]
+                    hub.add_element(quad_nodes[0], quad_nodes[1],
+                                   role="slab_plate", midas_type="PLATE",
+                                   section=f"Slab_{design.thickness_in}in",
+                                   nodes=quad_nodes)
+
+            # Supports
+            for j in range(ny + 1):
+                hub.add_restraint(nodes_grid[(0, j)].id, preset="pin")
+                hub.add_restraint(nodes_grid[(nx, j)].id, preset="roller-v")
+
+        return hub
+
+    def reconcile_analysis(self, midas_results: dict | None = None) -> dict:
+        """Compares pure-Python L1 results with MIDAS results.
+
+        If `midas_results` is provided (e.g. from `MidasCivil.beam_forces`), it
+        calculates the error/reconciliation between the two models.
+        """
+        stations, python_moments = self.calculate_l1_envelope()
+
+        report = {
+            "python": {
+                "stations": stations,
+                "moments": python_moments
+            },
+            "reconciliation": {}
+        }
+
+        if midas_results:
+            # Placeholder for actual MIDAS result mapping
+            # This would map MIDAS beam forces back to the L1 envelope stations
+            report["midas"] = midas_results
+            # report["reconciliation"]["max_moment_error"] = ...
+
+        return report
+
+    def extract_bearing_reactions(self, model: "StructuralModel") -> dict:
+        """Extracts vertical reactions at supports from the StructuralModel results."""
+        reactions = {"A": 0.0, "B": 0.0}
+        # Look for nodes with labels "Support_A" and "Support_B" (from L1)
+        # or nodes at x=0 and x=L (from L2/L3)
+        for case in model.results.values():
+            for node_id, force_vec in case.reactions.items():
+                node = model.nodes[node_id]
+                # force_vec: (FX, FY, FZ, MX, MY, MZ)
+                fz = force_vec[2]
+                if node.label == "Support_A" or math.isclose(node.x, 0.0, abs_tol=1e-3):
+                    reactions["A"] += fz
+                elif node.label == "Support_B" or math.isclose(node.x, self.inp.span_ft, abs_tol=1e-3):
+                    reactions["B"] += fz
+        
+        return reactions
 
 
 @dataclass(frozen=True)

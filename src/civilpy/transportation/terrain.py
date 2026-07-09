@@ -94,12 +94,17 @@ class Terrain:
 
     @classmethod
     def from_las(cls, path, *, ground_only: bool = True, bbox=None,
-                 thin: int = 1) -> "Terrain":
+                 thin: int = 1, preprocess: bool = False,
+                 voxel_size: float | None = None,
+                 nb_neighbors: int = 20, std_ratio: float = 2.0) -> "Terrain":
         """Build from an OGRIP LiDAR ``.las``/``.laz`` file (lazy ``laspy``).
 
         ``ground_only`` keeps only ASPRS class 2 (ground) returns; ``bbox`` is
         an optional ``(xmin, ymin, xmax, ymax)`` clip; ``thin`` keeps every
         ``thin``-th point to cap density.
+
+        If ``preprocess`` is True, use Open3D for statistical outlier removal
+        and voxel downsampling (requires ``open3d``).
         """
         try:
             import laspy
@@ -120,7 +125,27 @@ class Terrain:
         idx = np.nonzero(keep)[0]
         if thin > 1:
             idx = idx[::thin]
-        return cls(np.column_stack([x[idx], y[idx], z[idx]]))
+
+        pts = np.column_stack([x[idx], y[idx], z[idx]])
+
+        if preprocess:
+            try:
+                import open3d as o3d
+            except ImportError as exc:
+                raise ImportError(
+                    "preprocessing needs 'open3d' (pip install open3d)") from exc
+
+            pcd = o3d.geometry.PointCloud()
+            pcd.points = o3d.utility.Vector3dVector(pts)
+
+            if voxel_size:
+                pcd = pcd.voxel_down_sample(voxel_size=voxel_size)
+
+            pcd, _ = pcd.remove_statistical_outlier(
+                nb_neighbors=nb_neighbors, std_ratio=std_ratio)
+            pts = np.asarray(pcd.points)
+
+        return cls(pts)
 
     @classmethod
     def from_landxml(cls, path, *, surface: str | None = None) -> "Terrain":
@@ -245,18 +270,80 @@ class Terrain:
         d, _ = tree.query(self._xy, k=1)
         return Terrain(self.points[d <= half_width_ft])
 
-    def to_open3d_mesh(self):                                # pragma: no cover
-        """Build an ``open3d`` triangle mesh (lazy import) for display/Rhino."""
+    def to_open3d_mesh(self, poisson: bool = False, depth: int = 9):  # pragma: no cover
+        """Build an ``open3d`` triangle mesh (lazy import) for display/Rhino.
+
+        If ``poisson`` is True, use Poisson Surface Reconstruction instead of
+        the internal TIN (good for noisy LiDAR; requires ``depth`` parameter).
+        """
         try:
             import open3d as o3d
         except ImportError as exc:
             raise ImportError(
                 "to_open3d_mesh needs 'open3d' (pip install open3d)") from exc
-        mesh = o3d.geometry.TriangleMesh()
-        mesh.vertices = o3d.utility.Vector3dVector(self.points)
-        mesh.triangles = o3d.utility.Vector3iVector(self.faces)
+
+        if not poisson:
+            mesh = o3d.geometry.TriangleMesh()
+            mesh.vertices = o3d.utility.Vector3dVector(self.points)
+            mesh.triangles = o3d.utility.Vector3iVector(self.faces)
+            mesh.compute_vertex_normals()
+            return mesh
+
+        # Poisson reconstruction needs normals
+        pcd = o3d.geometry.PointCloud()
+        pcd.points = o3d.utility.Vector3dVector(self.points)
+        pcd.estimate_normals()
+        pcd.orient_normals_consistent_tangent_plane(100)
+
+        mesh, densities = o3d.geometry.TriangleMesh.create_from_point_cloud_poisson(
+            pcd, depth=depth)
+
+        # Crop to the original bbox to remove artifacts
+        bbox = pcd.get_axis_aligned_bounding_box()
+        mesh = mesh.crop(bbox)
         mesh.compute_vertex_normals()
         return mesh
+
+    @classmethod
+    def from_ogrip(cls, bbox_wgs84, out_dir="temp_las", **kwargs) -> "Terrain":
+        """Fetch OGRIP LiDAR tiles for a WGS84 bbox and build a Terrain.
+
+        Requires ``requests``.  Tiles are downloaded to ``out_dir``.
+        Remaining ``kwargs`` are passed to :meth:`from_las`.
+        """
+        from civilpy.state.ohio.ogrip import find_las_tiles, download_las_tile
+        import os
+
+        tiles = find_las_tiles(bbox_wgs84)
+        if not tiles:
+            raise ValueError(f"no OGRIP tiles found for bbox {bbox_wgs84}")
+
+        las_paths = []
+        os.makedirs(out_dir, exist_ok=True)
+
+        for tile in tiles:
+            # We'll assume the URL field name is 'LAS_URL' for now; 
+            # this may need adjustment once live-tested against OGRIP.
+            url = tile.get("LAS_URL") or tile.get("LIDAR_URL")
+            if not url:
+                continue
+            name = os.path.basename(url)
+            dest = os.path.join(out_dir, name)
+            if not os.path.exists(dest):
+                download_las_tile(url, dest)
+            las_paths.append(dest)
+
+        if not las_paths:
+            raise ValueError("found tiles but none had download URLs")
+
+        # Merge multiple LAS files if necessary
+        # For the demo/A2, we'll just use the first one or build from all points
+        all_pts = []
+        for p in las_paths:
+            t = cls.from_las(p, **kwargs)
+            all_pts.append(t.points)
+
+        return cls(np.vstack(all_pts))
 
     def __repr__(self):
         x0, y0, x1, y1 = self.bounds

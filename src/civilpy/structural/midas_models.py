@@ -534,11 +534,12 @@ def midas_payloads(model: "StructuralModel", *, node_start: int = 1,
     elements: dict[str, dict] = {}
     for j, elem in enumerate(model.elements.values(), start=elem_start):
         sid, mid = elem_assign[elem.id]
-        elements[str(j)] = {
+        body = {
             "TYPE": elem.midas_type, "MATL": mid, "SECT": sid if sid is not None else placeholder_id,
-            "NODE": [node_int[elem.node_a], node_int[elem.node_b]],
+            "NODE": [node_int[nid] for nid in elem.nodes],
             "ANGLE": 0,
         }
+        elements[str(j)] = body
 
     cons = {node_int[r.node_id]: r.to_constraint_string()
             for r in model.restraints.values()
@@ -574,6 +575,27 @@ def midas_payloads(model: "StructuralModel", *, node_start: int = 1,
         payloads["STLD"] = static_loads
     if nodal_loads:
         payloads["CNLD"] = nodal_loads
+
+    # Beam loads (distributed)
+    if model.beam_loads:
+        elem_int: dict[str, int] = {elem.id: j for j, elem in enumerate(model.elements.values(), start=elem_start)}
+        beam_loads: dict[str, dict] = {}
+        for bload in model.beam_loads:
+            body = beam_loads.setdefault(str(elem_int[bload.element_id]), {"ITEMS": []})
+            # MIDAS BEAM LOAD (Element) table: BEAM
+            # Body format: {ID, LCNAME, GROUP_NAME, TYPE, DIRECTION, SOURCE, ...}
+            body["ITEMS"].append({
+                "ID": len(body["ITEMS"]) + 1,
+                "LCNAME": bload.case,
+                "GROUP_NAME": "",
+                "TYPE": "UNIFORM",
+                "DIRECTION": bload.direction,
+                "D1": 0.0, "D2": 1.0,  # Full length
+                "W1": bload.w_start,
+                "W2": bload.w_end if bload.w_end is not None else bload.w_start
+            })
+        payloads["BEAM"] = beam_loads
+
     return payloads
 
 

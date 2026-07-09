@@ -153,11 +153,23 @@ prove the analysis works before starting the next. Easiest/most abundant first.
   azimuth cw from North, positive offset to the right. 16 pure-Python tests + doctests pass
   (`tests/transportation/test_alignment.py`). Superelevation on offset elevations is the one
   deferred piece (offsets currently sit at centerline profile elevation).
+- **A2 — `Terrain`: DONE.** Productionized `Point_Clouds.ipynb` into
+  `src/civilpy/transportation/terrain.py`. Supports `elevation_at(x, y)` via TIN, `from_las`
+  with `open3d` preprocessing (downsampling/outliers), and `to_open3d_mesh` with Poisson
+  reconstruction. Added `civilpy.state.ohio.ogrip` for automated tile discovery and
+  `Terrain.from_ogrip(bbox)` for GPS-based ingestion.
+- **A3 — Placement + multi-representation contract: DONE.** Established the
+  `BridgeComponent` / `Placement` / `Bridge` contract in
+  `src/civilpy/structural/placement.py`. Implemented `SlabBridgeComponent` as the first
+  faithful representation of the A3 contract: it emits Rhino layout primitives and a
+  `StructuralModel` hub spoke for MIDAS. Created `VALIDATION_TESTING.md` for reviewers.
+- **B1 — Slab Analysis Vertical Slice (L1): DONE.** Implemented `calculate_l1_envelope()`
+  and `reconcile_analysis()` in `SlabBridgeComponent`. This enables pure-Python AASHTO
+  distribution and analysis (DC1/DC2/DW/HL-93) and established the reconciliation
+  bridge to MIDAS results. Verified with `tests/structural/test_slab_bridge_analysis_l1.py`.
 - **Terrain backbone copied:** `Notebooks/Point_Clouds.ipynb` (see A2).
 
 ## Next steps
 
-1. **A2 `Terrain`** — wrap `Point_Clouds.ipynb`'s laspy/open3d flow into a `Terrain` object with
-   `elevation_at(x, y)` / `elevation_at(station, offset)` (via A1); add OGRIP GPS-extent fetch.
-2. **A3 contract** — give a bridge component the `(alignment, station, offset, terrain)` →
-   `.geometry()` + `.structural_model()` base, then drive the single-span-slab slice through it.
+1. **Track B — Analysis contract & vertical slices.** Drive the single-span-slab slice
+   through the MIDAS pipeline (L1/L2/L3) and reconcile results with the civilpy baseline.

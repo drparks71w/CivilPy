@@ -41,6 +41,10 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from civilpy.structural.structural_model import StructuralModel
 
 Point = tuple[float, float]     # (x, y) feet, in-plane bend shape
 PointXYZ = tuple[float, float, float]
@@ -225,6 +229,38 @@ class AbutmentLayout:
     pile_points: tuple[PointXYZ, ...]
     wingwall_outline: tuple[PointXYZ, PointXYZ, PointXYZ, PointXYZ]
     notes: tuple[str, ...] = field(default_factory=tuple)
+
+    def structural_model(self, reaction: float = 0.0) -> "StructuralModel":
+        """Returns a MIDAS-ready StructuralModel of the abutment cap as a beam."""
+        from civilpy.structural.structural_model import StructuralModel
+        hub = StructuralModel()
+        
+        cap_len = (self.inputs.n_piles - 1) * self.inputs.pile_spacing_ft + 2.0 * CAP_HALF_ZONE_FT
+        
+        # Nodes at each pile location
+        pile_nodes = []
+        for i in range(self.inputs.n_piles):
+            x = i * self.inputs.pile_spacing_ft + CAP_HALF_ZONE_FT
+            n = hub.add_node(x, 0, 0, label=f"Pile_{i+1}")
+            hub.add_restraint(n.id, preset="fixed") # Piles as fixed supports for cap analysis
+            pile_nodes.append(n)
+            
+        # Beam elements for the cap
+        for i in range(self.inputs.n_piles - 1):
+            hub.add_element(pile_nodes[i].id, pile_nodes[i+1].id,
+                           role="abutment_cap", midas_type="BEAM",
+                           section="AbutmentCap")
+                           
+        # Distribute the reaction from the bridge as a uniform load on the cap
+        if reaction > 0:
+            total_load_klf = reaction / cap_len
+            for i in range(self.inputs.n_piles - 1):
+                # We need to find the element id
+                # For now, we'll just use the fact that elements are added in order
+                elem_id = list(hub.elements.keys())[i]
+                hub.add_beam_load(elem_id, total_load_klf, case="BridgeReaction")
+                
+        return hub
 
 
 def layout_capped_pile_abutment(inp: AbutmentInput) -> AbutmentLayout:
