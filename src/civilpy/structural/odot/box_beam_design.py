@@ -49,7 +49,7 @@ import csv
 import os
 from dataclasses import dataclass, field
 
-_RES_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "res")
+_RES_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Rhino Components")
 _DESIGN_CSV = os.path.join(_RES_DIR, "psbdd_1_25_design.csv")
 _RATING_CSV = os.path.join(_RES_DIR, "psbdd_1_25_load_rating.csv")
 

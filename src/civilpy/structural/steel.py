@@ -8,7 +8,7 @@
 """AISC steel-shape database lookup and section classes.
 
 Loads the AISC shapes database (current and historic editions, bundled as
-CSV under ``structural/res``) and exposes ``SteelSection``-style classes
+CSV under ``structural/Rhino Components``) and exposes ``SteelSection``-style classes
 whose attributes are Pint quantities (``SteelSection("W36X150").I_x``,
 ``.S_x``, ``.weight``, …), plus bolt-weight reference data for detailing.
 """
@@ -23,8 +23,8 @@ from civilpy.structural.res.definitions import A325_bolt_weights
 import os
 import sys
 script_dir = os.path.dirname(os.path.abspath(__file__))
-csv_filepath = os.path.join(script_dir, "res", "steel_shapes.csv")
-historic_csv_filepath = os.path.join(script_dir, "res", "aisc_shapes_historic.csv")
+csv_filepath = os.path.join(script_dir, "Rhino Components", "steel_shapes.csv")
+historic_csv_filepath = os.path.join(script_dir, "Rhino Components", "aisc_shapes_historic.csv")
 
 steel_tables = pd.read_csv(csv_filepath)
 historic_steel_tables = pd.read_csv(historic_csv_filepath, low_memory=False)

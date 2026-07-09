@@ -10,7 +10,7 @@ Transcribed from Ohio DOT Standard Construction Drawing **AS-1-15**
 (revised 01-20-2023, 2 sheets).  The drawing remains the controlling
 document; this module encodes its reinforcing-steel table, bar-count and
 bar-length formulas, section geometry, and the sheet-2 joint/seat detail
-catalog so the Grasshopper component (``Notebooks/res/AS-1-15.py``) and
+catalog so the Grasshopper component (``Notebooks/Rhino Components/AS-1-15.py``) and
 downstream quantity takeoffs can be driven from tested Python.
 
 Design basis printed on the sheet: AASHTO LRFD Bridge Design

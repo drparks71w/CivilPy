@@ -82,7 +82,7 @@ class TestTemplate:
     def test_results_writer_runs(self, tmp_path):
         m = _example_1()
         m.solve()
-        path = tmp_path / "res.3dm"
+        path = tmp_path / "Rhino Components.3dm"
         rhino_stm.results_to_3dm(m, path)
         f = rhino3dm.File3dm.Read(str(path))
         assert sum(1 for _ in f.Objects) > 0

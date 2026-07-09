@@ -8,7 +8,7 @@
 
 Pure geometry/engineering layout — no Rhino imports — so the whole bridge
 description is computable and testable outside Rhino.  A Grasshopper
-component (see ``Notebooks/res``) feeds user inputs into
+component (see ``Notebooks/Rhino Components``) feeds user inputs into
 :func:`layout_bridge` and turns the returned primitives into Rhino
 geometry; every primitive carries the ``gdr.*`` user-text tags the
 :mod:`civilpy.structural.rhino_gdr` reader (and therefore the MIDAS
