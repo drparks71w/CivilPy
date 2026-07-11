@@ -85,6 +85,7 @@ from civilpy.structural.rhino_layers import (
     LAYER_SUB_COLUMNS,
     LAYER_SUB_FOOTINGS,
     LAYER_SUB_PILES,
+    LAYER_SUB_REBAR,
     LAYER_SUB_SEATS,
     LAYER_SUB_WINGWALLS,
 )
@@ -525,6 +526,29 @@ def _sbr1_cage(br, s: float, B: float, T: float, H: float, L: float,
 SUB_FC_PSI = 4000.0          #: Class QC1 substructure concrete
 
 
+@dataclass(frozen=True)
+class SubRebarSpec:
+    """Substructure reinforcing parameters that the executed designs do
+    not size themselves.  The cap's *main* (tie) steel comes from the STM
+    bar schedule on the placed :class:`CapBeam` and the column verticals
+    from the bent's ``RebarLayer`` area — everything here is the detailing
+    around them: the stirrups the cap shear check was run with, the bar
+    size the column steel area is broken into, its ties, and the nominal
+    two-face wall mats (temperature/shrinkage-level; final wall design
+    replaces them)."""
+
+    stirrup_size: int = 5
+    stirrup_spacing_in: float = 12.0
+    column_bar_size: int = 9
+    column_tie_size: int = 4
+    column_tie_spacing_in: float = 12.0
+    wall_bar_size: int = 5
+    wall_bar_spacing_in: float = 12.0
+    cover_in: float = 3.0            #: caps / columns / footings
+    wall_cover_in: float = 2.0
+    coating: str = "epoxy"
+
+
 def _unit_prefix(unit) -> str:
     """``"Pier 2"`` -> ``"PIER2"``, ``"Abutment 1"`` -> ``"ABUT1"``."""
     return unit.name.replace("Abutment ", "ABUT").replace("Pier ", "PIER")
@@ -589,6 +613,169 @@ def _pile_prism(pile, u: Point, n: Point) -> EmitObject:
                            length_ft=pile.length_ft))
 
 
+def _bar_area_in2(size: int) -> float:
+    from civilpy.structural.steel import Rebar
+
+    return float(Rebar(size).area.magnitude)
+
+
+def _cap_rebar(geom, cap_type: str, spec: SubRebarSpec) -> list[EmitObject]:
+    """Cap main steel straight from the STM tie schedule plus the
+    stirrups the shear check was run with."""
+    pid = _unit_prefix(geom.unit)
+    cap = geom.cap
+    x0, y0, z_top = cap.origin
+    u = cap.axis
+    n = (u[1], -u[0], 0.0)
+    z_bot = z_top - cap.depth_ft
+    c = spec.cover_in / 12.0
+    out: list[EmitObject] = []
+
+    if cap.tie_bar_count:
+        dia_ft = cap.tie_bar_size / 8.0 / 12.0
+        z_bar = z_bot + c + dia_ft / 2.0
+        half = cap.width_ft / 2.0 - c - dia_ft / 2.0
+        length = cap.length_ft - 2.0 * c
+        for k in range(cap.tie_bar_count):
+            f = (k / (cap.tie_bar_count - 1) if cap.tie_bar_count > 1
+                 else 0.5)
+            dn = -half + 2.0 * half * f
+            p0 = (x0 + c * u[0] + dn * n[0], y0 + c * u[1] + dn * n[1],
+                  z_bar)
+            out.append(EmitObject(
+                kind="polyline", layer=LAYER_SUB_REBAR,
+                points=(p0, (p0[0] + length * u[0], p0[1] + length * u[1],
+                             z_bar)),
+                tags=bim.rebar_tags(
+                    f"{pid}-CAPBAR-{k + 1}", size=cap.tie_bar_size,
+                    coating=spec.coating, mat=cap_type, bend="straight",
+                    length_ft=length)))
+
+    half_w = cap.width_ft / 2.0 - c
+    z_lo, z_hi = z_bot + c, z_top - c
+    hoop_len = 2.0 * (2.0 * half_w + (z_hi - z_lo))
+    step = spec.stirrup_spacing_in / 12.0
+    k, s = 0, step / 2.0
+    while s <= cap.length_ft - step / 2.0 + 1e-9:
+        k += 1
+        cx, cy = x0 + s * u[0], y0 + s * u[1]
+        corners = [(-half_w, z_lo), (half_w, z_lo), (half_w, z_hi),
+                   (-half_w, z_hi), (-half_w, z_lo)]
+        out.append(EmitObject(
+            kind="polyline", layer=LAYER_SUB_REBAR,
+            points=tuple((cx + dn * n[0], cy + dn * n[1], z)
+                         for dn, z in corners),
+            tags=bim.rebar_tags(
+                f"{pid}-STIR-{k}", size=spec.stirrup_size,
+                coating=spec.coating, mat=cap_type, bend="stirrup",
+                length_ft=hoop_len)))
+        s += step
+    return out
+
+
+def _column_rebar(col, pid: str, index: int,
+                  spec: SubRebarSpec) -> list[EmitObject]:
+    """Column verticals carrying the design's total steel area (broken
+    into ``column_bar_size`` bars on a ring at cover) plus circular ties
+    over the clear height.  Rectangular columns distribute the same bars
+    around the cover rectangle."""
+    if col.bars_area_in2 <= 0.0:
+        return []
+    count = max(4, math.ceil(col.bars_area_in2
+                             / _bar_area_in2(spec.column_bar_size)))
+    cx, cy = col.center
+    c_ft = spec.cover_in / 12.0
+    out: list[EmitObject] = []
+
+    if col.diameter_in is not None:
+        r = col.diameter_in / 24.0 - c_ft - 0.5 / 12.0
+        ring = [(cx + r * math.cos(2.0 * math.pi * k / count),
+                 cy + r * math.sin(2.0 * math.pi * k / count))
+                for k in range(count)]
+        r_tie = col.diameter_in / 24.0 - c_ft
+        tie_pts = [(cx + r_tie * math.cos(2.0 * math.pi * k / 24.0),
+                    cy + r_tie * math.sin(2.0 * math.pi * k / 24.0))
+                   for k in range(25)]
+        tie_len = 2.0 * math.pi * r_tie
+    else:
+        hb = col.b_in / 24.0 - c_ft
+        hh = col.h_in / 24.0 - c_ft
+        perim = [(hb, hh), (-hb, hh), (-hb, -hh), (hb, -hh)]
+        ring, per_side = [], math.ceil(count / 4)
+        for (ax, ay), (bx, by) in zip(perim, perim[1:] + perim[:1]):
+            for k in range(per_side):
+                f = k / per_side
+                ring.append((cx + ax + (bx - ax) * f,
+                             cy + ay + (by - ay) * f))
+        ring = ring[:count]
+        tie_pts = [(cx + px, cy + py) for px, py in perim + perim[:1]]
+        tie_len = 4.0 * (hb + hh)
+
+    for k, (bx, by) in enumerate(ring, start=1):
+        out.append(EmitObject(
+            kind="polyline", layer=LAYER_SUB_REBAR,
+            points=((bx, by, col.z_bot), (bx, by, col.z_top)),
+            tags=bim.rebar_tags(
+                f"{pid}-COL{index}-V{k}", size=spec.column_bar_size,
+                coating=spec.coating, mat="column", bend="straight",
+                length_ft=col.height_ft)))
+    step = spec.column_tie_spacing_in / 12.0
+    k, z = 0, col.z_bot + step / 2.0
+    while z <= col.z_top - step / 2.0 + 1e-9:
+        k += 1
+        out.append(EmitObject(
+            kind="polyline", layer=LAYER_SUB_REBAR,
+            points=tuple((px, py, z) for px, py in tie_pts),
+            tags=bim.rebar_tags(
+                f"{pid}-COL{index}-T{k}", size=spec.column_tie_size,
+                coating=spec.coating, mat="column", bend="hoop",
+                length_ft=tie_len)))
+        z += step
+    return out
+
+
+def _wall_rebar(wall, pid: str, name: str, mat: str,
+                spec: SubRebarSpec) -> list[EmitObject]:
+    """Nominal two-face vertical + horizontal mats on a wall panel."""
+    x0, y0, z0 = wall.origin
+    a = wall.axis
+    m = (a[1], -a[0], 0.0)
+    c = spec.wall_cover_in / 12.0
+    z_lo, z_hi = z0 + c, z0 + wall.height_ft - c
+    faces = (wall.thickness_ft / 2.0 - c, -(wall.thickness_ft / 2.0 - c))
+    out: list[EmitObject] = []
+    step = spec.wall_bar_spacing_in / 12.0
+    for fi, dm in enumerate(faces):
+        fx, fy = x0 + dm * m[0], y0 + dm * m[1]
+        k, s = 0, step / 2.0
+        while s <= wall.length_ft - step / 2.0 + 1e-9:
+            k += 1
+            bx, by = fx + s * a[0], fy + s * a[1]
+            out.append(EmitObject(
+                kind="polyline", layer=LAYER_SUB_REBAR,
+                points=((bx, by, z_lo), (bx, by, z_hi)),
+                tags=bim.rebar_tags(
+                    f"{pid}-{name}-F{fi + 1}-V{k}", size=spec.wall_bar_size,
+                    coating=spec.coating, mat=mat, bend="straight",
+                    length_ft=z_hi - z_lo)))
+            s += step
+        k, z = 0, z_lo + step / 2.0
+        length = wall.length_ft - 2.0 * c
+        while z <= z_hi - step / 2.0 + 1e-9:
+            k += 1
+            p0 = (fx + c * a[0], fy + c * a[1], z)
+            out.append(EmitObject(
+                kind="polyline", layer=LAYER_SUB_REBAR,
+                points=(p0, (p0[0] + length * a[0], p0[1] + length * a[1],
+                             z)),
+                tags=bim.rebar_tags(
+                    f"{pid}-{name}-F{fi + 1}-H{k}", size=spec.wall_bar_size,
+                    coating=spec.coating, mat=mat, bend="straight",
+                    length_ft=length)))
+            z += step
+    return out
+
+
 def _unit_objects(geom, cap_type: str, *, fc_psi: float) -> list[EmitObject]:
     """Emit one substructure unit (the parts piers and abutments share)."""
     pid = _unit_prefix(geom.unit)
@@ -615,7 +802,8 @@ def _unit_objects(geom, cap_type: str, *, fc_psi: float) -> list[EmitObject]:
     return out
 
 
-def substructure_emit(sub, *, fc_psi: float = SUB_FC_PSI
+def substructure_emit(sub, *, fc_psi: float = SUB_FC_PSI,
+                      rebar: SubRebarSpec | None = SubRebarSpec()
                       ) -> tuple[EmitObject, ...]:
     """Tagged BrIM geometry for a placed
     :class:`~civilpy.structural.substructure_layout.SubstructureLayout`:
@@ -623,7 +811,11 @@ def substructure_emit(sub, *, fc_psi: float = SUB_FC_PSI
     wingwalls on the ``Substructure::*`` layers, with the stepped beam
     seats under every bearing stack.  All cast-in-place concrete measures
     into the Class QC1 substructure item; piles into the steel-pile item
-    (ft)."""
+    (ft).
+
+    ``rebar`` adds the reinforcing cage: cap main steel from the placed
+    STM tie schedule, column verticals from the bent's steel area, and
+    the detailing in :class:`SubRebarSpec` (pass ``None`` to skip)."""
     objects: list[EmitObject] = []
 
     for pier in sub.piers:
@@ -631,7 +823,11 @@ def substructure_emit(sub, *, fc_psi: float = SUB_FC_PSI
         u = pier.cap.axis
         n = (u[1], -u[0], 0.0)
         objects += _unit_objects(pier, "pier_cap", fc_psi=fc_psi)
+        if rebar is not None:
+            objects += _cap_rebar(pier, "pier_cap", rebar)
         for i, col in enumerate(pier.columns, start=1):
+            if rebar is not None:
+                objects += _column_rebar(col, pid, i, rebar)
             cx, cy = col.center
             if col.diameter_in is not None:
                 obj = EmitObject(
@@ -674,6 +870,8 @@ def substructure_emit(sub, *, fc_psi: float = SUB_FC_PSI
         u = ab.cap.axis
         n = (u[1], -u[0], 0.0)
         objects += _unit_objects(ab, "abutment_cap", fc_psi=fc_psi)
+        if rebar is not None:
+            objects += _cap_rebar(ab, "abutment_cap", rebar)
         for i, pile in enumerate(ab.piles, start=1):
             pile = _WithId(pile, f"{pid}-PILE-{i}")
             objects.append(_pile_prism(pile, u, n))
@@ -685,6 +883,9 @@ def substructure_emit(sub, *, fc_psi: float = SUB_FC_PSI
                     volume_cy=ab.backwall.volume_cy,
                     thickness_ft=ab.backwall.thickness_ft,
                     height_ft=ab.backwall.height_ft)))
+            if rebar is not None:
+                objects += _wall_rebar(ab.backwall, pid, "BW", "backwall",
+                                       rebar)
         for i, wing in enumerate(ab.wingwalls, start=1):
             objects.append(_wall_prism(
                 wing, LAYER_SUB_WINGWALLS,
@@ -693,6 +894,9 @@ def substructure_emit(sub, *, fc_psi: float = SUB_FC_PSI
                     volume_cy=wing.volume_cy,
                     thickness_ft=wing.thickness_ft,
                     height_ft=wing.height_ft)))
+            if rebar is not None:
+                objects += _wall_rebar(wing, pid, f"WW{i}", "wingwall",
+                                       rebar)
 
     return tuple(objects)
 
@@ -710,14 +914,16 @@ class _WithId:
 
 
 def add_substructure(emit: BridgeEmit, sub, *,
-                     fc_psi: float = SUB_FC_PSI) -> BridgeEmit:
+                     fc_psi: float = SUB_FC_PSI,
+                     rebar: SubRebarSpec | None = SubRebarSpec()
+                     ) -> BridgeEmit:
     """A new :class:`BridgeEmit` with the substructure appended to the
     superstructure emit — same doc tags, so the merged record still
     round-trips through :func:`emit_to_json`, :func:`read_bim_tags`, and
     the quantity rollup."""
     return BridgeEmit(inputs=emit.inputs, layout=emit.layout,
                       objects=emit.objects + substructure_emit(
-                          sub, fc_psi=fc_psi),
+                          sub, fc_psi=fc_psi, rebar=rebar),
                       doc_tags=emit.doc_tags)
 
 

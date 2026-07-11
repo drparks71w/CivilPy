@@ -342,6 +342,58 @@ def test_substructure_pile_profile_and_pay(sub_emit):
     assert max(ys) - min(ys) == pytest.approx(10.1 / 12.0)  # flange width
 
 
+def test_substructure_cap_rebar_from_stm_schedule(sub_emit):
+    full, sub = sub_emit
+    pier = sub.piers[0]
+    bars = [o for o in full.objects
+            if o.tags.get("bim.id", "").startswith("PIER2-CAPBAR-")]
+    # the stub design's governing tie: 12 x #10
+    assert len(bars) == pier.cap.tie_bar_count == 12
+    z_cap_bot = pier.cap.origin[2] - pier.cap.depth_ft
+    for b in bars:
+        assert b.tags["rebar.size"] == "#10"
+        assert b.tags["rebar.mat"] == "pier_cap"
+        assert b.tags["pay.item"] == "509E00200"
+        z = b.points[0][2]
+        assert z == pytest.approx(z_cap_bot + (3.0 + 10.0 / 8.0 / 2.0) / 12.0)
+    stirrups = [o for o in full.objects
+                if o.tags.get("bim.id", "").startswith("PIER2-STIR-")]
+    assert len(stirrups) == 37                # 37 ft cap at 12 in
+    for s in stirrups[:3]:
+        assert s.points[0] == s.points[-1]    # closed hoop
+        assert s.tags["rebar.bend"] == "stirrup"
+
+
+def test_substructure_column_rebar_carries_design_area(sub_emit):
+    full, sub = sub_emit
+    col = sub.piers[0].columns[0]
+    verts = [o for o in full.objects
+             if o.tags.get("bim.id", "").startswith("PIER2-COL1-V")]
+    ties = [o for o in full.objects
+            if o.tags.get("bim.id", "").startswith("PIER2-COL1-T")]
+    # 12.0 in^2 of layer steel broken into #9 bars (1.0 in^2)
+    assert len(verts) == 12
+    for v in verts:
+        assert v.points[0][2] == pytest.approx(col.z_bot)
+        assert v.points[1][2] == pytest.approx(col.z_top)
+        r = math.hypot(v.points[0][0] - col.center[0],
+                       v.points[0][1] - col.center[1])
+        assert r == pytest.approx(42.0 / 24.0 - 3.0 / 12.0 - 0.5 / 12.0)
+    assert ties and all(t.tags["rebar.bend"] == "hoop" for t in ties)
+
+
+def test_substructure_wall_mats(sub_emit):
+    full, _ = sub_emit
+    bw = [o for o in full.objects
+          if o.tags.get("bim.id", "").startswith("ABUT1-BW-")]
+    assert bw, "backwall mats missing"
+    faces = {o.tags["bim.id"].split("-")[2] for o in bw}
+    assert faces == {"F1", "F2"}
+    for o in bw:
+        assert o.tags["rebar.mat"] == "backwall"
+        assert o.tags["rebar.size"] == "#5"
+
+
 def test_substructure_pay_rollup(sub_emit):
     full, sub = sub_emit
     q = pay_item_quantities(full)
