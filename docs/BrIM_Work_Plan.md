@@ -78,12 +78,13 @@ builders; verified in `tests/structural/test_rhino_bim.py`.
 
 - [ ] **3.1 Authentic materials.** Assign render materials/colors so steel,
   concrete, and reinforcing read realistically in Shaded/Rendered.
-- [ ] **3.2 Read-back.** Extend `rhino_gdr` (→ `rhino_bim`) to read the new
-  per-type attributes back into the hub, so the Rhino model round-trips as the
-  source of truth (BIM → MIDAS/estimate) without loss.
-- [ ] **3.3 Estimating hook.** Notebook cell: walk the model, group by pay
-  item, output quantities (steel lb, studs ea, concrete cy, rebar lb) → on-the-
-  fly estimate.
+- [x] **3.2 Read-back.** `rhino_bim.read_bim_tags` / `read_bim_quantities`
+  read every `bim.*`-tagged object (plus the bridge marker) back from a saved
+  `.3dm`; verified the live document round-trips to the identical rollup. The
+  `gdr.*` tags stay on centerlines/bearings for the analysis reader.
+- [x] **3.3 Estimating hook.** `pay_item_quantities(emit)` +
+  `read_bim_quantities(path)` group by pay item; demonstrated in Steel Girder
+  Bridge Walkthrough §8 (steel lb, studs ea, concrete cy, rebar lb).
 
 ---
 

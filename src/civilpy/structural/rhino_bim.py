@@ -513,29 +513,68 @@ def _sbr1_cage(br, s: float, B: float, T: float, H: float, L: float,
     return out
 
 
-# ── estimating rollup (work-plan 3.3) ─────────────────────────────────────
+# ── estimating rollup + read-back (work-plan 3.2 / 3.3) ───────────────────
 
-def pay_item_quantities(emit: BridgeEmit) -> dict[str, dict]:
-    """Group the emitted objects by ``pay.item`` and total their
-    ``pay.qty`` — the on-the-fly quantity estimate the per-object pay-item
-    tags exist to support.  Returns ``{item: {"desc", "unit", "qty",
-    "objects"}}`` sorted by item number."""
+def _tag_quantities(tag_dicts) -> dict[str, dict]:
+    """Group tag dicts by ``pay.item`` and total their ``pay.qty`` —
+    the on-the-fly quantity estimate the per-object pay-item tags exist
+    to support.  Returns ``{item: {"desc", "unit", "qty", "objects"}}``
+    sorted by item number."""
     out: dict[str, dict] = {}
-    for obj in emit.objects:
-        item = obj.tags.get("pay.item")
+    for tags in tag_dicts:
+        item = tags.get("pay.item")
         if item is None:
             continue
         rec = out.setdefault(item, {
-            "desc": obj.tags.get("pay.desc", ""),
-            "unit": obj.tags.get("pay.unit", ""),
+            "desc": tags.get("pay.desc", ""),
+            "unit": tags.get("pay.unit", ""),
             "qty": 0.0, "objects": 0})
         rec["objects"] += 1
-        qty = obj.tags.get("pay.qty")
+        qty = tags.get("pay.qty")
         if qty is not None:
             rec["qty"] += float(qty)
     for rec in out.values():
         rec["qty"] = round(rec["qty"], 2)
     return dict(sorted(out.items()))
+
+
+def pay_item_quantities(emit: BridgeEmit) -> dict[str, dict]:
+    """Quantity rollup straight from an emit (see :func:`_tag_quantities`)."""
+    return _tag_quantities(o.tags for o in emit.objects)
+
+
+def read_bim_tags(path) -> dict:
+    """Read a BrIM-tagged ``.3dm`` back: every object carrying ``bim.type``
+    returns its full user-text dict, and the ``bim.type = bridge`` marker's
+    tags come back as the bridge-wide record.
+
+    This is the round-trip half of the source-of-truth contract: the saved
+    Rhino document alone carries enough attributes to regenerate the
+    estimate (and, through the preserved ``gdr.*`` tags, the analysis
+    model) without the session that drew it.  Returns ``{"bridge": {...},
+    "components": [tags, ...]}``.
+    """
+    from civilpy.structural.rhino_stm import _require_rhino3dm
+
+    r3 = _require_rhino3dm()
+    f = r3.File3dm.Read(str(path))
+    if f is None:
+        raise FileNotFoundError(f"could not read 3dm file: {path}")
+    bridge: dict = {}
+    components: list[dict] = []
+    for obj in f.Objects:
+        us = dict(obj.Attributes.GetUserStrings() or {})
+        btype = us.get("bim.type")
+        if btype == "bridge":
+            bridge = us
+        elif btype is not None:
+            components.append(us)
+    return {"bridge": bridge, "components": components}
+
+
+def read_bim_quantities(path) -> dict[str, dict]:
+    """Pay-item rollup for a saved BrIM ``.3dm`` (read-back + estimate)."""
+    return _tag_quantities(read_bim_tags(path)["components"])
 
 
 # ── JSON transport for the live-document driver ───────────────────────────

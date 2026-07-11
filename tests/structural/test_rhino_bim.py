@@ -202,6 +202,30 @@ def test_pay_item_rollup(emit):
     assert rebar["unit"] == "lb" and rebar["qty"] > 10000
 
 
+def test_read_bim_round_trip(tmp_path, emit):
+    r3 = pytest.importorskip("rhino3dm")
+    from civilpy.structural.rhino_bim import read_bim_quantities, read_bim_tags
+
+    # bake a minimal tagged file the way a backend would
+    f = r3.File3dm()
+    f.Settings.ModelUnitSystem = r3.UnitSystem.Feet
+    for obj in emit.objects:
+        if obj.tags.get("bim.type") in ("bridge", "bearing", "girder"):
+            attr = r3.ObjectAttributes()
+            for k, v in obj.tags.items():
+                attr.SetUserString(k, v)
+            f.Objects.AddPoint(r3.Point3d(*obj.points[0]), attr)
+    path = tmp_path / "bim.3dm"
+    assert f.Write(str(path), 7)
+
+    back = read_bim_tags(path)
+    assert back["bridge"]["bim.girder_label"] == "W36X150"
+    assert len(back["components"]) == 25          # 20 bearings + 5 girders
+    q = read_bim_quantities(path)
+    assert q["516E10000"]["qty"] == 20
+    assert q["513E10220"]["qty"] == pytest.approx(5 * 230.0 * 150.0)
+
+
 def test_emit_json_round_trip(emit):
     data = json.loads(emit_to_json(emit))
     assert data["doc_tags"]["bim.units"] == "ft"
