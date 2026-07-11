@@ -86,6 +86,78 @@ builders; verified in `tests/structural/test_rhino_bim.py`.
   `read_bim_quantities(path)` group by pay item; demonstrated in Steel Girder
   Bridge Walkthrough §8 (steel lb, studs ea, concrete cy, rebar lb).
 
+## Phase 4 — Substructure components (model stops at the bearings today)
+
+The analysis/design side exists (`Notebooks/Substructure Design from
+Preliminary Reactions.ipynb`: reactions → `optimize_pier_cap` STM →
+`MultiColumnBent` → `RetainingWall`), but nothing emits substructure
+*geometry* — the BrIM record ends at the bearing pads. Close the loop so the
+executed design drives the drawn substructure.
+
+- [ ] **4.1 Substructure layout.** `substructure_from_layout(layout, ...)`
+  placing a skew-aligned local frame at each support station; seat elevations
+  taken from the existing girder seats/bearing stack so the cap top lands
+  exactly under the pads (stepped seats following the cross slope).
+- [ ] **4.2 Design → geometry round trip.** Emit dimensions come from the
+  executed design objects (`PierCapDesign`, `BentResult`, pile layout,
+  `RetainingWall` dims), not free parameters — the notebook result *is* the
+  geometry source, mirroring how `BridgeInput` drives the superstructure.
+- [ ] **4.3 Pier emit.** Cap prism, column cylinders, footings/piles on
+  `Substructure::*` layers with `bim.*`/`mat.*` tags; Class QC2 concrete
+  pay item (cy) `[CONFIRM]` against the CMS item master.
+- [ ] **4.4 Abutment emit.** Cap beam on piles, backwall, beam seats, and
+  wingwalls from the `RetainingWall` dims; HP piles (shape from the pile
+  design) with a steel-pile pay item (ft) `[CONFIRM]`. Reuse the
+  `odot/capped_pile_abutment.py` rebar-mark/bend-shape machinery where the
+  standard details apply.
+- [ ] **4.5 Substructure rebar.** Cap ties straight from the STM ties
+  (`PierCapDesign.report.ties` bar schedule), stirrups from the shear check,
+  column verticals/ties from `RebarLayer`, abutment cap + wingwall mats;
+  weights roll into the 509 reinforcing items like the deck mats.
+- [ ] **4.6 STM results overlay.** Merge the `rhino_stm.results_to_3dm`
+  output (ties red / struts blue) onto a `Substructure::STM` layer of the
+  main document instead of a separate `.3dm`, tagged non-pay (analysis
+  artifact, excluded from the estimate rollup).
+- [ ] **4.7 Read-back + estimate.** Extend `pay_item_quantities` /
+  `read_bim_quantities` coverage and the walkthrough §8 rollup; regression
+  tests in `test_rhino_bim.py` following the superstructure pattern.
+- [ ] **4.8 Terrain hook (later).** Footing/pile cutoff elevations from
+  `Terrain.elevation_at` once a surface is attached; nominal fixed
+  elevations until then.
+
+## Phase 5 — Second vertical slice: prestressed box beams
+
+Roadmap slice 3 (`Notebooks/Rhino Components/Work Plan.md`) carried through
+the same BrIM architecture. Existing assets to build on, not rebuild:
+`odot/box_beam_design.py` (PSBD standard-design + rating tables, strand
+patterns per box/span), `odot/box_beam.py`, `rhino_box_beam.py` (legacy
+direct writer), adjacent-box factors in `aashto/lrfd/distribution.py`,
+`strip_seal_joint_box_beam.py`.
+
+- [ ] **5.1 `BoxBeamBridgeInput` / layout.** Adjacent boxes across the width
+  (box size from the PSBD tables), shear keys, transverse tie rods per the
+  SCD, skew; composite topping (6 in min) vs non-composite with waterproofing
+  + asphalt wearing surface as the two deck options.
+- [ ] **5.2 Prestress from the standard designs.** Strand pattern/count from
+  `box_beam_design(box, span)`; verify release + final stresses, approximate
+  losses (LRFD 5.9.3), camber, and flexural/shear capacity as the pure-Python
+  L1 gate.
+- [ ] **5.3 Live-load distribution.** Wire the adjacent-box `moment_df` /
+  `shear_df` (4.6.2.2.2b/3c) into the `girder_pipeline` envelope the way the
+  steel slice used the beam factors.
+- [ ] **5.4 MIDAS spoke.** `structural_model_from_layout` analog for the box
+  layout (line beams per box minimum; grillage with transverse ties as the
+  refinement); reconcile with the L1 baseline per the roadmap validation
+  gate.
+- [ ] **5.5 BrIM emit.** Port `rhino_box_beam.py` to the `rhino_bim` emit
+  architecture: box prisms with voids, strands as tagged polylines, tie
+  rods, shear keys, bearing pads, railing per SCD on the boxes/topping;
+  prestressed member pay item (515E, ea/ft) `[CONFIRM]`.
+- [ ] **5.6 Substructure reuse.** Same reactions → `optimize_pier_cap` /
+  abutment path as the steel slice; Phase 4 emit applies unchanged.
+- [ ] **5.7 Walkthrough notebook.** Box-beam analog of the Steel Girder
+  Bridge Walkthrough, ending in the same quantities read-back.
+
 ---
 
 ## Notes / decisions

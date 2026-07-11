@@ -168,8 +168,25 @@ prove the analysis works before starting the next. Easiest/most abundant first.
   distribution and analysis (DC1/DC2/DW/HL-93) and established the reconciliation
   bridge to MIDAS results. Verified with `tests/structural/test_slab_bridge_analysis_l1.py`.
 - **Terrain backbone copied:** `Notebooks/Point_Clouds.ipynb` (see A2).
+- **Slice 5 (steel) carried through OUT OF ORDER as the BrIM proof-of-concept — superstructure
+  DONE.** `bridge_layout.py` (crowned deck, BDM 309-4 overhang, haunches, rebar mats),
+  `rhino_bim.py` emit layer + `draw_bim_emit.py` driver, MIDAS via
+  `structural_model_from_layout`/`grillage_model_from_layout`, quantities read-back
+  (`read_bim_quantities`), and the substructure *design* notebook
+  (`Substructure Design from Preliminary Reactions.ipynb`: reactions → STM pier/abutment
+  caps → bent P-M → wall stability). Substructure *geometry/BrIM components* are NOT yet
+  emitted — the model stops at the bearings.
 
 ## Next steps
 
-1. **Track B — Analysis contract & vertical slices.** Drive the single-span-slab slice
-   through the MIDAS pipeline (L1/L2/L3) and reconcile results with the civilpy baseline.
+Two candidate tracks, task breakdowns in `docs/BrIM_Work_Plan.md`:
+
+1. **Substructure components (BrIM Phase 4).** Emit pier/abutment geometry + rebar from the
+   executed designs (`PierCapDesign`/`BentResult`/`RetainingWall` drive the drawn dimensions),
+   seats under the existing bearings, STM overlay layer, read-back/estimate coverage.
+2. **Slice 3 — prestressed box beams (BrIM Phase 5).** Adjacent-box layout + shear keys/tie
+   rods, strands from the `box_beam_design.py` PSBD tables, adjacent-box LLDF into the L1
+   envelope, MIDAS spoke, emit-layer port of `rhino_box_beam.py`, walkthrough notebook;
+   substructure path reused from the steel slice.
+3. **Track B (background).** Drive the single-span-slab slice through the MIDAS pipeline
+   (L1/L2/L3) and reconcile results with the civilpy baseline.
