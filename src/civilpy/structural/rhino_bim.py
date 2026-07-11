@@ -80,6 +80,13 @@ from civilpy.structural.rhino_layers import (
     LAYER_LOAD_PLATES,
     LAYER_REBAR,
     LAYER_SHEAR_STUDS,
+    LAYER_SUB_BACKWALLS,
+    LAYER_SUB_CAPS,
+    LAYER_SUB_COLUMNS,
+    LAYER_SUB_FOOTINGS,
+    LAYER_SUB_PILES,
+    LAYER_SUB_SEATS,
+    LAYER_SUB_WINGWALLS,
 )
 
 Point = tuple[float, float, float]
@@ -511,6 +518,207 @@ def _sbr1_cage(br, s: float, B: float, T: float, H: float, L: float,
                 coating="GFRP", mat="parapet", bend="straight",
                 length_ft=L, scd="SBR-1-20")))
     return out
+
+
+# ── substructure emit (work-plan phase 4) ─────────────────────────────────
+
+SUB_FC_PSI = 4000.0          #: Class QC1 substructure concrete
+
+
+def _unit_prefix(unit) -> str:
+    """``"Pier 2"`` -> ``"PIER2"``, ``"Abutment 1"`` -> ``"ABUT1"``."""
+    return unit.name.replace("Abutment ", "ABUT").replace("Pier ", "PIER")
+
+
+def _oriented_rect(cx: float, cy: float, z: float, half_u: float,
+                   half_n: float, u: Point, n: Point) -> tuple[Point, ...]:
+    """Plan rectangle centered on ``(cx, cy)`` at ``z``, half-sides along
+    the ``u`` / ``n`` unit vectors."""
+    return tuple(
+        (cx + su * half_u * u[0] + sn * half_n * n[0],
+         cy + su * half_u * u[1] + sn * half_n * n[1], z)
+        for su, sn in ((-1, -1), (1, -1), (1, 1), (-1, 1)))
+
+
+def _cap_prism(cap, layer: str, tags: dict) -> EmitObject:
+    """Cap-beam prism: cross-section in the (normal, z) plane at the cap
+    origin, extruded along the (skewed) support line."""
+    x0, y0, z_top = cap.origin
+    u = cap.axis
+    n = (u[1], -u[0], 0.0)
+    w2 = cap.width_ft / 2.0
+    loop = tuple((x0 + s * w2 * n[0], y0 + s * w2 * n[1], z)
+                 for s, z in ((-1, z_top), (1, z_top),
+                              (1, z_top - cap.depth_ft),
+                              (-1, z_top - cap.depth_ft)))
+    return EmitObject(kind="prism", layer=layer, points=loop,
+                      vector=(u[0] * cap.length_ft, u[1] * cap.length_ft,
+                              0.0), tags=tags)
+
+
+def _wall_prism(wall, layer: str, tags: dict) -> EmitObject:
+    """WallPanel prism: thickness centered on the bottom line, extruded
+    along the wall axis."""
+    x0, y0, z0 = wall.origin
+    a = wall.axis
+    m = (a[1], -a[0], 0.0)
+    t2 = wall.thickness_ft / 2.0
+    loop = tuple((x0 + s * t2 * m[0], y0 + s * t2 * m[1], z)
+                 for s, z in ((-1, z0), (1, z0), (1, z0 + wall.height_ft),
+                              (-1, z0 + wall.height_ft)))
+    return EmitObject(kind="prism", layer=layer, points=loop,
+                      vector=(a[0] * wall.length_ft, a[1] * wall.length_ft,
+                              0.0), tags=tags)
+
+
+def _pile_prism(pile, u: Point, n: Point) -> EmitObject:
+    """Driven HP pile as a true I-prism (flanges parallel to the cap axis,
+    web along the roadway for strong-axis bending about the cap)."""
+    from civilpy.structural.bridge_layout import girder_section
+
+    hx, hy, hz = pile.head
+    sec = girder_section(pile.shape)
+    loop = tuple(
+        (hx + (w / 12.0) * u[0] + ((h - sec.depth / 2.0) / 12.0) * n[0],
+         hy + (w / 12.0) * u[1] + ((h - sec.depth / 2.0) / 12.0) * n[1], hz)
+        for w, h in i_profile_wh(sec))
+    return EmitObject(
+        kind="prism", layer=LAYER_SUB_PILES, points=loop,
+        vector=(0.0, 0.0, -pile.length_ft),
+        tags=bim.pile_tags(pile.tags_id, shape=pile.shape,
+                           length_ft=pile.length_ft))
+
+
+def _unit_objects(geom, cap_type: str, *, fc_psi: float) -> list[EmitObject]:
+    """Emit one substructure unit (the parts piers and abutments share)."""
+    pid = _unit_prefix(geom.unit)
+    cap = geom.cap
+    u = cap.axis
+    n = (u[1], -u[0], 0.0)
+    out = [_cap_prism(cap, LAYER_SUB_CAPS, bim.substructure_concrete_tags(
+        cap_type, f"{pid}-CAP", fc_psi=fc_psi, volume_cy=cap.volume_cy,
+        length_ft=cap.length_ft, width_ft=cap.width_ft,
+        depth_ft=cap.depth_ft))]
+    for seat in geom.seats:
+        cx, cy, z_top = seat.center
+        h_ft = seat.height_in / 12.0
+        half = seat.side_in / 24.0
+        out.append(EmitObject(
+            kind="prism", layer=LAYER_SUB_SEATS,
+            points=_oriented_rect(cx, cy, z_top - h_ft, half, half, u, n),
+            vector=(0.0, 0.0, h_ft),
+            tags=bim.substructure_concrete_tags(
+                "beam_seat", f"{pid}-SEAT-G{seat.girder_line}",
+                fc_psi=fc_psi,
+                volume_cy=(seat.side_in / 12.0) ** 2 * h_ft / 27.0,
+                side_in=seat.side_in, height_in=seat.height_in)))
+    return out
+
+
+def substructure_emit(sub, *, fc_psi: float = SUB_FC_PSI
+                      ) -> tuple[EmitObject, ...]:
+    """Tagged BrIM geometry for a placed
+    :class:`~civilpy.structural.substructure_layout.SubstructureLayout`:
+    pier caps / columns / footings and abutment caps / piles / backwalls /
+    wingwalls on the ``Substructure::*`` layers, with the stepped beam
+    seats under every bearing stack.  All cast-in-place concrete measures
+    into the Class QC1 substructure item; piles into the steel-pile item
+    (ft)."""
+    objects: list[EmitObject] = []
+
+    for pier in sub.piers:
+        pid = _unit_prefix(pier.unit)
+        u = pier.cap.axis
+        n = (u[1], -u[0], 0.0)
+        objects += _unit_objects(pier, "pier_cap", fc_psi=fc_psi)
+        for i, col in enumerate(pier.columns, start=1):
+            cx, cy = col.center
+            if col.diameter_in is not None:
+                obj = EmitObject(
+                    kind="cylinder", layer=LAYER_SUB_COLUMNS,
+                    points=((cx, cy, col.z_bot), (cx, cy, col.z_top)),
+                    radius_ft=col.diameter_in / 24.0,
+                    tags=bim.substructure_concrete_tags(
+                        "column", f"{pid}-COL-{i}", fc_psi=fc_psi,
+                        volume_cy=col.volume_cy,
+                        diameter_in=col.diameter_in,
+                        height_ft=col.height_ft))
+            else:
+                obj = EmitObject(
+                    kind="prism", layer=LAYER_SUB_COLUMNS,
+                    points=_oriented_rect(cx, cy, col.z_bot,
+                                          col.b_in / 24.0, col.h_in / 24.0,
+                                          u, n),
+                    vector=(0.0, 0.0, col.height_ft),
+                    tags=bim.substructure_concrete_tags(
+                        "column", f"{pid}-COL-{i}", fc_psi=fc_psi,
+                        volume_cy=col.volume_cy, b_in=col.b_in,
+                        h_in=col.h_in, height_ft=col.height_ft))
+            objects.append(obj)
+        for i, ftg in enumerate(pier.footings, start=1):
+            fx, fy = ftg.center
+            objects.append(EmitObject(
+                kind="prism", layer=LAYER_SUB_FOOTINGS,
+                points=_oriented_rect(fx, fy, ftg.z_top - ftg.thickness_ft,
+                                      ftg.length_ft / 2.0,
+                                      ftg.width_ft / 2.0, u, n),
+                vector=(0.0, 0.0, ftg.thickness_ft),
+                tags=bim.substructure_concrete_tags(
+                    "footing", f"{pid}-FTG-{i}", fc_psi=fc_psi,
+                    volume_cy=ftg.volume_cy, length_ft=ftg.length_ft,
+                    width_ft=ftg.width_ft,
+                    thickness_ft=ftg.thickness_ft)))
+
+    for ab in sub.abutments:
+        pid = _unit_prefix(ab.unit)
+        u = ab.cap.axis
+        n = (u[1], -u[0], 0.0)
+        objects += _unit_objects(ab, "abutment_cap", fc_psi=fc_psi)
+        for i, pile in enumerate(ab.piles, start=1):
+            pile = _WithId(pile, f"{pid}-PILE-{i}")
+            objects.append(_pile_prism(pile, u, n))
+        if ab.backwall is not None:
+            objects.append(_wall_prism(
+                ab.backwall, LAYER_SUB_BACKWALLS,
+                bim.substructure_concrete_tags(
+                    "backwall", f"{pid}-BW", fc_psi=fc_psi,
+                    volume_cy=ab.backwall.volume_cy,
+                    thickness_ft=ab.backwall.thickness_ft,
+                    height_ft=ab.backwall.height_ft)))
+        for i, wing in enumerate(ab.wingwalls, start=1):
+            objects.append(_wall_prism(
+                wing, LAYER_SUB_WINGWALLS,
+                bim.substructure_concrete_tags(
+                    "wingwall", f"{pid}-WW-{i}", fc_psi=fc_psi,
+                    volume_cy=wing.volume_cy,
+                    thickness_ft=wing.thickness_ft,
+                    height_ft=wing.height_ft)))
+
+    return tuple(objects)
+
+
+class _WithId:
+    """Attach the emit's ``bim.id`` to a pile record without widening the
+    geometry dataclass."""
+
+    def __init__(self, pile, tags_id: str):
+        self._pile = pile
+        self.tags_id = tags_id
+
+    def __getattr__(self, name):
+        return getattr(self._pile, name)
+
+
+def add_substructure(emit: BridgeEmit, sub, *,
+                     fc_psi: float = SUB_FC_PSI) -> BridgeEmit:
+    """A new :class:`BridgeEmit` with the substructure appended to the
+    superstructure emit — same doc tags, so the merged record still
+    round-trips through :func:`emit_to_json`, :func:`read_bim_tags`, and
+    the quantity rollup."""
+    return BridgeEmit(inputs=emit.inputs, layout=emit.layout,
+                      objects=emit.objects + substructure_emit(
+                          sub, fc_psi=fc_psi),
+                      doc_tags=emit.doc_tags)
 
 
 # ── estimating rollup + read-back (work-plan 3.2 / 3.3) ───────────────────

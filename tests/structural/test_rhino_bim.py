@@ -234,6 +234,135 @@ def test_emit_json_round_trip(emit):
     assert kinds == {"prism", "polyline", "cylinder", "point"}
 
 
+# ── substructure emit (work-plan phase 4) ─────────────────────────────────
+
+@pytest.fixture(scope="module")
+def sub_emit(emit):
+    from civilpy.structural.aashto.lrfd.columns import RebarLayer
+    from civilpy.structural.abutment import RetainingWall
+    from civilpy.structural.pier import MultiColumnBent, PierCap, PierColumn
+    from civilpy.structural.rhino_bim import add_substructure
+    from civilpy.structural.substructure_layout import (
+        AbutmentSpec, FootingSpec, substructure_from_layout)
+    from tests.structural.test_substructure_layout import _cap_design
+
+    layout = emit.layout
+    # girders span 32 ft along the cap; 2.5 ft edges -> 37 ft cap
+    pier_cap = _cap_design(span=37.0, depth=5.0, thickness=4.0)
+    bent = MultiColumnBent(
+        PierCap(length=37.0 * 12.0, width=48.0, depth=60.0,
+                column_positions=[138.0, 306.0]),
+        [PierColumn(height=240.0, diameter=42.0,
+                    layers=[RebarLayer(area=12.0, depth=6.0)])
+         for _ in range(2)])
+    spec = AbutmentSpec(
+        pile_xs_ft=(1.0, 11.0, 21.0, 31.0), pile_shape="HP10X42",
+        pile_length_ft=40.0,
+        wingwall=RetainingWall(
+            stem_height=12.0, stem_thickness=1.5, toe_length=3.0,
+            heel_length=6.0, footing_thickness=2.5, backfill_gamma=120.0,
+            backfill_phi=32.0),
+        wingwall_length_ft=10.0)
+    sub = substructure_from_layout(
+        layout, pier_cap=pier_cap, pier_bent=bent,
+        abutment_cap=_cap_design(span=37.0, depth=3.5, thickness=3.0),
+        abutment=spec,
+        footing=FootingSpec(length_ft=10.0, width_ft=10.0,
+                            thickness_ft=3.0))
+    return add_substructure(emit, sub), sub
+
+
+def test_substructure_component_inventory(sub_emit):
+    full, _ = sub_emit
+    by_type = {t: len(full.of_type(t)) for t in (
+        "pier_cap", "abutment_cap", "beam_seat", "column", "footing",
+        "pile", "backwall", "wingwall")}
+    # 3 spans -> 2 piers + 2 abutments over 5 girder lines
+    assert by_type["pier_cap"] == 2
+    assert by_type["abutment_cap"] == 2
+    assert by_type["beam_seat"] == 4 * 5
+    assert by_type["column"] == 2 * 2
+    assert by_type["footing"] == 2 * 2
+    assert by_type["pile"] == 2 * 4
+    assert by_type["backwall"] == 2
+    assert by_type["wingwall"] == 2 * 4       # 2 stems + 2 footings each
+    ids = [o.tags["bim.id"] for o in full.objects if "bim.type" in o.tags]
+    assert len(ids) == len(set(ids))
+
+
+def test_substructure_cap_sits_under_bearing_stack(sub_emit):
+    full, sub = sub_emit
+    layout = full.layout
+    pier = sub.piers[0]
+    cap = next(o for o in full.of_type("pier_cap")
+               if o.tags["bim.id"] == "PIER2-CAP")
+    z_top = max(p[2] for p in cap.points)
+    pad_bottoms = [bp.location[2] - (1.5 + 3.0) / 12.0
+                   for bp in layout.bearings if bp.station_index == 1]
+    assert z_top == pytest.approx(min(pad_bottoms) - 3.0 / 12.0)
+    assert z_top == pytest.approx(pier.cap.origin[2])
+    # every seat spans exactly from the cap top to its pad bottom
+    for seat in (o for o in full.of_type("beam_seat")
+                 if o.tags["bim.id"].startswith("PIER2-")):
+        z_base = seat.points[0][2]
+        assert z_base == pytest.approx(z_top)
+        h = float(seat.tags["beam_seat.height_in"]) / 12.0
+        assert z_base + h == pytest.approx(z_base + seat.vector[2])
+
+
+def test_substructure_columns_meet_cap_and_footing(sub_emit):
+    full, sub = sub_emit
+    pier = sub.piers[0]
+    z_cap_bot = pier.cap.origin[2] - pier.cap.depth_ft
+    cols = [o for o in full.of_type("column")
+            if o.tags["bim.id"].startswith("PIER2-")]
+    ftgs = [o for o in full.of_type("footing")
+            if o.tags["bim.id"].startswith("PIER2-")]
+    for col in cols:
+        base, top = col.points
+        assert top[2] == pytest.approx(z_cap_bot)
+        assert col.radius_ft == pytest.approx(42.0 / 24.0)
+        assert base[2] == pytest.approx(z_cap_bot - 20.0)
+    for ftg in ftgs:
+        # footing prism rises through its thickness to the column base
+        assert max(p[2] for p in ftg.points) + ftg.vector[2] == (
+            pytest.approx(z_cap_bot - 20.0))
+
+
+def test_substructure_pile_profile_and_pay(sub_emit):
+    full, _ = sub_emit
+    pile = next(o for o in full.of_type("pile")
+                if o.tags["bim.id"] == "ABUT1-PILE-1")
+    assert pile.tags["pile.shape"] == "HP10X42"
+    assert pile.tags["pay.item"] == "507E10000"
+    assert float(pile.tags["pay.qty"]) == 40.0
+    assert pile.vector == (0.0, 0.0, -40.0)
+    assert len(pile.points) > 16              # true I-profile with fillets
+    ys = [p[1] for p in pile.points]
+    assert max(ys) - min(ys) == pytest.approx(10.1 / 12.0)  # flange width
+
+
+def test_substructure_pay_rollup(sub_emit):
+    full, sub = sub_emit
+    q = pay_item_quantities(full)
+    conc = q["511E40000"]
+    assert conc["unit"] == "cy"
+    expect = sum(g.cap.volume_cy for g in sub.units)
+    expect += sum((s.side_in / 12.0) ** 2 * (s.height_in / 12.0) / 27.0
+                  for g in sub.units for s in g.seats)
+    for pier in sub.piers:
+        expect += sum(c.volume_cy for c in pier.columns)
+        expect += sum(f.volume_cy for f in pier.footings)
+    for ab in sub.abutments:
+        expect += ab.backwall.volume_cy
+        expect += sum(w.volume_cy for w in ab.wingwalls)
+    assert conc["qty"] == pytest.approx(expect, rel=1e-3)
+    piles = q["507E10000"]
+    assert piles["unit"] == "ft" and piles["qty"] == 8 * 40.0
+    # superstructure items are untouched by the merge
+    assert q["513E20000"]["qty"] == 5 * 115 * 3
+
+
 def test_skewed_deck_ends_follow_skew():
     e = girder_bridge_emit(BridgeInput(
         spans_ft=(80.0,), girder_count=4, girder_spacing_ft=9.0,
