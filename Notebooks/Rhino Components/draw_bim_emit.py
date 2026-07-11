@@ -93,6 +93,72 @@ def _prism(doc, pts, vector, attrs, tol):
     return doc.Objects.AddBrep(solid, attrs)
 
 
+def _is_axial(vp):
+    d = vp.CameraDirection
+    d.Unitize()
+    return max(abs(d.X), abs(d.Y), abs(d.Z)) > 0.999
+
+
+def set_bridge_views(doc, bbox=None):
+    """Aim the standard viewports at the bridge convention (X = stations,
+    Y transverse):
+
+    * **Front** — the cross-section, camera looking up-station (+X), the
+      direction typical sections are drawn looking;
+    * **Right** — the profile/elevation, camera looking +Y so stations
+      increase to screen right;
+    * a Perspective panel that an earlier session's ``SetProjection``
+      renamed to a duplicate "Front"/"Right" is restored.
+
+    Rhino's out-of-the-box Front/Right are backwards for this frame
+    (Front would show the profile), so the driver re-aims them on every
+    redraw.  Idempotent; safe on an empty document."""
+    if bbox is None:
+        bbox = rg.BoundingBox.Empty
+        for o in doc.Objects:
+            bbox.Union(o.Geometry.GetBoundingBox(True))
+    if not bbox.IsValid:
+        bbox = rg.BoundingBox(rg.Point3d(0, 0, -10), rg.Point3d(100, 40, 5))
+    center = bbox.Center
+    span = max(bbox.Diagonal.Length, 1.0)
+
+    named = {}
+    for view in doc.Views:
+        named.setdefault(view.ActiveViewport.Name, []).append(view)
+
+    if "Perspective" not in named:
+        for views in named.values():
+            if len(views) > 1:
+                stray = next((v for v in views
+                              if not _is_axial(v.ActiveViewport)), None)
+                if stray is not None:
+                    vp = stray.ActiveViewport
+                    vp.Name = "Perspective"
+                    vp.ChangeToPerspectiveProjection(True, 50.0)
+                    vp.SetCameraLocations(
+                        center, center + rg.Vector3d(-0.45 * span,
+                                                     -0.65 * span,
+                                                     0.35 * span))
+                    stray.ActiveViewport.ZoomExtents()
+                    views.remove(stray)
+                    break
+
+    aims = {"Front": rg.Vector3d(1.0, 0.0, 0.0),      # up-station: section
+            "Right": rg.Vector3d(0.0, 1.0, 0.0)}      # cross-bridge: profile
+    for name, aim in aims.items():
+        views = named.get(name, [])
+        if not views:
+            continue
+        view = next((v for v in views if _is_axial(v.ActiveViewport)),
+                    views[0])
+        vp = view.ActiveViewport
+        vp.ChangeToParallelProjection(True)
+        vp.SetCameraLocations(center, center - aim * span)
+        vp.CameraUp = rg.Vector3d.ZAxis
+        vp.ZoomExtents()
+    doc.Views.Redraw()
+
+
 def draw_bim_emit(json_path=None, clear=_CLEAR_DEFAULT):
     """Draw (or redraw) the BrIM model from an emit JSON file.  Returns a
     per-layer object-count report string."""
@@ -139,7 +205,7 @@ def draw_bim_emit(json_path=None, clear=_CLEAR_DEFAULT):
     for k, v in data["doc_tags"].items():
         doc.Strings.SetString(k, str(v))
 
-    doc.Views.Redraw()
+    set_bridge_views(doc)
     return "\n".join(f"{k}: {v}" for k, v in sorted(counts.items()))
 
 
