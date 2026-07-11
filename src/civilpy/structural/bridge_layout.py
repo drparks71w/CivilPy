@@ -76,6 +76,23 @@ class BridgeInput:
     design_haunch_in: float = 2.0
     deck_thickness_in: float | None = None
     deck_fc_ksi: float = POLICY.f_c
+    cross_slope_pct: float = 2.0
+    """Deck cross slope, percent. The roadway crowns at ``crown_offset_ft`` and
+    falls this grade to each side, so the girder **seat elevations vary across
+    the width** (they follow the crown/cross-slope, at full precision -- not
+    rounded).  ``0.0`` is a flat deck."""
+    crown_offset_ft: float | None = None
+    """Transverse offset (ft, girder 1 at 0) of the roadway crown / high point.
+    ``None`` centers it on the girder group."""
+    composite: bool = True
+    """Whether the deck acts compositely with the girders (shear studs / rebar
+    extending into the deck).  Drives the deck-to-girder connection in the
+    refined-grillage analysis model (:func:`grillage_model_from_layout`): a
+    composite deck is rigidly tied to the girders (full plane-section action);
+    a non-composite deck bears on the girders vertically but is free to slip
+    longitudinally.  Both are used in practice, so the design engineer sets
+    it -- it materially changes the girder demands for steel *and* prestressed
+    concrete superstructures."""
 
 
 # ── outputs ───────────────────────────────────────────────────────────────
@@ -520,3 +537,352 @@ def deck_rebar_segments(layout: BridgeLayout,
                         (o[0] + t_hi * d[0], t_hi * d[1], z), rs))
                 u += step_u
     return segments
+
+
+# ── layout -> canonical StructuralModel hub (the analysis/MIDAS spoke) ───────
+
+CONCRETE_UNIT_WT_KCF = 0.150
+FWS_KSF = 0.060                     # ODOT future wearing surface, 60 psf
+#: Preliminary concrete-parapet weight per foot of barrier height, lb/ft/ft,
+#: used only when the SCD catalog has no tabulated ``weight_per_ft``.  Calibrated
+#: so a 42 in single-slope (ODOT SBR-1) comes out ~455 plf; replace with the
+#: real barrier weight for final design.
+NOMINAL_PARAPET_PLF_PER_FT = 130.0
+
+
+def _barrier_weight_plf(barrier) -> float | None:
+    """Barrier weight (lb/ft): the cataloged value, or a preliminary estimate
+    from the barrier height (:data:`NOMINAL_PARAPET_PLF_PER_FT`) when the SCD
+    carries none.  ``None`` only if neither a weight nor a height is known."""
+    if barrier.weight_plf not in (None, 0.0):
+        return barrier.weight_plf
+    if barrier.height_in:
+        return NOMINAL_PARAPET_PLF_PER_FT * barrier.height_in / 12.0
+    return None
+
+
+def _girder_weight_plf(label: str) -> float:
+    """Nominal weight (lb/ft) of an AISC W-shape from its label: the number
+    after ``X`` (``W36X150`` -> 150), which is the section's weight per foot by
+    the AISC naming convention.  Falls back to the ``steel.W`` database when the
+    label is not in the ``WxxXyyy`` form."""
+    try:
+        return float(label.upper().split("X")[1])
+    except (IndexError, ValueError):
+        from civilpy.structural import steel
+        w = steel.W(label)
+        return float(getattr(w, "weight").magnitude)
+
+
+def _tributary_widths(inp: "BridgeInput") -> list[float]:
+    """Deck tributary width (ft) carried by each girder line: interior girders
+    take the full spacing, fascia girders take half the spacing plus their
+    overhang."""
+    n, s, oh = inp.girder_count, inp.girder_spacing_ft, inp.overhang_ft
+    trib = []
+    for g in range(n):
+        if g == 0 or g == n - 1:
+            trib.append(oh + s / 2.0)
+        else:
+            trib.append(s)
+    return trib
+
+
+def girder_line_loads(layout: "BridgeLayout", girder_index: int) -> dict:
+    """Uniform dead loads (klf, positive = downward) on one girder line.
+
+    ``girder_index`` is 0-based (0 = first fascia).  Returns ``{"dc1", "dc2",
+    "dw"}``: DC1 = girder self-weight + wet deck slab on the girder's tributary
+    width; DC2 = the barrier weight, on fascia girders only; DW = future
+    wearing surface on the tributary width.  These are the per-line loads the
+    hub applies and the native line-girder envelope (``girder_pipeline``)
+    consumes -- preliminary magnitudes (no haunch/cross-slope), same basis as
+    :func:`structural_model_from_layout`.
+    """
+    inp = layout.inputs
+    n = inp.girder_count
+    if not 0 <= girder_index < n:
+        raise IndexError(f"girder_index {girder_index} out of range 0..{n - 1}")
+    trib = _tributary_widths(inp)[girder_index]
+    t_deck_ft = layout.deck.thickness_in / 12.0
+    dc1 = (_girder_weight_plf(inp.girder_label) / 1000.0
+           + CONCRETE_UNIT_WT_KCF * t_deck_ft * trib)
+    dw = FWS_KSF * trib
+    dc2 = 0.0
+    if girder_index in (0, n - 1):
+        edge = "right" if girder_index == 0 else "left"
+        for br in layout.barriers:
+            if br.edge == edge:
+                w = _barrier_weight_plf(br)
+                if w:
+                    dc2 += w / 1000.0
+    return {"dc1": dc1, "dc2": dc2, "dw": dw}
+
+
+def structural_model_from_layout(layout: "BridgeLayout", *,
+                                 diaphragms: bool = True,
+                                 dead_loads: bool = True):
+    """Build the canonical :class:`StructuralModel` hub straight from a
+    :class:`BridgeLayout` -- no Rhino ``.3dm`` round-trip.
+
+    This is the faithful full-bridge analysis model the MIDAS spoke consumes
+    (via :func:`civilpy.structural.midas_models.midas_payloads`): **every**
+    girder line is a continuous chain of beam elements broken at every support
+    station, each carrying its resolved AISC section and steel grade; each
+    bearing becomes a 6-DOF restraint (fixed or expansion) on its girder node;
+    and, when ``diaphragms`` is set, a transverse beam ties adjacent girders at
+    every support line.  Contrast the equivalent-strip slab model -- here the
+    whole grid goes to MIDAS, so it can host traffic lanes for a moving-load run.
+
+    With ``dead_loads`` the three dead-load cases are applied as downward
+    (negative ``GZ``) uniform beam loads on the girder elements:
+
+    * ``DC1`` (non-composite): girder self-weight + the wet deck slab on each
+      girder's tributary width,
+    * ``DC2`` (composite SDL): each barrier's weight on its fascia girder,
+    * ``DW``: future wearing surface (:data:`FWS_KSF`) on the tributary width.
+
+    Haunch weight, cross-slope, and the exact wearing-surface extent (roadway
+    only) are preliminary-level approximations; refine per BDM for final design.
+
+    Returns the :class:`StructuralModel` (units kips/ft).
+    """
+    from civilpy.structural.structural_model import StructuralModel, Units
+
+    inp = layout.inputs
+    model = StructuralModel(units=Units(force="kips", length="ft"))
+
+    # support stations along the layout centerline
+    stations = [0.0]
+    for s in inp.spans_ft:
+        stations.append(stations[-1] + s)
+    tan_skew = math.tan(math.radians(inp.skew_deg))
+
+    # nodes + girder elements, one continuous chain per girder line
+    node_grid: dict[tuple[int, int], str] = {}   # (girder, station idx) -> id
+    girder_elems: dict[int, list[str]] = {}
+    for gl in layout.girders:
+        g = gl.line_no - 1
+        y = g * inp.girder_spacing_ft
+        z = gl.start[2]
+        shift = y * tan_skew
+        for i, st in enumerate(stations):
+            node_grid[(g, i)] = model.add_node(
+                st + shift, y, z, label=f"G{gl.line_no}_S{i}").id
+        elems = []
+        for i in range(len(stations) - 1):
+            e = model.add_element(
+                node_grid[(g, i)], node_grid[(g, i + 1)], role="girder",
+                midas_type="BEAM", section=gl.tags.get("gdr.shape"),
+                material=inp.grade)
+            e.metadata["gdr.line"] = str(gl.line_no)
+            elems.append(e.id)
+        girder_elems[g] = elems
+
+    # bearings -> restraints on the girder node at each support station
+    for bp in layout.bearings:
+        g = bp.line_no - 1
+        nid = node_grid.get((g, bp.station_index))
+        if nid is None:
+            continue
+        dof = {"fix_x": True, "fix_y": True, "fix_z": True} if bp.fixity == "fixed" \
+            else {"fix_x": False, "fix_y": True, "fix_z": True}
+        model.add_restraint(nid, **dof).preset = bp.fixity
+
+    # transverse diaphragms between adjacent girders at every support line
+    if diaphragms:
+        for g in range(inp.girder_count - 1):
+            for i in range(len(stations)):
+                a, b = node_grid.get((g, i)), node_grid.get((g + 1, i))
+                if a and b:
+                    model.add_element(a, b, role="diaphragm",
+                                      midas_type="BEAM").metadata[
+                        "gdr.kind"] = "diaphragm"
+
+    if dead_loads:
+        for g, elems in girder_elems.items():
+            w = girder_line_loads(layout, g)
+            for eid in elems:
+                model.add_beam_load(eid, -w["dc1"], case="DC1")
+                model.add_beam_load(eid, -w["dw"], case="DW")
+                if w["dc2"]:
+                    model.add_beam_load(eid, -w["dc2"], case="DC2")
+
+    return model
+
+
+def grillage_model_from_layout(layout: "BridgeLayout", *,
+                               composite: bool | None = None,
+                               seg_target_ft: float | None = None,
+                               dead_loads: bool = True,
+                               girder_subset: list[int] | None = None):
+    """Build the **refined-grillage** hub: bare-steel girder beams plus a
+    physical deck of plate elements, tied together with rigid links.
+
+    This is the "deck as plate, girder as frame" model MIDAS recommends when
+    the full deck surface is needed (moving-load traffic lanes) -- unlike
+    :func:`structural_model_from_layout`, which is a line-girder grid with no
+    deck.  The deck's longitudinal stiffness lives entirely in the plate
+    elements and the girders stay bare steel, so **the deck stiffness is never
+    double-counted** (the trap of pairing a composite girder *section* with
+    deck plates).
+
+    The ``composite`` toggle (defaulting to ``layout.inputs.composite``) sets
+    the deck-to-girder connection, mirroring whether the real bridge has shear
+    studs / rebar extending into the deck:
+
+    * **composite** -- a fully rigid link (all 6 DOF) at every deck node over a
+      girder, so slab and girder share plane sections (transformed-section
+      action emerges from the geometry).
+    * **non-composite** -- the deck bears on the girders vertically and is
+      located transversely/rotationally, but longitudinal slip (DX) is free, so
+      the slab adds no composite flexural stiffness to the girder; a single
+      longitudinal anchor at the fixed-bearing line removes rigid-body drift.
+
+    ``seg_target_ft`` is the target longitudinal plate length (default: the
+    girder spacing, giving roughly square plates); each span is divided into a
+    whole number of segments nearest that target, always keeping a node on
+    every support line.  Dead loads (DC1/DC2/DW) are applied to the girders as
+    in :func:`structural_model_from_layout`; the plates carry stiffness only
+    (self-weight is not separately activated, so the slab weight is not
+    double-counted).
+
+    ``girder_subset`` (0-based, contiguous) builds only those girder lines and
+    the deck they carry -- a **construction phase**.  The phase deck runs from
+    the outer overhang (where a fascia girder is included) to the mid-bay
+    **closure joint** where the phase is cut from the girders not yet built, so
+    the phase's inner girder carries a deck cantilever to that joint.  This is
+    the stage-1 (or stage-2) structure a closure-pour analysis needs -- see
+    :mod:`civilpy.structural.construction_staging`.
+
+    Returns the :class:`StructuralModel` (units kips/ft) with
+    ``rigid_links`` populated.
+    """
+    from civilpy.structural.structural_model import StructuralModel, Units
+
+    inp = layout.inputs
+    if composite is None:
+        composite = inp.composite
+    section = layout.section
+    n = inp.girder_count
+    spacing = inp.girder_spacing_ft
+    overhang = inp.overhang_ft
+    tan_skew = math.tan(math.radians(inp.skew_deg))
+    seg_target = seg_target_ft or spacing
+
+    subset = sorted(range(n) if girder_subset is None else girder_subset)
+    if not subset or subset != list(range(subset[0], subset[-1] + 1)):
+        raise ValueError("girder_subset must be a contiguous set of 0-based "
+                         f"girder indices within 0..{n - 1}")
+
+    # Elevations (ft, deck top = 0): girder nodes at the steel centroid, deck
+    # nodes at slab mid-plane, so a rigid link spans the true composite lever.
+    t_deck_ft = layout.deck.thickness_in / 12.0
+    haunch_ft = inp.design_haunch_in / 12.0
+    depth_ft = section.depth / 12.0
+    z_deck_mid = -t_deck_ft / 2.0
+    z_girder_top = -t_deck_ft - haunch_ft
+    z_girder_c = z_girder_top - depth_ft / 2.0
+
+    # Deck crown + cross slope: the deck (and the girder seats hung a fixed
+    # distance below it) fall from the crown to each side, so seat elevations
+    # vary across the width -- computed, not rounded (Dane's correction).
+    cross = inp.cross_slope_pct / 100.0
+    crown_y = (inp.crown_offset_ft if inp.crown_offset_ft is not None
+               else (n - 1) * spacing / 2.0)
+
+    def z_deck(y):
+        return z_deck_mid - abs(y - crown_y) * cross
+
+    def z_girder(y):
+        return z_girder_c - abs(y - crown_y) * cross
+
+    # Longitudinal stations: subdivide each span, keep a node on every support.
+    supports = [0.0]
+    for s in inp.spans_ft:
+        supports.append(supports[-1] + s)
+    stations: list[float] = []
+    for a, b in zip(supports[:-1], supports[1:]):
+        nseg = max(1, round((b - a) / seg_target))
+        stations.extend(a + (b - a) * k / nseg for k in range(nseg))
+    stations.append(supports[-1])
+    sup_j = [min(range(len(stations)), key=lambda i: abs(stations[i] - sp))
+             for sp in supports]
+    # station index of the fixed bearing line (for the non-composite anchor)
+    fixed_support = next((bp.station_index for bp in layout.bearings
+                          if bp.fixity == "fixed"), 0)
+    fixed_j = sup_j[fixed_support]
+
+    model = StructuralModel(units=Units(force="kips", length="ft"))
+
+    # Transverse deck edges: outer overhang where a fascia girder is in the
+    # phase, else the mid-bay closure joint to the girders not yet built.
+    left = -overhang if subset[0] == 0 else subset[0] * spacing - spacing / 2.0
+    right = (subset[-1] * spacing + overhang if subset[-1] == n - 1
+             else subset[-1] * spacing + spacing / 2.0)
+    deck_ys = [left] + [g * spacing for g in subset] + [right]
+    gcol = {g: k + 1 for k, g in enumerate(subset)}   # deck column over girder g
+
+    # Nodes: a girder node and a deck node column per station.
+    gnode: dict[tuple[int, int], str] = {}
+    dnode: dict[tuple[int, int], str] = {}
+    for i, st in enumerate(stations):
+        for g in subset:
+            y = g * spacing
+            gnode[(g, i)] = model.add_node(st + y * tan_skew, y, z_girder(y),
+                                           label=f"G{g + 1}_S{i}").id
+        for c, y in enumerate(deck_ys):
+            dnode[(c, i)] = model.add_node(st + y * tan_skew, y, z_deck(y),
+                                           label=f"D{c}_S{i}").id
+
+    # Bare-steel girder beam chains.
+    girder_elems: dict[int, list[str]] = {g: [] for g in subset}
+    for g in subset:
+        for i in range(len(stations) - 1):
+            e = model.add_element(gnode[(g, i)], gnode[(g, i + 1)],
+                                  role="girder", midas_type="BEAM",
+                                  section=inp.girder_label, material=inp.grade)
+            e.metadata["gdr.line"] = str(g + 1)
+            girder_elems[g].append(e.id)
+
+    # Deck plate mesh (interior bays + edge/closure strips).
+    t_name = f"DECK-{layout.deck.thickness_in:g}in"
+    conc_name = f"Deck-{int(round(inp.deck_fc_ksi * 1000))}psi"
+    for i in range(len(stations) - 1):
+        for c in range(len(deck_ys) - 1):
+            quad = [dnode[(c, i)], dnode[(c + 1, i)],
+                    dnode[(c + 1, i + 1)], dnode[(c, i + 1)]]
+            e = model.add_element(quad[0], quad[1], role="deck",
+                                  midas_type="PLATE", section=t_name,
+                                  material=conc_name, nodes=quad)
+            e.metadata["gdr.kind"] = "deck"
+
+    # Deck-to-girder connection = the composite toggle.
+    full = "111111"
+    slip = "011111"        # free DX (longitudinal slip) -> non-composite
+    for g in subset:
+        c = gcol[g]
+        for i in range(len(stations)):
+            dof = full if (composite or i == fixed_j) else slip
+            model.add_rigid_link(gnode[(g, i)], [dnode[(c, i)]], dof=dof)
+
+    # Restraints at the support lines.
+    for bp in layout.bearings:
+        g = bp.line_no - 1
+        nid = gnode.get((g, sup_j[bp.station_index]))
+        if nid is None:
+            continue
+        dof = {"fix_x": True, "fix_y": True, "fix_z": True} if bp.fixity == "fixed" \
+            else {"fix_x": False, "fix_y": True, "fix_z": True}
+        model.add_restraint(nid, **dof).preset = bp.fixity
+
+    if dead_loads:
+        for g, elems in girder_elems.items():
+            w = girder_line_loads(layout, g)
+            for eid in elems:
+                model.add_beam_load(eid, -w["dc1"], case="DC1")
+                model.add_beam_load(eid, -w["dw"], case="DW")
+                if w["dc2"]:
+                    model.add_beam_load(eid, -w["dc2"], case="DC2")
+
+    return model

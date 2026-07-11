@@ -30,7 +30,7 @@ from civilpy.general import units
 # ---------------------------------------------------------------------------
 # Load CSV reference data
 # ---------------------------------------------------------------------------
-_res_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Rhino Components")
+_res_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "res")
 
 _lumber_sizes = pd.read_csv(os.path.join(_res_dir, "lumber_sizes.csv"))
 _wood_ref = pd.read_csv(os.path.join(_res_dir, "wood_reference_values.csv"))

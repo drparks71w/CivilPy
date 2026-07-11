@@ -41,8 +41,13 @@ from __future__ import annotations
 
 import math
 
-import matplotlib.pyplot as plt
 import numpy as np
+
+# matplotlib is imported lazily inside the plot() methods below: it is a heavy,
+# display-only dependency, and importing it eagerly here would break the
+# station/offset placement contract (Alignment -> curves) in environments that
+# ship numpy but not matplotlib -- notably Rhino 8's bundled CPython, where the
+# Grasshopper components run. See docs/Rhino Design Philosophy.md.
 
 
 def station_str(station_ft: float) -> str:
@@ -135,6 +140,7 @@ class VerticalCurve:
     def plot(self, ax=None, n: int = 200):
         """Profile view: tangents dashed, curve solid, BVC/PVI/EVC and
         the high/low point labeled with stations.  Returns the figure."""
+        import matplotlib.pyplot as plt
         if ax is None:
             ax = plt.figure(figsize=(9, 5)).add_subplot(1, 1, 1)
         pad = 0.25 * self.length
@@ -237,6 +243,7 @@ class HorizontalCurve:
         """Plan view with the back tangent entering along +x: tangents
         dashed to the PI, the curve arc, and PC/PI/PT labeled with their
         stations.  Returns the figure."""
+        import matplotlib.pyplot as plt
         if ax is None:
             ax = plt.figure(figsize=(8, 6)).add_subplot(1, 1, 1)
         t = self.tangent_ft

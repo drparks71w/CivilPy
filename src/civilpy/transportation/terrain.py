@@ -345,6 +345,92 @@ class Terrain:
 
         return cls(np.vstack(all_pts))
 
+    #: Ohio DNR statewide DEM (OSIP LiDAR-derived, 2.5 ft, F32), an ArcGIS
+    #: ImageServer that returns real elevations by query -- no gigabyte tile
+    #: downloads.  Native SR is EPSG:3754 (NAD83 Ohio South State Plane, ft).
+    OH_DEM_IMAGESERVER = (
+        "https://gis.ohiodnr.gov/image/rest/services/OH_DEM_test/ImageServer")
+    OH_DEM_SR = 3754
+
+    @classmethod
+    def from_ohio_dem(cls, bbox, *, spacing_ft: float = 50.0,
+                      wgs84: bool = True, service: str | None = None,
+                      chunk: int = 400) -> "Terrain":
+        """Build a Terrain from real Ohio LiDAR by sampling the ODNR OH_DEM
+        ImageServer over ``bbox`` -- the practical alternative to downloading
+        LAS tiles.
+
+        Parameters
+        ----------
+        bbox : tuple
+            ``(xmin, ymin, xmax, ymax)``.  When ``wgs84`` (default) these are
+            longitude/latitude degrees, projected to Ohio South State Plane feet
+            (EPSG:3754, ``pyproj`` required); otherwise they are already in
+            EPSG:3754 feet.
+        spacing_ft : float
+            Grid spacing of the elevation samples, feet.
+        service : str, optional
+            Override the ImageServer URL (defaults to
+            :data:`OH_DEM_IMAGESERVER`).
+        chunk : int
+            Points per ``getSamples`` request (batched multipoint POST).
+
+        Returns
+        -------
+        Terrain
+            Points ``(easting_ft, northing_ft, elevation_ft)`` in EPSG:3754 --
+            a feet frame consistent with the rest of the bridge stack.  Cells
+            the DEM marks NoData are dropped.
+
+        Notes
+        -----
+        Requires ``requests`` (and ``pyproj`` when ``wgs84``).  Needs network
+        access to the ODNR service; unlike ``from_ogrip`` there is no local
+        file, so keep it out of import-time paths.
+        """
+        import json
+        import requests
+
+        svc = (service or cls.OH_DEM_IMAGESERVER).rstrip("/")
+        xmin, ymin, xmax, ymax = bbox
+        if wgs84:
+            from pyproj import Transformer
+            tf = Transformer.from_crs(4326, cls.OH_DEM_SR, always_xy=True)
+            (xmin, ymin), (xmax, ymax) = tf.transform(xmin, ymin), tf.transform(xmax, ymax)
+        xmin, xmax = sorted((xmin, xmax))
+        ymin, ymax = sorted((ymin, ymax))
+
+        nx = max(2, int((xmax - xmin) / spacing_ft) + 1)
+        ny = max(2, int((ymax - ymin) / spacing_ft) + 1)
+        grid = [(xmin + i * spacing_ft, ymin + j * spacing_ft)
+                for i in range(nx) for j in range(ny)]
+
+        pts = []
+        for k in range(0, len(grid), chunk):
+            batch = grid[k:k + chunk]
+            mp = {"points": [[x, y] for x, y in batch],
+                  "spatialReference": {"wkid": cls.OH_DEM_SR}}
+            resp = requests.post(
+                svc + "/getSamples",
+                data={"geometry": json.dumps(mp),
+                      "geometryType": "esriGeometryMultipoint",
+                      "returnFirstValueOnly": "true", "f": "json"},
+                timeout=60)
+            resp.raise_for_status()
+            samples = resp.json().get("samples", [])
+            for s in samples:
+                v = s.get("value")
+                if v in (None, "", "NoData"):
+                    continue
+                loc = s["location"]
+                pts.append((loc["x"], loc["y"], float(v)))
+
+        if len(pts) < 3:
+            raise ValueError(
+                f"OH_DEM returned {len(pts)} valid samples for bbox {bbox}; "
+                "check the bbox covers Ohio and the service is reachable")
+        return cls(np.array(pts, dtype=float))
+
     def __repr__(self):
         x0, y0, x1, y1 = self.bounds
         return (f"Terrain({self.n_points} pts, {self.n_triangles} tris, "

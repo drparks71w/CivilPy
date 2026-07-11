@@ -19,7 +19,7 @@ by circular-pipe diameter ``D`` (the corrugated-metal/plastic primary
 table; its pipe-arch tables are not transcribed here).  HW-2.2 carries both
 a circular table (by diameter) and an elliptical table (by rise and span).
 
-The data lives in the ``Rhino Components/hw_2_*.csv`` files and is loaded once at import.
+The data lives in the ``res/hw_2_*.csv`` files and is loaded once at import.
 All dimensions are inches; concrete quantity is cubic yards.  Spot-checked
 against the drawings in the test suite.
 """
@@ -28,7 +28,7 @@ import csv
 import os
 from dataclasses import dataclass, field
 
-_RES_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Rhino Components")
+_RES_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "res")
 _CSV_PATH = os.path.join(_RES_DIR, "hw_2_1_circular.csv")
 _CSV_22_CIRC = os.path.join(_RES_DIR, "hw_2_2_circular.csv")
 _CSV_22_ELLIP = os.path.join(_RES_DIR, "hw_2_2_elliptical.csv")

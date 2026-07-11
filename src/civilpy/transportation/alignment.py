@@ -196,6 +196,72 @@ class Alignment:
         self.start_station = float(start_station_ft)
         self._segments = self._build()
 
+    # -- construction from survey points -----------------------------------
+
+    @classmethod
+    def between_points(cls, p0: tuple[float, float], p1: tuple[float, float],
+                       *, start_station_ft: float = 0.0,
+                       radius_ft: float | None = None, direction: str = "R",
+                       start_elev_ft: float | None = None,
+                       end_elev_ft: float | None = None,
+                       terrain=None) -> "Alignment":
+        """Build an alignment between two plan points, deriving bearing, length,
+        and grade -- the conceptual-design workflow where you can't drape an
+        alignment on the ground but can pick two endpoints and a curvature.
+
+        With no ``radius_ft`` the horizontal alignment is a single tangent from
+        ``p0`` to ``p1`` (bearing = the azimuth p0->p1, length = the distance).
+        Give ``radius_ft`` and the two points are joined by one circular arc of
+        that radius turning ``direction`` ("R"/"L"); the required deflection and
+        start bearing are back-computed from the chord.
+
+        Grade comes from the endpoint elevations: pass ``start_elev_ft`` /
+        ``end_elev_ft`` directly, or a ``terrain`` (anything with
+        ``elevation_at(x, y)``) to sample the ground at each point.  When no
+        elevations are available the alignment is flat (z = 0).  The profile is
+        a single straight grade; add crest/sag :class:`VerticalProfile` PVIs
+        later for a real vertical curve.
+        """
+        x0, y0 = float(p0[0]), float(p0[1])
+        x1, y1 = float(p1[0]), float(p1[1])
+        dx, dy = x1 - x0, y1 - y0
+        chord = math.hypot(dx, dy)
+        if chord <= 0.0:
+            raise ValueError("p0 and p1 must be distinct points")
+        az_chord = math.degrees(math.atan2(dx, dy))   # cw from North
+
+        if radius_ft is None:
+            start_bearing = az_chord
+            elements: list = [Tangent(chord)]
+            length = chord
+        else:
+            if radius_ft < chord / 2.0:
+                raise ValueError(
+                    f"radius {radius_ft} ft is too small to join points "
+                    f"{chord:.2f} ft apart (min {chord / 2.0:.2f} ft)")
+            d = str(direction).upper()
+            sign = 1 if d == "R" else -1
+            delta = math.degrees(2.0 * math.asin(chord / (2.0 * radius_ft)))
+            start_bearing = az_chord - sign * delta / 2.0
+            elements = [Curve(radius_ft=radius_ft, delta_deg=delta, direction=d)]
+            length = radius_ft * math.radians(delta)
+
+        # Vertical profile from endpoint elevations (terrain-sampled if given).
+        if terrain is not None:
+            if start_elev_ft is None:
+                start_elev_ft = terrain.elevation_at(x0, y0)
+            if end_elev_ft is None:
+                end_elev_ft = terrain.elevation_at(x1, y1)
+        profile = None
+        if start_elev_ft is not None and end_elev_ft is not None:
+            end_station = start_station_ft + length
+            profile = VerticalProfile([
+                (start_station_ft, float(start_elev_ft), 0.0),
+                (end_station, float(end_elev_ft), 0.0)])
+
+        return cls((x0, y0), start_bearing, elements, profile=profile,
+                   start_station_ft=start_station_ft)
+
     # -- geometry table ----------------------------------------------------
 
     def _build(self) -> list[dict]:

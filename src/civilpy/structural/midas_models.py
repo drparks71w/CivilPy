@@ -97,6 +97,86 @@ def steel_material_block(name: str = "A709-50", *, matl_id: int = 1,
     }}
 
 
+def concrete_elastic_modulus_ksf(fc_psi: float, unit_wt_pcf: float = 145.0) -> float:
+    """Concrete elastic modulus in **kips/ft^2** from ``f'c`` (psi).
+
+    AASHTO LRFD 5.4.2.4 / ACI 318:
+    ``Ec = 33000 * K1 * (wc/1000)^1.5 * sqrt(f'c)`` with ``wc`` in kcf and
+    ``f'c`` in ksi gives ``Ec`` in ksi; convert to ksf (x144) for a model
+    whose DIST unit is feet. For ``f'c`` = 4500 psi, ``wc`` = 145 pcf this is
+    ~3952 ksi, the value MIDAS should hold for an SB-1-24 slab -- not the
+    ~29000 ksi steel modulus ``midas_payloads`` otherwise defaults to.
+    """
+    wc_kcf = unit_wt_pcf / 1000.0
+    fc_ksi = fc_psi / 1000.0
+    ec_ksi = 33000.0 * (wc_kcf ** 1.5) * (fc_ksi ** 0.5)
+    return ec_ksi * 144.0
+
+
+def concrete_material_block(name: str = "Class-S-4500", *, matl_id: int = 1,
+                            fc_psi: float = 4500.0,
+                            unit_wt_pcf: float = 145.0) -> dict:
+    """A ``/db/MATL`` USER concrete material with ``Ec`` from :func:`concrete_elastic_modulus_ksf`.
+
+    ``DEN`` (weight density) is carried in the model's force/length^3 unit
+    (kips/ft^3 in the civilpy default), so 145 pcf -> 0.145 kcf.
+    """
+    return {str(matl_id): {
+        "TYPE": "USER", "NAME": name, "THMAL_UNIT": "F",
+        "bMASS_DENS": False, "DAMP_RAT": 0.0,
+        "PARAM": [{"P_TYPE": 2, "MASS": 0.0,
+                   "ELAST": round(concrete_elastic_modulus_ksf(fc_psi, unit_wt_pcf), 3),
+                   "POISN": 0.2, "THERMAL": 6.0e-06,
+                   "DEN": round(unit_wt_pcf / 1000.0, 6)}],
+    }}
+
+
+def solid_rect_section_block(width: float, height: float, *, sect_id: int = 1,
+                             name: str | None = None) -> dict:
+    """A solid-rectangle (``SB``) ``/db/SECT`` body, ``width`` x ``height`` in
+    the model's length unit.
+
+    This is the honest section for an equivalent-strip slab beam (a 1 ft wide
+    x thickness deep concrete strip), where an AISC I-shape reference makes no
+    sense. Dimension order matches the placeholder square: ``vSIZE = [H, B]``
+    is MIDAS's [depth, width] for the SB shape.
+    """
+    name = name or f"RECT-{width:g}x{height:g}"
+    return {str(sect_id): {
+        "SECTTYPE": "DBUSER", "SECT_NAME": name,
+        "SECT_BEFORE": {"SHAPE": "SB", "DATATYPE": 2,
+                        "SECT_I": {"vSIZE": [round(height, 6),
+                                             round(width, 6)]}},
+    }}
+
+
+def thickness_block(t_ft: float, *, thik_id: int = 1,
+                    name: str | None = None) -> dict:
+    """A ``/db/THIK`` value-thickness body (``t_ft`` in the model length unit),
+    the plate-element analogue of a beam ``SECT``.  A plate ``ELEM`` references
+    this id through its **``SECT`` field** (verified against a live Civil NX
+    release: the plate body is ``{"TYPE":"PLATE","MATL":m,"SECT":<thik id>,
+    "NODE":[n1..n4,0,0,0,0],"ANGLE":0,"STYPE":1}``)."""
+    return {str(thik_id): {
+        "NAME": name or str(thik_id), "TYPE": "VALUE", "bINOUT": False,
+        "T_IN": round(t_ft, 6), "T_OUT": round(t_ft, 6), "O_VALUE": 0,
+    }}
+
+
+def _thickness_ft_from_label(label: str) -> float:
+    """Parse a deck-thickness label like ``"DECK-8.5in"`` to feet (default 8 in)."""
+    import re
+    m = re.search(r"([\d.]+)\s*in", label or "")
+    return (float(m.group(1)) if m else 8.0) / 12.0
+
+
+def _fc_psi_from_label(label: str) -> float:
+    """Parse an f'c out of a concrete label like ``"Deck-4500psi"`` (default 4500)."""
+    import re
+    m = re.search(r"([\d.]+)\s*psi", label or "")
+    return float(m.group(1)) if m else 4500.0
+
+
 def placeholder_section_block(*, sect_id: int = 1, side_ft: float = 1.0,
                               name: str = "PLACEHOLDER-1ft-SQ") -> dict:
     """A solid-square ``/db/SECT`` placeholder so exported elements reference a
@@ -197,6 +277,8 @@ def hub_section_material_blocks(model, *, sect_start: int = 1,
     matl: dict = {}
     elem_assign: dict = {}
     for elem in model.elements.values():
+        if elem.midas_type == "PLATE":
+            continue                 # plates carry a THIK + concrete, not a SECT
         label = elem.section
         grade = elem.material or default_grade
         if label and label not in shapes:
@@ -531,22 +613,60 @@ def midas_payloads(model: "StructuralModel", *, node_start: int = 1,
         placeholder_id = max((int(k) for k in sect), default=0) + 1
         sect.update(placeholder_section_block(sect_id=placeholder_id))
 
+    # Plate (deck) elements: a THIK per distinct thickness label and a concrete
+    # MATL per distinct concrete label (steel MATL ids are already taken).
+    plate_elems = [e for e in model.elements.values()
+                   if e.midas_type == "PLATE"]
+    thik: dict = {}
+    thik_by_label: dict[str, int] = {}
+    conc_by_label: dict[str, int] = {}
+    next_matl = max((int(k) for k in matl), default=0)
+    for e in plate_elems:
+        tlabel = e.section or "DECK-8in"
+        if tlabel not in thik_by_label:
+            tid = len(thik_by_label) + 1
+            thik_by_label[tlabel] = tid
+            thik.update(thickness_block(_thickness_ft_from_label(tlabel),
+                                        thik_id=tid, name=tlabel))
+        clabel = e.material or "Deck-4500psi"
+        if clabel not in conc_by_label:
+            next_matl += 1
+            conc_by_label[clabel] = next_matl
+            matl.update(concrete_material_block(
+                name=clabel, matl_id=next_matl,
+                fc_psi=_fc_psi_from_label(clabel)))
+
     elements: dict[str, dict] = {}
     for j, elem in enumerate(model.elements.values(), start=elem_start):
-        sid, mid = elem_assign[elem.id]
-        body = {
-            "TYPE": elem.midas_type, "MATL": mid, "SECT": sid if sid is not None else placeholder_id,
-            "NODE": [node_int[nid] for nid in elem.nodes],
-            "ANGLE": 0,
-        }
-        elements[str(j)] = body
+        node_ids = [node_int[nid] for nid in elem.nodes]
+        if elem.midas_type == "PLATE":
+            # 3- or 4-node area element; NODE list padded to 8 ids with zeros.
+            node_ids = (node_ids + [0, 0, 0, 0, 0, 0, 0, 0])[:8]
+            elements[str(j)] = {
+                "TYPE": "PLATE",
+                "MATL": conc_by_label[elem.material or "Deck-4500psi"],
+                "SECT": thik_by_label[elem.section or "DECK-8in"],
+                "NODE": node_ids, "ANGLE": 0, "STYPE": 1,
+            }
+        else:
+            sid, mid = elem_assign[elem.id]
+            elements[str(j)] = {
+                "TYPE": elem.midas_type, "MATL": mid,
+                "SECT": sid if sid is not None else placeholder_id,
+                "NODE": node_ids, "ANGLE": 0,
+            }
 
     cons = {node_int[r.node_id]: r.to_constraint_string()
             for r in model.restraints.values()
             if any(r.flags())}
 
     # Static load cases (one STLD per named case) and their nodal point loads.
-    cases = [c for c in model.cases() if model.loads_in_case(c)]
+    # A case counts if it carries *either* nodal or distributed beam loads --
+    # a distributed-load-only model (e.g. an equivalent-strip slab) otherwise
+    # emits no STLD, and MIDAS then rejects the solve with "Load information
+    # has not been entered for Analysis."
+    cases = [c for c in model.cases()
+             if model.loads_in_case(c) or model.beam_loads_in_case(c)]
     static_loads = {
         str(i): {"NAME": name, "TYPE": "USER", "DESC": ""}
         for i, name in enumerate(cases, start=1)
@@ -566,9 +686,26 @@ def midas_payloads(model: "StructuralModel", *, node_start: int = 1,
         "UNIT": unit_block_for(model.units),
         "MATL": matl,
         "SECT": sect,
-        "NODE": nodes,
-        "ELEM": elements,
     }
+    if thik:                       # THIK before ELEM: plates reference it
+        payloads["THIK"] = thik
+    payloads["NODE"] = nodes
+    payloads["ELEM"] = elements
+    # Rigid (master-slave) links -> /db/RIGD. The DOF flag string is sent as an
+    # integer; MIDAS right-aligns it to the 6 DOF positions (DX DY DZ RX RY RZ),
+    # so "011111" (free longitudinal slip, non-composite) rides as 11111.
+    if model.rigid_links:
+        rigd: dict = {}
+        for link in model.rigid_links:
+            m = str(node_int[link.master])
+            body = rigd.setdefault(m, {"ITEMS": []})
+            body["ITEMS"].append({
+                "ID": len(body["ITEMS"]) + 1,
+                "GROUP_NAME": "",
+                "DOF": int(link.dof),
+                "S_NODE": [node_int[s] for s in link.slaves],
+            })
+        payloads["RIGD"] = rigd
     if cons:
         payloads["CONS"] = constraint_assign(cons)
     if static_loads:
@@ -576,25 +713,30 @@ def midas_payloads(model: "StructuralModel", *, node_start: int = 1,
     if nodal_loads:
         payloads["CNLD"] = nodal_loads
 
-    # Beam loads (distributed)
+    # Element distributed loads -> /db/BMLD (verified against a live Civil NX
+    # release). The table is BMLD, not "BEAM" (which the API rejects), and the
+    # uniform-load body uses CMD="BEAM", TYPE="UNILOAD", relative distances in
+    # D=[d_i, d_j, 0, 0] (0..1 along the element) and magnitudes in
+    # P=[w_i, w_j, 0, 0] -- not flat D1/D2/W1/W2 fields ("Wrong Field").
     if model.beam_loads:
         elem_int: dict[str, int] = {elem.id: j for j, elem in enumerate(model.elements.values(), start=elem_start)}
         beam_loads: dict[str, dict] = {}
         for bload in model.beam_loads:
             body = beam_loads.setdefault(str(elem_int[bload.element_id]), {"ITEMS": []})
-            # MIDAS BEAM LOAD (Element) table: BEAM
-            # Body format: {ID, LCNAME, GROUP_NAME, TYPE, DIRECTION, SOURCE, ...}
+            w_end = bload.w_end if bload.w_end is not None else bload.w_start
             body["ITEMS"].append({
                 "ID": len(body["ITEMS"]) + 1,
                 "LCNAME": bload.case,
                 "GROUP_NAME": "",
-                "TYPE": "UNIFORM",
+                "CMD": "BEAM",
+                "TYPE": "UNILOAD",
                 "DIRECTION": bload.direction,
-                "D1": 0.0, "D2": 1.0,  # Full length
-                "W1": bload.w_start,
-                "W2": bload.w_end if bload.w_end is not None else bload.w_start
+                "USE_PROJECTION": False,
+                "USE_ECCEN": False,
+                "D": [0.0, 1.0, 0.0, 0.0],   # full length, relative
+                "P": [bload.w_start, w_end, 0.0, 0.0],
             })
-        payloads["BEAM"] = beam_loads
+        payloads["BMLD"] = beam_loads
 
     return payloads
 

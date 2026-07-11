@@ -329,15 +329,17 @@ class SlabBridgeComponent:
                                          multi_lane=True, skew_deg=self.inp.skew_deg)
             gdf = 1.0 / e_ft
 
-            # Uniform loads on the beam (kip/ft)
+            # Uniform loads on the beam (kip/ft). Negative = downward (global
+            # -Z): these are gravity dead loads, so the vector points down, and
+            # a MIDAS solve then returns positive (upward) support reactions.
             t_tot_ft = design.thickness_in / 12.0
             dc1_klf = t_tot_ft * 0.150 * gdf
             dc2_klf = ((2 * 0.475) / self.inp.width_ft) * gdf
             dw_klf = 0.060 * gdf
 
-            hub.add_beam_load(elem.id, dc1_klf, case="DC1")
-            hub.add_beam_load(elem.id, dc2_klf, case="DC2")
-            hub.add_beam_load(elem.id, dw_klf, case="DW")
+            hub.add_beam_load(elem.id, -dc1_klf, case="DC1")
+            hub.add_beam_load(elem.id, -dc2_klf, case="DC2")
+            hub.add_beam_load(elem.id, -dw_klf, case="DW")
 
         elif level == "L2":
             # Refined grillage model (L2)

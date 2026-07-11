@@ -1,0 +1,7 @@
+{
+  "mcpServers": {
+    "rhino": {
+      "command": "C:\\Users\\dane\\AppData\\Roaming\\McNeel\\Rhinoceros\\packages\\8.0\\Rhino-MCP-Platform\\0.1.5\\router\\win-x64\\rhino-mcp-router.exe"
+    }
+  }
+}

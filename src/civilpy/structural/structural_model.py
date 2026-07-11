@@ -262,6 +262,26 @@ class Load:
         return (self.fx, self.fy, self.fz)
 
 
+@dataclass
+class RigidLink:
+    """A rigid (master-slave) constraint -- IFC ``IfcRelConnectsStructuralMember``
+    with an infinitely stiff connection.
+
+    ``master`` is the retained node; every node in ``slaves`` is tied to it in
+    the DOFs flagged in ``dof`` (a 6-char ``DX DY DZ RX RY RZ`` string, ``'1'``
+    = constrained).  This is the deck-to-girder tie of a refined grillage: a
+    fully rigid link (``"111111"``) makes the slab act compositely with the
+    girder (studs/rebar into the deck); constraining vertical/transverse only
+    and freeing longitudinal slip models a non-composite interface.  Exports to
+    the MIDAS ``/db/RIGD`` table.
+    """
+
+    master: str
+    slaves: list[str]
+    dof: str = "111111"
+    id: str = field(default_factory=_new_id)
+
+
 # ── Results ───────────────────────────────────────────────────────────────────
 
 
@@ -302,6 +322,7 @@ class StructuralModel:
     restraints: dict[str, Restraint] = field(default_factory=dict)
     loads: list[Load] = field(default_factory=list)
     beam_loads: list[BeamLoad] = field(default_factory=list)
+    rigid_links: list[RigidLink] = field(default_factory=list)
     load_cases: dict[str, LoadCase] = field(default_factory=dict)
     results: dict[str, Result] = field(default_factory=dict)
     units: Units = field(default_factory=Units)
@@ -359,6 +380,19 @@ class StructuralModel:
         self.loads.append(load)
         return load
 
+    def add_rigid_link(self, master: str, slaves: list[str], *,
+                       dof: str = "111111", id: str | None = None) -> RigidLink:
+        """Tie ``slaves`` to ``master`` rigidly in the DOFs flagged in ``dof``
+        (6-char ``DX DY DZ RX RY RZ``).  Used for the deck-to-girder composite
+        connection in a refined grillage (see :class:`RigidLink`)."""
+        for nid in (master, *slaves):
+            if nid not in self.nodes:
+                raise KeyError(f"rigid link references unknown node id {nid!r}")
+        link = RigidLink(master, list(slaves), dof=dof,
+                         **({"id": id} if id else {}))
+        self.rigid_links.append(link)
+        return link
+
     def add_beam_load(self, element_id: str, w_start: float,
                       w_end: float | None = None, *,
                       case: str = "default", direction: str = "GZ",
@@ -384,9 +418,14 @@ class StructuralModel:
     def loads_in_case(self, case: str = "default") -> list[Load]:
         return [load for load in self.loads if load.case == case]
 
+    def beam_loads_in_case(self, case: str = "default") -> list[BeamLoad]:
+        return [load for load in self.beam_loads if load.case == case]
+
     def cases(self) -> list[str]:
         """Load-case names actually used by loads (plus any registered)."""
-        used = {load.case for load in self.loads} | set(self.load_cases)
+        used = ({load.case for load in self.loads}
+                | {load.case for load in self.beam_loads}
+                | set(self.load_cases))
         return sorted(used)
 
     # ── Integrity ─────────────────────────────────────────────────────────────
@@ -405,10 +444,10 @@ class StructuralModel:
         touched: set[str] = set()
 
         for eid, e in self.elements.items():
-            for n in (e.node_a, e.node_b):
+            for n in e.nodes:
                 if n not in node_ids:
                     problems.append(f"element {eid}: unknown node {n!r}")
-            touched.update((e.node_a, e.node_b))
+            touched.update(e.nodes)
             if e.node_a == e.node_b:
                 problems.append(f"element {eid}: zero-length (same node both ends)")
             elif e.node_a in node_ids and e.node_b in node_ids:
