@@ -68,6 +68,24 @@ LAYER_HAUNCHES = "Superstructure::Haunches"
 LAYER_SHEAR_STUDS = "Superstructure::Shear Studs"
 LAYER_LOAD_PLATES = "Superstructure::Load Plates"
 
+#: PROPOSED leaves under the (reserved) Substructure group, mirroring the
+#: Superstructure taxonomy one component per layer: cap beams, the stepped
+#: beam seats on top of them, columns, footings, driven piles, abutment
+#: backwalls and wingwalls, the substructure reinforcing cage, and an STM
+#: layer holding the strut-and-tie *analysis* overlay (non-pay — excluded
+#: from every estimate rollup).
+LAYER_SUB_CAPS = "Substructure::Caps"
+LAYER_SUB_SEATS = "Substructure::Beam Seats"
+LAYER_SUB_COLUMNS = "Substructure::Columns"
+LAYER_SUB_FOOTINGS = "Substructure::Footings"
+LAYER_SUB_PILES = "Substructure::Piles"
+LAYER_SUB_BACKWALLS = "Substructure::Backwalls"
+LAYER_SUB_WINGWALLS = "Substructure::Wingwalls"
+LAYER_SUB_REBAR = "Substructure::Rebar"
+LAYER_SUB_STM = "Substructure::STM"
+LAYER_SUB_STM_TIES = "Substructure::STM::Ties"
+LAYER_SUB_STM_STRUTS = "Substructure::STM::Struts"
+
 #: Default RGBA colors, keyed by full layer path -- kept alongside the path
 #: constants so every writer paints the same layer the same color.
 DEFAULT_COLORS: dict[str, tuple[int, int, int, int]] = {
@@ -91,6 +109,17 @@ DEFAULT_COLORS: dict[str, tuple[int, int, int, int]] = {
     LAYER_HAUNCHES: (200, 200, 190, 255),
     LAYER_SHEAR_STUDS: (200, 120, 40, 255),
     LAYER_LOAD_PLATES: (90, 90, 100, 255),
+    LAYER_SUB_CAPS: (155, 145, 130, 255),
+    LAYER_SUB_SEATS: (170, 160, 145, 255),
+    LAYER_SUB_COLUMNS: (140, 130, 115, 255),
+    LAYER_SUB_FOOTINGS: (120, 110, 95, 255),
+    LAYER_SUB_PILES: (70, 70, 80, 255),
+    LAYER_SUB_BACKWALLS: (150, 140, 125, 255),
+    LAYER_SUB_WINGWALLS: (145, 135, 120, 255),
+    LAYER_SUB_REBAR: (60, 120, 200, 255),
+    LAYER_SUB_STM: (150, 150, 150, 255),
+    LAYER_SUB_STM_TIES: (200, 40, 40, 255),
+    LAYER_SUB_STM_STRUTS: (40, 80, 200, 255),
 }
 
 

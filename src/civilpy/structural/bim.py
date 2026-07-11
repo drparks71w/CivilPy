@@ -61,6 +61,12 @@ PAY_ITEMS: dict[str, PayItem] = {
                          "cy", "512", 1),
     "516E10000": PayItem("516E10000", "Elastomeric bearing [CONFIRM]",
                          "ea", "516", 1),
+    "511E40000": PayItem("511E40000",
+                         "Class QC1 concrete, substructure [CONFIRM]",
+                         "cy", "511", 1),
+    "507E10000": PayItem("507E10000",
+                         "Steel piles HP, furnished and driven [CONFIRM]",
+                         "ft", "507", 1),
 }
 
 
@@ -203,6 +209,41 @@ def haunch_tags(bid: str, *, depth_in: float, width_in: float,
     if volume_cy is not None:
         tags.update(_pay_tags("511E12100", volume_cy))
     return tags
+
+
+#: Substructure concrete component types (one Rhino layer each).
+SUBSTRUCTURE_CONCRETE_TYPES = (
+    "pier_cap", "abutment_cap", "beam_seat", "column", "footing",
+    "backwall", "wingwall")
+
+
+def substructure_concrete_tags(btype: str, bid: str, *,
+                               fc_psi: float = 4000.0, cls: str = "QC1",
+                               volume_cy: float | None = None,
+                               **dims: float) -> dict:
+    """Tag block for a cast-in-place substructure concrete component.
+
+    ``btype`` is one of :data:`SUBSTRUCTURE_CONCRETE_TYPES`; extra ``dims``
+    keywords flatten to ``"<btype>.<key>"`` string tags (e.g.
+    ``depth_ft=5.0`` on a ``pier_cap`` becomes ``pier_cap.depth_ft``).
+    All substructure concrete measures into the one Class QC1 substructure
+    item, the way haunches roll into the deck item."""
+    if btype not in SUBSTRUCTURE_CONCRETE_TYPES:
+        raise ValueError(f"unknown substructure component type {btype!r}")
+    tags = {**_base(btype, bid), **concrete_mat(fc_psi, cls),
+            **_pay_tags("511E40000", volume_cy)}
+    for k, v in dims.items():
+        tags[f"{btype}.{k}"] = f"{v:g}"
+    return tags
+
+
+def pile_tags(bid: str, *, shape: str, length_ft: float, grade: str = "50",
+              spec: str = "ASTM A572") -> dict:
+    """Driven steel HP pile: pay quantity is the furnished+driven length
+    (ft) below cutoff."""
+    return {**_base("pile", bid), "pile.shape": shape,
+            "pile.length_ft": f"{length_ft:g}", **steel_mat(spec, grade),
+            **_pay_tags("507E10000", length_ft)}
 
 
 def rebar_tags(bid: str, *, size: int, coating: str = "epoxy", mat: str = "top",
