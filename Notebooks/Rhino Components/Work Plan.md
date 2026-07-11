@@ -176,17 +176,22 @@ prove the analysis works before starting the next. Easiest/most abundant first.
   (`Substructure Design from Preliminary Reactions.ipynb`: reactions → STM pier/abutment
   caps → bent P-M → wall stability). Substructure *geometry/BrIM components* are NOT yet
   emitted — the model stops at the bearings.
+- **Substructure BrIM components DONE (Phase 4, except the 4.8 terrain hook).**
+  `substructure_layout.py` places caps/seats/columns/footings/piles/backwalls/wingwalls
+  from the executed design objects; `rhino_bim.substructure_emit`/`add_substructure`/
+  `stm_overlay_emit` merge the tagged geometry, the rebar cage, and the in-place STM
+  overlay into the superstructure emit; rollup/read-back cover the 511/507/509
+  substructure items; demonstrated in the substructure notebook §7.
 
 ## Next steps
 
-Two candidate tracks, task breakdowns in `docs/BrIM_Work_Plan.md`:
+Task breakdowns in `docs/BrIM_Work_Plan.md`:
 
-1. **Substructure components (BrIM Phase 4).** Emit pier/abutment geometry + rebar from the
-   executed designs (`PierCapDesign`/`BentResult`/`RetainingWall` drive the drawn dimensions),
-   seats under the existing bearings, STM overlay layer, read-back/estimate coverage.
-2. **Slice 3 — prestressed box beams (BrIM Phase 5).** Adjacent-box layout + shear keys/tie
+1. **Slice 3 — prestressed box beams (BrIM Phase 5).** Adjacent-box layout + shear keys/tie
    rods, strands from the `box_beam_design.py` PSBD tables, adjacent-box LLDF into the L1
    envelope, MIDAS spoke, emit-layer port of `rhino_box_beam.py`, walkthrough notebook;
    substructure path reused from the steel slice.
-3. **Track B (background).** Drive the single-span-slab slice through the MIDAS pipeline
+2. **Track B (background).** Drive the single-span-slab slice through the MIDAS pipeline
    (L1/L2/L3) and reconcile results with the civilpy baseline.
+3. **Phase 4 leftovers.** The 4.8 terrain hook (footing/pile cutoff elevations from
+   `Terrain.elevation_at`) and superstructure 3.1 authentic render materials.

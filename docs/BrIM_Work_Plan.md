@@ -94,33 +94,42 @@ Preliminary Reactions.ipynb`: reactions → `optimize_pier_cap` STM →
 *geometry* — the BrIM record ends at the bearing pads. Close the loop so the
 executed design drives the drawn substructure.
 
-- [ ] **4.1 Substructure layout.** `substructure_from_layout(layout, ...)`
-  placing a skew-aligned local frame at each support station; seat elevations
-  taken from the existing girder seats/bearing stack so the cap top lands
-  exactly under the pads (stepped seats following the cross slope).
-- [ ] **4.2 Design → geometry round trip.** Emit dimensions come from the
-  executed design objects (`PierCapDesign`, `BentResult`, pile layout,
-  `RetainingWall` dims), not free parameters — the notebook result *is* the
-  geometry source, mirroring how `BridgeInput` drives the superstructure.
-- [ ] **4.3 Pier emit.** Cap prism, column cylinders, footings/piles on
-  `Substructure::*` layers with `bim.*`/`mat.*` tags; Class QC2 concrete
-  pay item (cy) `[CONFIRM]` against the CMS item master.
-- [ ] **4.4 Abutment emit.** Cap beam on piles, backwall, beam seats, and
-  wingwalls from the `RetainingWall` dims; HP piles (shape from the pile
-  design) with a steel-pile pay item (ft) `[CONFIRM]`. Reuse the
-  `odot/capped_pile_abutment.py` rebar-mark/bend-shape machinery where the
-  standard details apply.
-- [ ] **4.5 Substructure rebar.** Cap ties straight from the STM ties
-  (`PierCapDesign.report.ties` bar schedule), stirrups from the shear check,
-  column verticals/ties from `RebarLayer`, abutment cap + wingwall mats;
+- [x] **4.1 Substructure layout.** `substructure_from_layout(layout, ...)`
+  (`civilpy.structural.substructure_layout`) places a skew-aligned local
+  frame at each support station; the cap top hangs one minimum seat below
+  the lowest bearing stack and every girder gets a stepped beam seat
+  following the cross slope, so the pads land exactly.
+- [x] **4.2 Design → geometry round trip.** Emit dimensions come from the
+  executed design objects (`PierCapDesign` span/thickness/depth + tie
+  schedule, `MultiColumnBent` column sections/heights/steel area,
+  `RetainingWall` stem/footing dims), not free parameters. The only
+  explicit inputs are what no civilpy designer sizes yet: pile length,
+  footing plan (`FootingSpec`), wingwall run length (`AbutmentSpec`).
+- [x] **4.3 Pier emit.** Cap prism, column cylinders (or rectangular
+  prisms), footings on `Substructure::*` layers with `bim.*`/`mat.*` tags;
+  all CIP concrete measures into `511E40000` Class QC1 substructure (cy)
+  `[CONFIRM]` against the CMS item master.
+- [x] **4.4 Abutment emit.** Cap beam on HP piles (true I-profiles from the
+  steel DB, web along the roadway), backwall, beam seats, and wingwall
+  stem+footing panels from the `RetainingWall` dims; steel-pile pay item
+  `507E10000` (ft) `[CONFIRM]`. The `odot/capped_pile_abutment.py`
+  rebar-mark machinery stays the reference for CPA-1-08 standard details
+  (this emit is the general capped-pile case).
+- [x] **4.5 Substructure rebar.** Cap main steel straight from the STM ties
+  (`PierCapDesign.report.ties` governing bar schedule), stirrups from the
+  shear-check parameters, column verticals broken out of the `RebarLayer`
+  area with hoops, nominal two-face backwall/wingwall mats (`SubRebarSpec`);
   weights roll into the 509 reinforcing items like the deck mats.
-- [ ] **4.6 STM results overlay.** Merge the `rhino_stm.results_to_3dm`
-  output (ties red / struts blue) onto a `Substructure::STM` layer of the
-  main document instead of a separate `.3dm`, tagged non-pay (analysis
-  artifact, excluded from the estimate rollup).
-- [ ] **4.7 Read-back + estimate.** Extend `pay_item_quantities` /
-  `read_bim_quantities` coverage and the walkthrough §8 rollup; regression
-  tests in `test_rhino_bim.py` following the superstructure pattern.
+- [x] **4.6 STM results overlay.** `rhino_bim.stm_overlay_emit` draws the
+  solved cap STM in place on `Substructure::STM::Ties`/`::Struts` (red /
+  blue) in the main document, tagged `bim.analysis` with no pay item —
+  excluded from every estimate rollup.
+- [x] **4.7 Read-back + estimate.** `pay_item_quantities` /
+  `read_bim_quantities` cover the substructure items automatically (tag
+  driven); regression tests in `test_rhino_bim.py` +
+  `test_substructure_layout.py`; demonstrated end-to-end in the
+  substructure notebook §7 (1,310 tagged objects, 511/507/509 items next
+  to the superstructure rollup).
 - [ ] **4.8 Terrain hook (later).** Footing/pile cutoff elevations from
   `Terrain.elevation_at` once a surface is attached; nominal fixed
   elevations until then.
