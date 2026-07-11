@@ -87,6 +87,8 @@ from civilpy.structural.rhino_layers import (
     LAYER_SUB_PILES,
     LAYER_SUB_REBAR,
     LAYER_SUB_SEATS,
+    LAYER_SUB_STM_STRUTS,
+    LAYER_SUB_STM_TIES,
     LAYER_SUB_WINGWALLS,
 )
 
@@ -911,6 +913,48 @@ class _WithId:
 
     def __getattr__(self, name):
         return getattr(self._pile, name)
+
+
+def stm_overlay_emit(model, geom, layout) -> tuple[EmitObject, ...]:
+    """The solved cap strut-and-tie model drawn in place on the
+    ``Substructure::STM`` layers (ties red, struts blue) — the analysis
+    overlay work-plan 4.6 asks for, merged into the main document instead
+    of a separate ``.3dm``.
+
+    ``model`` is the solved
+    :class:`~civilpy.structural.strut_and_tie.StrutAndTieModel` from the
+    cap's :class:`PierCapDesign` (its 2D frame: x along the cap in the
+    girder-1-origin coordinates the reactions were given in, y up from
+    the cap bottom); ``geom`` the placed pier/abutment geometry it
+    belongs to.  Members carry ``stm.kind`` / ``stm.force_kip`` and **no
+    pay item**, so every estimate rollup ignores them."""
+    cap = geom.cap
+    inp = layout.inputs
+    cos_skew = math.cos(math.radians(inp.skew_deg))
+    s0 = ((inp.girder_count - 1) * inp.girder_spacing_ft / cos_skew
+          - cap.length_ft) / 2.0
+    x0, y0, z_top = cap.origin
+    u = cap.axis
+    z_bot = z_top - cap.depth_ft
+    pid = _unit_prefix(geom.unit)
+
+    def to3d(node2d) -> Point:
+        s_rel, h = node2d[0] - s0, node2d[1]
+        return (x0 + s_rel * u[0], y0 + s_rel * u[1], z_bot + h)
+
+    out = []
+    for k, ((a, b), force) in enumerate(sorted(
+            (model.forces or {}).items()), start=1):
+        kind = "tie" if force > 1e-9 else "strut"
+        out.append(EmitObject(
+            kind="polyline",
+            layer=LAYER_SUB_STM_TIES if kind == "tie"
+            else LAYER_SUB_STM_STRUTS,
+            points=(to3d(model.nodes[a]), to3d(model.nodes[b])),
+            tags={"bim.type": "stm_member", "bim.id": f"{pid}-STM-{k}",
+                  "bim.analysis": "true", "stm.kind": kind,
+                  "stm.force_kip": f"{abs(force):.1f}"}))
+    return tuple(out)
 
 
 def add_substructure(emit: BridgeEmit, sub, *,

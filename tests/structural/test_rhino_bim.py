@@ -415,6 +415,61 @@ def test_substructure_pay_rollup(sub_emit):
     assert q["513E20000"]["qty"] == 5 * 115 * 3
 
 
+def test_stm_overlay_lands_in_the_cap(sub_emit):
+    from civilpy.structural.rhino_bim import stm_overlay_emit
+    from civilpy.structural.strut_and_tie import StrutAndTieModel
+
+    full, sub = sub_emit
+    pier = sub.piers[0]
+    m = StrutAndTieModel()
+    m.add_node("A", 0.0, 0.0)                # girder 1, cap bottom
+    m.add_node("B", 16.0, 5.0)               # mid-cap, cap top
+    m.add_member("A", "B")
+    m.forces = {("A", "B"): 120.0}
+    overlay = stm_overlay_emit(m, pier, full.layout)
+    assert len(overlay) == 1
+    tie = overlay[0]
+    assert tie.layer == "Substructure::STM::Ties"
+    assert tie.tags["stm.kind"] == "tie"
+    assert "pay.item" not in tie.tags        # analysis-only, never estimated
+    # node A maps to girder 1 (y=0) at the cap soffit under pier 2
+    z_bot = pier.cap.origin[2] - pier.cap.depth_ft
+    assert tie.points[0] == pytest.approx((70.0, 0.0, z_bot))
+    assert tie.points[1][2] == pytest.approx(z_bot + 5.0)
+    m.forces = {("A", "B"): -80.0}
+    strut = stm_overlay_emit(m, pier, full.layout)[0]
+    assert strut.layer == "Substructure::STM::Struts"
+    assert strut.tags["stm.kind"] == "strut"
+
+
+def test_substructure_read_back_round_trip(tmp_path, sub_emit):
+    r3 = pytest.importorskip("rhino3dm")
+    from civilpy.structural.rhino_bim import read_bim_quantities
+
+    full, _ = sub_emit
+    f = r3.File3dm()
+    f.Settings.ModelUnitSystem = r3.UnitSystem.Feet
+    for obj in full.objects:
+        if obj.tags.get("bim.type") in ("pier_cap", "abutment_cap", "pile",
+                                        "backwall", "column"):
+            attr = r3.ObjectAttributes()
+            for k, v in obj.tags.items():
+                attr.SetUserString(k, v)
+            f.Objects.AddPoint(r3.Point3d(*obj.points[0]), attr)
+    path = tmp_path / "sub.3dm"
+    assert f.Write(str(path), 7)
+
+    q = read_bim_quantities(path)
+    assert q["507E10000"]["qty"] == 8 * 40.0
+    baked = pay_item_quantities(full)
+    baked_conc = sum(
+        float(o.tags["pay.qty"]) for o in full.objects
+        if o.tags.get("bim.type") in ("pier_cap", "abutment_cap",
+                                      "backwall", "column"))
+    assert q["511E40000"]["qty"] == pytest.approx(baked_conc, abs=0.05)
+    assert q["507E10000"]["unit"] == baked["507E10000"]["unit"]
+
+
 def test_skewed_deck_ends_follow_skew():
     e = girder_bridge_emit(BridgeInput(
         spans_ft=(80.0,), girder_count=4, girder_spacing_ft=9.0,
