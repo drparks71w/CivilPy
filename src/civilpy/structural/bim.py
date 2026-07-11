@@ -53,6 +53,8 @@ PAY_ITEMS: dict[str, PayItem] = {
                          "lb", "509", 1),
     "509E00100": PayItem("509E00100", "Reinforcing steel, black [CONFIRM]",
                          "lb", "509", 1),
+    "509E00300": PayItem("509E00300", "GFRP deformed bars [CONFIRM]",
+                         "lb", "509", 1),
     "511E12100": PayItem("511E12100", "Class QC2 concrete, superstructure (deck) [CONFIRM]",
                          "cy", "511", 1),
     "512E10000": PayItem("512E10000", "Concrete, parapet/railing [CONFIRM]",
@@ -100,15 +102,26 @@ def concrete_mat(fc_psi: float, cls: str = "QC2") -> dict:
 
 def rebar_mat(size: int, coating: str = "epoxy") -> dict:
     """Reinforcing material block.  ``coating`` = epoxy / GFRP / stainless /
-    black; ``size`` the bar number (#), diameter in eighths of an inch."""
+    black; ``size`` the bar number (#), diameter in eighths of an inch.
+    The tabulated weight is **steel** (C&MS 509); GFRP bars carry the spec
+    reference instead (C&MS 705.28) since their weight is producer-specific."""
     dia_in = size / 8.0
+    tags = {"rebar.size": f"#{size}", "rebar.dia_in": f"{dia_in:g}",
+            "rebar.coating": coating}
+    if coating.upper() == "GFRP":
+        tags["mat.spec"] = "GFRP, C&MS 705.28"
+        return tags
+    tags["mat.spec"] = "reinforcing steel"
     weight_plf = {3: 0.376, 4: 0.668, 5: 1.043, 6: 1.502, 7: 2.044,
                   8: 2.670, 9: 3.400, 10: 4.303, 11: 5.313}.get(size)
-    tags = {"mat.spec": "reinforcing steel", "rebar.size": f"#{size}",
-            "rebar.dia_in": f"{dia_in:g}", "rebar.coating": coating}
     if weight_plf is not None:
         tags["rebar.weight_plf"] = f"{weight_plf:g}"
     return tags
+
+
+#: Reinforcing pay item by coating (see :data:`PAY_ITEMS`).
+REBAR_PAY_ITEM = {"epoxy": "509E00200", "black": "509E00100",
+                  "gfrp": "509E00300"}
 
 
 # ── component tag builders ──────────────────────────────────────────────────
@@ -199,9 +212,11 @@ def rebar_tags(bid: str, *, size: int, coating: str = "epoxy", mat: str = "top",
             "rebar.bend": bend, **rebar_mat(size, coating)}
     if length_ft is not None:
         tags["rebar.length_ft"] = f"{length_ft:g}"
+        item = REBAR_PAY_ITEM.get(coating.lower())
         wpf = tags.get("rebar.weight_plf")
-        if wpf is not None:
-            tags.update(_pay_tags(
-                "509E00200" if coating == "epoxy" else "509E00100",
-                float(wpf) * length_ft))
+        if item is not None and wpf is not None:
+            tags.update(_pay_tags(item, float(wpf) * length_ft))
+        elif item is not None:
+            # GFRP: item known, weight producer-specific -> qty left off
+            tags.update(_pay_tags(item))
     return tags

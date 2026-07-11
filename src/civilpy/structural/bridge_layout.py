@@ -242,22 +242,23 @@ class BridgeLayout:
 
     def deck_profile_yz(self) -> tuple[tuple[float, float], ...]:
         """Closed deck cross-section as ``(y, z)`` pairs — the crowned top,
-        the parallel soffit, and the linearly thickened overhangs (soffit
-        drops from ``thickness_in`` to ``overhang_thickness_in`` at the deck
-        edge, the ODOT overhang detail).  The taper starts at the **outboard
-        top-flange edge** of each fascia girder — not its centerline — so
-        the haunch prism (whose sides align with the flange edges per BDM
-        309.3.5) lands flush on the uniform soffit.  Order: along the top
-        from ``y_lo`` to ``y_hi`` (crown included when interior), then back
-        along the soffit.  A backend maps ``(y, z)`` into 3D at each bridge
-        end (``x = station + y*tan(skew)``) and lofts the two profiles into
-        the deck solid.
+        the parallel soffit, and the thickened overhangs per BDM Figure
+        309-4: the overhang soffit runs at ``overhang_thickness_in`` below
+        the top (parallel to it) from the deck edge to the **outboard
+        top-flange tip** of the fascia girder, where it steps up to the
+        uniform ``thickness_in`` soffit.  With the standard ``t + 2`` in
+        overhang and a 2 in design haunch that step lands exactly at the
+        flange-top / haunch-bottom plane, reproducing the figure.  Order:
+        along the top from ``y_lo`` to ``y_hi`` (crown included when
+        interior), then back along the soffit.  A backend maps ``(y, z)``
+        into 3D at each bridge end (``x = station + y*tan(skew)``) and
+        lofts the two profiles into the deck solid.
         """
         inp = self.inputs
         y_lo = -inp.overhang_ft
         y_hi = (inp.girder_count - 1) * inp.girder_spacing_ft + inp.overhang_ft
         half_bf = self.section.flange_width / 2.0 / 12.0
-        # taper break: outboard flange edge, clamped inside the deck edge
+        # overhang/uniform break: outboard flange tip, kept inside the edge
         y_b1 = max(min(-half_bf, 0.0), y_lo)
         y_bn = min((inp.girder_count - 1) * inp.girder_spacing_ft + half_bf,
                    y_hi)
@@ -270,15 +271,18 @@ class BridgeLayout:
             top_ys.insert(1, crown)
         top = [(y, self.deck_top_z(y)) for y in top_ys]
 
-        # soffit breakpoints, walked back from y_hi to y_lo; the thickened
-        # edge points exist only when there is an overhang to thicken
-        bot_ys = sorted({y_b1, y_bn} | ({crown} if y_b1 < crown < y_bn else set()),
-                        reverse=True)
-        bot = ([(y_hi, self.deck_top_z(y_hi) - t_oh)]
-               if y_hi > y_bn + 1e-9 else [])
-        bot += [(y, self.deck_top_z(y) - t) for y in bot_ys]
+        # soffit walked back from y_hi to y_lo: thick overhang, step at the
+        # flange tip, uniform slab (with crown break) between the tips
+        mid_ys = sorted({y_b1, y_bn} | ({crown} if y_b1 < crown < y_bn
+                                        else set()), reverse=True)
+        bot: list[tuple[float, float]] = []
+        if y_hi > y_bn + 1e-9:
+            bot += [(y_hi, self.deck_top_z(y_hi) - t_oh),
+                    (y_bn, self.deck_top_z(y_bn) - t_oh)]
+        bot += [(y, self.deck_top_z(y) - t) for y in mid_ys]
         if y_lo < y_b1 - 1e-9:
-            bot.append((y_lo, self.deck_top_z(y_lo) - t_oh))
+            bot += [(y_b1, self.deck_top_z(y_b1) - t_oh),
+                    (y_lo, self.deck_top_z(y_lo) - t_oh)]
         return tuple(top + bot)
 
 

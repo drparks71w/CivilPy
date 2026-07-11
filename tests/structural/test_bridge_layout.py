@@ -123,15 +123,25 @@ def test_deck_profile_yz(basic):
     assert top_at[16.0] == 0.0
     edge = [p for p in prof if p[0] == 35.0]
     assert edge[0][1] - edge[1][1] == pytest.approx(10.5 / 12.0)
-    # soffit parallels the top between the overhang tapers, which start at
-    # the outboard flange edges so the haunches land flush (BDM 309.3.5)
+    # BDM Figure 309-4 overhang: soffit parallel to the top at t + 2 in
+    # from the edge to the outboard flange tip, stepping up to the uniform
+    # slab there (flush with the haunch bottom for a 2 in design haunch)
     half_bf = basic.section.flange_width / 2.0 / 12.0
-    soffit_at = {y: z for y, z in prof[3:]}
-    assert soffit_at[16.0] == pytest.approx(-8.5 / 12.0)
-    assert soffit_at[-half_bf] == pytest.approx(
+    bot = prof[3:]
+    soffit_at = {}
+    for y, z in bot:
+        soffit_at.setdefault(y, []).append(z)
+    assert soffit_at[16.0] == [pytest.approx(-8.5 / 12.0)]
+    # two z's at each flange tip: the 2 in step
+    step_lo = sorted(soffit_at[-half_bf])
+    assert step_lo[1] - step_lo[0] == pytest.approx(2.0 / 12.0)
+    assert step_lo[1] == pytest.approx(
         basic.deck_top_z(-half_bf) - 8.5 / 12.0)
-    assert soffit_at[32.0 + half_bf] == pytest.approx(
-        basic.deck_top_z(32.0 + half_bf) - 8.5 / 12.0)
+    # overhang thickness is constant (parallel to the crowned top)
+    assert dict(bot)[-3.0] == pytest.approx(
+        basic.deck_top_z(-3.0) - 10.5 / 12.0)
+    assert step_lo[0] == pytest.approx(
+        basic.deck_top_z(-half_bf) - 10.5 / 12.0)
 
 
 def test_rebar_sets_from_standard_design(basic):

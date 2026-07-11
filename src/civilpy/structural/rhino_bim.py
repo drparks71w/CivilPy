@@ -101,6 +101,28 @@ BEARING_PLY_IN = 0.6         #: internal elastomer ply thickness
 PLATE_SIDE_IN = 21.0         #: load plate plan side
 PLATE_THICKNESS_IN = 1.5
 
+# ── SBR-1-20 standard-railing bar schedule (sheets 1 & 5 of the SCD) ──────
+# Verticals are epoxy-coated steel #6 (Y601 traffic face / Y602 back face)
+# at 12 in maximum spacing, embedded ``deck t - 1.5 in`` (9 in minimum)
+# with 12 in horizontal legs lapping the bottom transverse deck steel.
+# Horizontals are #4 GFRP: 5 bars per face at 7 in plus a 2-X401 pair at
+# the top (C&MS 705.28).
+
+SBR1_VERT_SIZE = 6
+SBR1_VERT_SPACING_IN = 12.0
+SBR1_COVER_IN = 2.0
+SBR1_LEG_IN = 12.0            #: horizontal deck-lap leg of Y601/Y602
+SBR1_EMBED_REDUCTION_IN = 1.5  #: embedment = deck thickness - this
+SBR1_MIN_EMBED_IN = 9.0
+SBR1_FACE_BAR_SIZE = 4
+SBR1_FACE_BARS_PER_FACE = 5
+SBR1_FACE_BAR_START_IN = 6.0
+SBR1_FACE_BAR_SPACING_IN = 7.0
+SBR1_TOP_BAR_DROP_IN = 3.0    #: X401 pair below the rail top
+SBR1_Y602_HOOK_OVER_IN = 7.0  #: top hairpin: over toward traffic ...
+SBR1_Y602_HOOK_DOWN_IN = 12.0  # ... then back down
+SBR1_Y601_TOP_BEND_IN = 5.25  #: Y601 top bend toward the back face
+
 
 # ── neutral emit records ──────────────────────────────────────────────────
 
@@ -326,23 +348,34 @@ def girder_bridge_emit(inp: BridgeInput, *,
                 bend="crown-crank" if len(seg.points) > 2 else "straight",
                 length_ft=seg.length_ft)))
 
-    # ── parapets on both deck edges (SCD box; profile per SCD is 1.6) ─────
+    # ── parapets on both deck edges: true single-slope SCD profile ────────
     if rail.height and rail.base_width:
-        w_ft, h_ft = rail.base_width / 12.0, rail.height / 12.0
+        B, H = rail.base_width / 12.0, rail.height / 12.0
+        # top width from the SCD's gross section area (trapezoid), e.g.
+        # SBR-1-20: 2*588/42 - 18 = 10 in
+        T = (2.0 * rail.section_area / rail.height / 12.0 - B
+             if rail.section_area else B)
+        area_sf = (rail.section_area / 144.0 if rail.section_area
+                   else B * H)
         for br in layout.barriers:
             (x0, y0, z0), _ = br.line
-            inward = 1.0 if br.edge == "right" else -1.0
-            ys = (y0, y0 + inward * w_ft)
-            loop = tuple((x0 + (y - y0) * tan_skew, y, z0 + dz)
-                         for y, dz in ((ys[0], 0.0), (ys[1], 0.0),
-                                       (ys[1], h_ft), (ys[0], h_ft)))
+            s = 1.0 if br.edge == "right" else -1.0   # body toward traffic
+            # back face vertical on the deck edge; traffic face battered
+            sect = ((0.0, 0.0), (s * B, 0.0), (s * T, H), (0.0, H))
+            loop = tuple((x0 + dy * tan_skew, y0 + dy, z0 + dz)
+                         for dy, dz in sect)
             objects.append(EmitObject(
                 kind="prism", layer=LAYER_BARRIERS, points=loop,
                 vector=(L, 0.0, 0.0),
                 tags=bim.parapet_tags(
                     f"PAR-{br.edge}", inp.railing, scd_year=scd_year,
                     height_in=rail.height, fc_psi=CONCRETE_FC_PSI,
-                    length_ft=L, volume_cy=w_ft * h_ft * L / 27.0)))
+                    length_ft=L, volume_cy=area_sf * L / 27.0)))
+            if rail.scd == "SBR-1-20":
+                objects.extend(_sbr1_cage(
+                    br, s, B, T, H, L, tan_skew,
+                    t_deck_in=layout.deck.overhang_thickness_in,
+                    scd_year=scd_year))
 
     # ── bearings + load plates under every bearing point ──────────────────
     pad_half = BEARING_SIDE_IN / 24.0
@@ -384,6 +417,100 @@ def girder_bridge_emit(inp: BridgeInput, *,
 
     return BridgeEmit(inputs=inp, layout=layout, objects=tuple(objects),
                       doc_tags=doc_tags)
+
+
+def _sbr1_cage(br, s: float, B: float, T: float, H: float, L: float,
+               tan_skew: float, *, t_deck_in: float,
+               scd_year: int | str) -> list[EmitObject]:
+    """SBR-1-20 reinforcing cage for one standard-railing run (the bar
+    schedule constants above; the 14 ft guardrail transitions at the ends
+    are not modeled).  ``s`` is +1/-1 toward traffic; ``B``/``T``/``H``
+    the base/top/height (ft) of the single-slope section whose back face
+    sits on the barrier line.
+
+    Y601/Y602 verticals embed ``t_deck_in - 1.5 in`` into the deck (the
+    SCD's ``EMBEDMENT = X - 1 1/2"``, 9 in minimum) and their horizontal
+    legs point toward traffic to lap the bottom transverse deck steel.
+    Longitudinal bars are modeled as full-length runs (the real 10 ft
+    stock lengths lap-splice; the take-off length is the same).
+    """
+    (x0, y0, z0), _ = br.line
+    c = SBR1_COVER_IN / 12.0
+    leg = SBR1_LEG_IN / 12.0
+    # EMBEDMENT = X - 1 1/2" with X the deck thickness under the railing —
+    # the *overhang* thickness (t + 2 in), so the standard deck meets the
+    # SCD's 9 in minimum exactly. The minimum itself is a design check
+    # (short decks go to LRFD Section 13 per sheet 5), not a clamp: a bar
+    # cannot embed deeper than the slab it sits on.
+    embed = (t_deck_in - SBR1_EMBED_REDUCTION_IN) / 12.0
+    z_emb = z0 - embed
+    batter = (B - T) / H                     # traffic-face slope, ft/ft
+
+    def face_y(z_rel: float) -> float:
+        """Traffic-face offset from the barrier line at height above base."""
+        return s * (B - batter * z_rel)
+
+    out: list[EmitObject] = []
+    step = SBR1_VERT_SPACING_IN / 12.0
+    n = 0
+    x = step / 2.0
+    while x <= L - step / 2.0 + 1e-9:
+        n += 1
+        # verticals live at station x along the run; dy offsets map the
+        # section into plan through the skew
+        zt = z0 + H - c
+        y_back = s * c
+        y601_base = face_y(0.0) - s * c
+        y601_top = face_y(H - c) - s * c
+        out.append(EmitObject(
+            kind="polyline", layer=LAYER_REBAR,
+            points=tuple((x + x0 + dy * tan_skew, y0 + dy, z) for dy, z in (
+                (y601_base + s * leg, z_emb),
+                (y601_base, z_emb),
+                (y601_base, z0),
+                (y601_top, zt),
+                (y601_top - s * SBR1_Y601_TOP_BEND_IN / 12.0, zt))),
+            tags=bim.rebar_tags(
+                f"PARBAR-{br.edge}-Y601-{n}", size=SBR1_VERT_SIZE,
+                coating="epoxy", mat="parapet", bend="Y601",
+                length_ft=leg + embed + H - c + SBR1_Y601_TOP_BEND_IN / 12.0,
+                scd="SBR-1-20")))
+        out.append(EmitObject(
+            kind="polyline", layer=LAYER_REBAR,
+            points=tuple((x + x0 + dy * tan_skew, y0 + dy, z) for dy, z in (
+                (y_back + s * leg, z_emb),
+                (y_back, z_emb),
+                (y_back, zt),
+                (y_back + s * SBR1_Y602_HOOK_OVER_IN / 12.0, zt),
+                (y_back + s * SBR1_Y602_HOOK_OVER_IN / 12.0,
+                 zt - SBR1_Y602_HOOK_DOWN_IN / 12.0))),
+            tags=bim.rebar_tags(
+                f"PARBAR-{br.edge}-Y602-{n}", size=SBR1_VERT_SIZE,
+                coating="epoxy", mat="parapet", bend="Y602",
+                length_ft=leg + embed + H - c
+                + (SBR1_Y602_HOOK_OVER_IN + SBR1_Y602_HOOK_DOWN_IN) / 12.0,
+                scd="SBR-1-20")))
+        x += step
+
+    # longitudinal #4 GFRP: 5 per face + the 2-X401 pair at the top
+    runs: list[tuple[float, float, str]] = []
+    for k in range(SBR1_FACE_BARS_PER_FACE):
+        z_rel = (SBR1_FACE_BAR_START_IN + k * SBR1_FACE_BAR_SPACING_IN) / 12.0
+        runs.append((s * c, z_rel, f"X4-BACK-{k + 1}"))
+        runs.append((face_y(z_rel) - s * c, z_rel, f"X4-FACE-{k + 1}"))
+    z_top_rel = H - SBR1_TOP_BAR_DROP_IN / 12.0
+    runs.append((s * c + s * 2.0 / 12.0, z_top_rel, "X401-1"))
+    runs.append((face_y(z_top_rel) - s * c, z_top_rel, "X401-2"))
+    for dy, z_rel, mark in runs:
+        pts = ((x0 + dy * tan_skew, y0 + dy, z0 + z_rel),
+               (x0 + L + dy * tan_skew, y0 + dy, z0 + z_rel))
+        out.append(EmitObject(
+            kind="polyline", layer=LAYER_REBAR, points=pts,
+            tags=bim.rebar_tags(
+                f"PARBAR-{br.edge}-{mark}", size=SBR1_FACE_BAR_SIZE,
+                coating="GFRP", mat="parapet", bend="straight",
+                length_ft=L, scd="SBR-1-20")))
+    return out
 
 
 # ── estimating rollup (work-plan 3.3) ─────────────────────────────────────

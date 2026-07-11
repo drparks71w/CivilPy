@@ -41,10 +41,17 @@ Status legend: `[ ]` todo · `[~]` in progress · `[x]` done · `[!]` needs revi
   tessellates the k-region fillets into the girder prism outline.
 - [x] **1.5 Shear studs.** `rhino_bim` emits stud cylinders (7/8 in × 6 in,
   rows of 3 at 24 in pitch, composite layouts only) each tagged `513E20000`.
-- [ ] **1.6 Parapet rebar per SCD.** Current cage is generic; ODOT SBR-1-20
-  rebar **extends down into the deck** (dowels) and follows the barrier bar
-  schedule. Match the SCD: vertical dowels lapping into the deck, longitudinal
-  runners at the SCD spacing.
+- [x] **1.6 Parapet rebar per SCD.** `rhino_bim._sbr1_cage` follows the
+  SBR-1-20 schedule: #6 Y601/Y602 verticals at 12 in embedding
+  `overhang t − 1.5 in` into the deck (the SCD's `X − 1½"`, = the 9 in
+  minimum for the standard deck) with 12 in legs lapping the bottom
+  transverse steel, plus #4 GFRP horizontals (5 per face @ 7 in + 2-X401).
+  The parapet solid itself is the true single-slope section (18/10 × 42 in,
+  588 in² per the SCD design data). The 14 ft guardrail transitions are not
+  modeled.
+- [x] **1.7 Overhang per BDM Figure 309-4.** Deck overhang soffit runs
+  parallel to the top at `t + 2 in` from the edge to the outboard flange tip,
+  stepping to the uniform slab there (flush with the 2 in haunch bottom).
 
 ## Phase 2 — BIM attributes populated (per object)
 

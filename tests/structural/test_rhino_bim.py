@@ -141,6 +141,49 @@ def test_rebar_tags_and_crank(emit):
     assert float(b.tags["rebar.length_ft"]) > 0
 
 
+def test_parapet_single_slope_profile(emit):
+    par = next(p for p in emit.of_type("parapet")
+               if p.tags["bim.id"] == "PAR-right")
+    dys = [p[1] - par.points[0][1] for p in par.points]
+    # SBR-1-20: 18 in base, 10 in top (from the 588 in^2 section), 42 in tall
+    assert max(dys) == pytest.approx(18.0 / 12.0)
+    assert dys[2] == pytest.approx(10.0 / 12.0)
+    zs = [p[2] - par.points[0][2] for p in par.points]
+    assert max(zs) == pytest.approx(42.0 / 12.0)
+    assert par.tags["bim.scd"] == "SBR-1-20"
+    # volume from the SCD's gross area, not a bounding box
+    assert float(par.tags["pay.qty"]) == pytest.approx(
+        588.0 / 144.0 * 230.0 / 27.0, rel=1e-3)
+
+
+def test_sbr1_parapet_cage(emit):
+    layout = emit.layout
+    bars = [o for o in emit.objects if o.tags.get("rebar.mat") == "parapet"]
+    y601 = [b for b in bars if b.tags["rebar.bend"] == "Y601"]
+    y602 = [b for b in bars if b.tags["rebar.bend"] == "Y602"]
+    gfrp = [b for b in bars if b.tags["rebar.coating"] == "GFRP"]
+    # verticals at 12 in over 230 ft on both parapets; 12 GFRP runs each
+    assert len(y601) == len(y602) == 2 * 230
+    assert len(gfrp) == 2 * (2 * 5 + 2)
+    for b in gfrp:
+        assert b.tags["rebar.size"] == "#4"
+        assert b.tags["pay.item"] == "509E00300"
+        assert "pay.qty" not in b.tags          # producer-specific weight
+    # Y602 embeds (overhang t) - 1.5 in below the barrier base: the SCD's
+    # EMBEDMENT = X - 1.5 with X = 10.5 in -> exactly the 9 in minimum
+    z_base = layout.barriers[0].line[0][2]
+    b = next(b for b in y602 if "right" in b.tags["bim.id"])
+    assert b.tags["rebar.size"] == "#6"
+    assert min(p[2] for p in b.points) == pytest.approx(
+        z_base - 9.0 / 12.0)
+    assert max(p[2] for p in b.points) == pytest.approx(
+        z_base + (42.0 - 2.0) / 12.0)
+    # the horizontal deck-lap leg points toward traffic (+y on the right)
+    assert b.points[0][1] > b.points[1][1]
+    assert b.tags["pay.item"] == "509E00200"    # epoxy steel, weighted
+    assert float(b.tags["pay.qty"]) > 0
+
+
 def test_pay_item_rollup(emit):
     q = pay_item_quantities(emit)
     # structural steel: 5 girders x 230 ft x 150 plf + 20 load plates
