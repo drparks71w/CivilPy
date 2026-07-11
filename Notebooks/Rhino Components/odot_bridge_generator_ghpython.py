@@ -34,8 +34,14 @@ document-level gdr.deck_* strings) to the active document — that tagged
 file is what `civilpy.structural.rhino_gdr` reads.  Solids are display
 only, deliberately untagged, matching the plugin contract.
 
-Not yet modeled (reported, not silently ignored): crown/cross slope,
-overhang thickening, drainage (scuppers/drip strips), splices.
+The deck is a closed crowned solid: the layout's ``deck_profile_yz``
+cross-section (crowned top, parallel soffit, thickened overhangs) lofted
+between the two skewed ends.  Girders, haunches, bearings, and both rebar
+mats all hang from the crowned surface (transverse bars crank at the
+crown).
+
+Not yet modeled (reported, not silently ignored): drainage
+(scuppers/drip strips), splices.
 """
 
 import math
@@ -143,11 +149,23 @@ def _box_along(p0, p1, width, height, up=-1.0):
     return _sweep_profile(profile, rg.LineCurve(p0, p1))
 
 
-def _extrude_down(outline_pts, t_ft, s):
-    poly = rg.Polyline([_pt(p, s) for p in outline_pts]
-                       + [_pt(outline_pts[0], s)]).ToNurbsCurve()
-    profile = rg.Extrusion.Create(poly, -t_ft * s, True)
-    return profile.ToBrep() if profile else None
+def _deck_solid(layout, s):
+    """Closed crowned deck: the layout's (y, z) section profile mapped onto
+    each skewed end plane and lofted straight between them."""
+    tan_skew = math.tan(math.radians(layout.inputs.skew_deg))
+    prof = layout.deck_profile_yz()
+    length = layout.total_length_ft
+    ends = []
+    for u in (0.0, length):
+        pts = [rg.Point3d((u + y * tan_skew) * s, y * s, z * s)
+               for y, z in prof]
+        ends.append(rg.Polyline(pts + [pts[0]]).ToNurbsCurve())
+    lofted = rg.Brep.CreateFromLoft(ends, rg.Point3d.Unset, rg.Point3d.Unset,
+                                    rg.LoftType.Straight, False)
+    if not lofted:
+        return None
+    capped = lofted[0].CapPlanarHoles(TOL)
+    return capped or lofted[0]
 
 
 def _bake(layout, seg_curves, s):
@@ -242,8 +260,7 @@ else:
                              h.width_in * s / 12.0, h.depth_in * s / 12.0)
             if box:
                 haunches.append(box)
-        deck = _extrude_down(layout.deck.outline, layout.deck.thickness_in
-                             / 12.0, s)
+        deck = _deck_solid(layout, s)
         for b in layout.barriers:
             if b.height_in and b.base_width_in:
                 box = _box_along(_pt(b.line[0], s), _pt(b.line[1], s),
@@ -252,7 +269,8 @@ else:
                 if box:
                     barriers.append(box)
         segs = deck_rebar_segments(layout)
-        rebar = [rg.LineCurve(_pt(x.start, s), _pt(x.end, s)) for x in segs]
+        rebar = [rg.Polyline([_pt(p, s) for p in x.points]).ToNurbsCurve()
+                 for x in segs]
         bearings = [_pt(b.location, s) for b in layout.bearings]
 
         d = layout.standard_design
@@ -275,9 +293,10 @@ else:
                        "(civilpy deck_strip_checks)"),
             "Haunch: {} in x girder flange (BDM 309.3.5)".format(
                 inp.design_haunch_in),
+            "Crown at y = {:.2f} ft, cross slope {:g}% (bars crank at the "
+            "crown)".format(layout.crown_y_ft, inp.cross_slope_pct),
             "{} rebar segments generated".format(len(rebar)),
-            "NOT modeled yet: crown/cross slope, overhang thickening, "
-            "drainage, splices.",
+            "NOT modeled yet: drainage, splices.",
         ]
         if globals().get("bake"):
             n = _bake(layout, rebar, s)

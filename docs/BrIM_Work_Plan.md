@@ -30,16 +30,18 @@ Status legend: `[ ]` todo · `[~]` in progress · `[x]` done · `[!]` needs revi
 
 ## Phase 1 — Geometry correctness (the visible bugs)
 
-- [ ] **1.1 Deck as a solid box.** Currently 4 open plates with no ends —
-  extrusion caps failed. Produce one **closed solid** deck (capped both ends),
-  full length, with the crowned top and thickened fascia edges.
-- [ ] **1.2 Haunches.** Not drawn at all. Draw the haunch prism (flange-width ×
-  haunch-depth) between each girder top flange and the deck soffit, following
-  the grade/cross-slope. (`layout.haunches` already computes them.)
-- [ ] **1.3 Deck rebar — slope + containment.** Bars must follow the deck
-  cross-slope (currently flat) and stay **inside** the deck (currently protrude
-  past the fascia beyond the outside girders). Clip transverse bars to the deck
-  edges; apply the crown/cross-slope z.
+- [x] **1.1 Deck as a solid box.** `BridgeLayout.deck_profile_yz()` gives the
+  closed crowned cross-section (top + parallel soffit + overhang taper starting
+  at the outboard flange edge); the generator lofts it between the skewed ends
+  and caps it — one closed solid.
+- [x] **1.2 Haunches.** `layout.haunches` hang from the local soffit
+  (crown-aware). Sides stay vertical and flange-aligned per BDM 309.3.5
+  (verified against the 2020 Ed./Jan 2026 text: vertical sides required at any
+  depth, 2 in minimum design haunch — no sloped-forming rule in the ODOT BDM).
+- [x] **1.3 Deck rebar — slope + containment.** `deck_rebar_segments` places
+  every bar `depth_in` below the *local* deck surface: both mats follow the
+  crown/cross-slope (transverse bars crank at the crown as 3-vertex polylines)
+  and stay inside the slab; edge clipping unchanged.
 - [ ] **1.4 Girder fillets (no square corners).** Model the web-to-flange
   fillet (k region) so haunch rebar and splice plates have realistic clearance
   — square re-entrant corners mislead detailing.

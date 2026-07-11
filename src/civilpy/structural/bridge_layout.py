@@ -27,8 +27,12 @@ inches** (names carry ``_in`` suffixes).  Z = 0 is the TOP OF DECK; the
 structure hangs below it.  Skew is the angle (degrees) between a support
 line and the perpendicular to the centerline — positive skew rotates
 support lines counterclockwise in plan, so points at +Y shift toward +X.
-Supports are parallel (constant skew).  Decks are flat (no crown or cross
-slope yet) and deck plan edges stop at the end support lines.
+Supports are parallel (constant skew) and deck plan edges stop at the end
+support lines.  The deck is **crowned**: the top surface peaks at the
+roadway crown (``crown_offset_ft``, default mid-width) and falls at
+``cross_slope_pct`` to each side, and everything hung from it — soffit,
+haunches, girder seats, bearing seats, and both rebar mats — follows that
+surface.  Z = 0 is the top of deck *at the crown*.
 """
 
 from __future__ import annotations
@@ -129,7 +133,12 @@ class BearingPoint:
 @dataclass(frozen=True)
 class HaunchRun:
     """One haunch prism: the girder line at deck-soffit level plus the
-    section (width x depth, in) to extrude along it."""
+    section (width x depth, in) to extrude along it.
+
+    The square cross-section is deliberate: BDM 309.3.5 (2020 Ed.) says
+    "Detail the sides of the haunch as vertical and aligned with the edges
+    of the top flange" — no sloped forming at any depth — with a 2 in
+    minimum design haunch (see Figures 309-7/309-8)."""
 
     line_no: int
     start: Point
@@ -175,9 +184,10 @@ class BarrierRun:
 
 @dataclass(frozen=True)
 class DeckSlab:
-    """Plan outline (counterclockwise, z = 0 at deck top), thicknesses, and
-    the mats.  ``outline`` corners run girder-1 start edge -> girder-N
-    start edge -> girder-N end edge, honoring skew."""
+    """Plan outline (counterclockwise, each corner at the local deck-top
+    elevation of the crowned surface), thicknesses, and the mats.
+    ``outline`` corners run girder-1 start edge -> girder-N start edge ->
+    girder-N end edge, honoring skew."""
 
     outline: tuple[Point, Point, Point, Point]
     thickness_in: float
@@ -210,6 +220,66 @@ class BridgeLayout:
     def deck_width_ft(self) -> float:
         n, s = self.inputs.girder_count, self.inputs.girder_spacing_ft
         return (n - 1) * s + 2.0 * self.inputs.overhang_ft
+
+    @property
+    def crown_y_ft(self) -> float:
+        """Transverse offset of the roadway crown (girder 1 at y = 0)."""
+        inp = self.inputs
+        if inp.crown_offset_ft is not None:
+            return inp.crown_offset_ft
+        return (inp.girder_count - 1) * inp.girder_spacing_ft / 2.0
+
+    def deck_top_z(self, y: float) -> float:
+        """Top-of-deck elevation (ft) at transverse offset ``y``: 0 at the
+        crown, falling at ``cross_slope_pct`` to each side."""
+        return -abs(y - self.crown_y_ft) * self.inputs.cross_slope_pct / 100.0
+
+    def deck_soffit_z(self, y: float) -> float:
+        """Deck-soffit elevation (ft) at ``y``, parallel to the top surface
+        (uniform slab; the overhang thickening past the fascia girders is
+        additional and belongs to :meth:`deck_profile_yz`)."""
+        return self.deck_top_z(y) - self.deck.thickness_in / 12.0
+
+    def deck_profile_yz(self) -> tuple[tuple[float, float], ...]:
+        """Closed deck cross-section as ``(y, z)`` pairs — the crowned top,
+        the parallel soffit, and the linearly thickened overhangs (soffit
+        drops from ``thickness_in`` to ``overhang_thickness_in`` at the deck
+        edge, the ODOT overhang detail).  The taper starts at the **outboard
+        top-flange edge** of each fascia girder — not its centerline — so
+        the haunch prism (whose sides align with the flange edges per BDM
+        309.3.5) lands flush on the uniform soffit.  Order: along the top
+        from ``y_lo`` to ``y_hi`` (crown included when interior), then back
+        along the soffit.  A backend maps ``(y, z)`` into 3D at each bridge
+        end (``x = station + y*tan(skew)``) and lofts the two profiles into
+        the deck solid.
+        """
+        inp = self.inputs
+        y_lo = -inp.overhang_ft
+        y_hi = (inp.girder_count - 1) * inp.girder_spacing_ft + inp.overhang_ft
+        half_bf = self.section.flange_width / 2.0 / 12.0
+        # taper break: outboard flange edge, clamped inside the deck edge
+        y_b1 = max(min(-half_bf, 0.0), y_lo)
+        y_bn = min((inp.girder_count - 1) * inp.girder_spacing_ft + half_bf,
+                   y_hi)
+        t = self.deck.thickness_in / 12.0
+        t_oh = self.deck.overhang_thickness_in / 12.0
+        crown = self.crown_y_ft
+
+        top_ys = [y_lo, y_hi]
+        if y_lo < crown < y_hi:
+            top_ys.insert(1, crown)
+        top = [(y, self.deck_top_z(y)) for y in top_ys]
+
+        # soffit breakpoints, walked back from y_hi to y_lo; the thickened
+        # edge points exist only when there is an overhang to thicken
+        bot_ys = sorted({y_b1, y_bn} | ({crown} if y_b1 < crown < y_bn else set()),
+                        reverse=True)
+        bot = ([(y_hi, self.deck_top_z(y_hi) - t_oh)]
+               if y_hi > y_bn + 1e-9 else [])
+        bot += [(y, self.deck_top_z(y) - t) for y in bot_ys]
+        if y_lo < y_b1 - 1e-9:
+            bot.append((y_lo, self.deck_top_z(y_lo) - t_oh))
+        return tuple(top + bot)
 
 
 # ── helpers ───────────────────────────────────────────────────────────────
@@ -306,10 +376,15 @@ def layout_bridge(inp: BridgeInput) -> BridgeLayout:
     haunch = Haunch(depth=inp.design_haunch_in,
                     flange_width=section.flange_width)
 
-    # Elevations (ft, deck top = 0).
-    z_soffit = -t_deck / 12.0
-    z_girder_top = z_soffit - haunch.depth / 12.0
-    z_girder_bot = z_girder_top - section.depth / 12.0
+    # Elevations (ft): deck top = 0 AT THE CROWN, and the whole section —
+    # soffit, girder seats, bearing seats — hangs from the local deck
+    # surface, so seat elevations vary across the width.
+    cross = inp.cross_slope_pct / 100.0
+    crown_y = (inp.crown_offset_ft if inp.crown_offset_ft is not None
+               else (inp.girder_count - 1) * inp.girder_spacing_ft / 2.0)
+
+    def top_z(y: float) -> float:
+        return -abs(y - crown_y) * cross
 
     # Girder lines, bearings, haunches.
     total = sum(inp.spans_ft)
@@ -322,6 +397,9 @@ def layout_bridge(inp: BridgeInput) -> BridgeLayout:
         y = g * inp.girder_spacing_ft
         line_no = g + 1
         shift = y * tan_skew
+        z_soffit = top_z(y) - t_deck / 12.0
+        z_girder_top = z_soffit - haunch.depth / 12.0
+        z_girder_bot = z_girder_top - section.depth / 12.0
         start = (stations[0] + shift, y, z_girder_top)
         end = (stations[-1] + shift, y, z_girder_top)
         tags = {
@@ -347,14 +425,15 @@ def layout_bridge(inp: BridgeInput) -> BridgeLayout:
                 },
             ))
 
-    # Deck outline (skewed parallelogram covering overhangs).
+    # Deck outline (skewed parallelogram covering overhangs); each corner
+    # sits on the crowned top surface at its own y.
     y_lo = -inp.overhang_ft
     y_hi = (inp.girder_count - 1) * inp.girder_spacing_ft + inp.overhang_ft
     outline = (
-        (stations[0] + y_lo * tan_skew, y_lo, 0.0),
-        (stations[0] + y_hi * tan_skew, y_hi, 0.0),
-        (stations[-1] + y_hi * tan_skew, y_hi, 0.0),
-        (stations[-1] + y_lo * tan_skew, y_lo, 0.0),
+        (stations[0] + y_lo * tan_skew, y_lo, top_z(y_lo)),
+        (stations[0] + y_hi * tan_skew, y_hi, top_z(y_hi)),
+        (stations[-1] + y_hi * tan_skew, y_hi, top_z(y_hi)),
+        (stations[-1] + y_lo * tan_skew, y_lo, top_z(y_lo)),
     )
 
     # Rebar sets from the standard design (custom decks carry no mats —
@@ -448,11 +527,27 @@ def layout_bridge(inp: BridgeInput) -> BridgeLayout:
 
 @dataclass(frozen=True)
 class RebarSegment:
-    """One physical bar: a straight segment at the set's depth."""
+    """One physical bar: a polyline at the set's depth below the **local**
+    deck surface, so bars follow the crown/cross-slope.  ``points`` has two
+    vertices for a straight bar and three when a transverse bar crosses the
+    crown (the crank at the high point); ``start``/``end`` are the first and
+    last vertices."""
 
-    start: Point
-    end: Point
+    points: tuple[Point, ...]
     rebar_set: RebarSet
+
+    @property
+    def start(self) -> Point:
+        return self.points[0]
+
+    @property
+    def end(self) -> Point:
+        return self.points[-1]
+
+    @property
+    def length_ft(self) -> float:
+        return sum(math.dist(a, b)
+                   for a, b in zip(self.points[:-1], self.points[1:]))
 
 
 def _clip_interval(lo: float, hi: float, a: float, b: float,
@@ -468,10 +563,15 @@ def _clip_interval(lo: float, hi: float, a: float, b: float,
 
 def deck_rebar_segments(layout: BridgeLayout,
                         side_cover_in: float = 2.0) -> list[RebarSegment]:
-    """Instantiate every deck bar as a straight segment (feet, deck-top
-    z = 0 frame), clipped to the deck plan inset by ``side_cover_in`` on
-    the edges.  The Grasshopper generator draws these directly; nothing
-    here needs Rhino.
+    """Instantiate every deck bar (feet), clipped to the deck plan inset by
+    ``side_cover_in`` on the edges.  The Grasshopper generator draws these
+    directly; nothing here needs Rhino.
+
+    Bars sit ``depth_in`` below the **local** deck surface, so both mats
+    follow the crown/cross-slope and stay inside the slab (a level bar
+    would exit the soffit at the crown and the top surface at the edges).
+    A transverse bar whose run crosses the crown is emitted as one
+    3-vertex polyline cranked at the high point.
 
     The deck plan is the skewed parallelogram ``y in [y_lo, y_hi]``,
     ``u = x - y*tan(skew) in [0, L]``.
@@ -487,18 +587,25 @@ def deck_rebar_segments(layout: BridgeLayout,
     y0, y1 = y_lo + c, y_hi - c
     u0, u1 = c / cos_skew, length - c / cos_skew
     big = length + (y_hi - y_lo) * (1.0 + abs(tan_skew))
+    crown_y = layout.crown_y_ft
+    crowned = inp.cross_slope_pct != 0.0
+
+    def bar_z(y: float, depth_in: float) -> float:
+        return layout.deck_top_z(y) - depth_in / 12.0
 
     segments: list[RebarSegment] = []
     for rs in layout.deck.rebar:
-        z = -rs.depth_in / 12.0
         step = rs.spacing_in / 12.0
 
         if rs.direction == "longitudinal":
-            # constant-y bars: u from u0 to u1 -> x = u + y*tan
+            # constant-y bars: u from u0 to u1 -> x = u + y*tan; constant y
+            # means constant elevation on the crowned surface
             y = y0
             while y <= y1 + 1e-9:
-                segments.append(RebarSegment(
-                    (u0 + y * tan_skew, y, z), (u1 + y * tan_skew, y, z), rs))
+                z = bar_z(y, rs.depth_in)
+                segments.append(RebarSegment((
+                    (u0 + y * tan_skew, y, z),
+                    (u1 + y * tan_skew, y, z)), rs))
                 y += step
             continue
 
@@ -525,16 +632,23 @@ def deck_rebar_segments(layout: BridgeLayout,
             u = u0 + step_u / 2.0
             while u <= u1 + 1e-9:
                 # bar through (x0, 0) with x0 chosen so u(point) = u at y=0
-                o = (u, 0.0, z)
                 t_lo, t_hi = _clip_interval(
-                    -big, big, o[1], d[1], band_lo, band_hi)
+                    -big, big, 0.0, d[1], band_lo, band_hi)
                 # u(t) = (x - y*tan) = u + t*(sin a - cos a * tan)
                 t_lo, t_hi = _clip_interval(
                     t_lo, t_hi, u, d[0] - d[1] * tan_skew, u0, u1)
                 if t_hi > t_lo:
+                    def vertex(t: float) -> Point:
+                        y = t * d[1]
+                        return (u + t * d[0], y, bar_z(y, rs.depth_in))
+
+                    ts = [t_lo, t_hi]
+                    if crowned and d[1] > 1e-12:
+                        t_c = crown_y / d[1]     # param where the bar crosses
+                        if t_lo + 1e-9 < t_c < t_hi - 1e-9:
+                            ts.insert(1, t_c)    # crank at the crown
                     segments.append(RebarSegment(
-                        (o[0] + t_lo * d[0], t_lo * d[1], z),
-                        (o[0] + t_hi * d[0], t_hi * d[1], z), rs))
+                        tuple(vertex(t) for t in ts), rs))
                 u += step_u
     return segments
 
@@ -780,22 +894,16 @@ def grillage_model_from_layout(layout: "BridgeLayout", *,
     t_deck_ft = layout.deck.thickness_in / 12.0
     haunch_ft = inp.design_haunch_in / 12.0
     depth_ft = section.depth / 12.0
-    z_deck_mid = -t_deck_ft / 2.0
-    z_girder_top = -t_deck_ft - haunch_ft
-    z_girder_c = z_girder_top - depth_ft / 2.0
 
     # Deck crown + cross slope: the deck (and the girder seats hung a fixed
     # distance below it) fall from the crown to each side, so seat elevations
     # vary across the width -- computed, not rounded (Dane's correction).
-    cross = inp.cross_slope_pct / 100.0
-    crown_y = (inp.crown_offset_ft if inp.crown_offset_ft is not None
-               else (n - 1) * spacing / 2.0)
-
+    # ``layout.deck_top_z`` is the single source of the crowned surface.
     def z_deck(y):
-        return z_deck_mid - abs(y - crown_y) * cross
+        return layout.deck_top_z(y) - t_deck_ft / 2.0
 
     def z_girder(y):
-        return z_girder_c - abs(y - crown_y) * cross
+        return layout.deck_top_z(y) - t_deck_ft - haunch_ft - depth_ft / 2.0
 
     # Longitudinal stations: subdivide each span, keep a node on every support.
     supports = [0.0]
