@@ -60,6 +60,14 @@ LAYER_SUBSTRUCTURE = "Substructure"
 LAYER_CULVERT = "Culvert"
 LAYER_SITE = "Site"
 
+#: PROPOSED leaves for the BrIM source-of-truth model (rhino_bim): concrete
+#: haunches, welded shear studs, and bearing load plates get their own layers
+#: under Superstructure so the composite-connection and bearing hardware can
+#: be toggled/estimated independently of the girders.
+LAYER_HAUNCHES = "Superstructure::Haunches"
+LAYER_SHEAR_STUDS = "Superstructure::Shear Studs"
+LAYER_LOAD_PLATES = "Superstructure::Load Plates"
+
 #: Default RGBA colors, keyed by full layer path -- kept alongside the path
 #: constants so every writer paints the same layer the same color.
 DEFAULT_COLORS: dict[str, tuple[int, int, int, int]] = {
@@ -80,6 +88,9 @@ DEFAULT_COLORS: dict[str, tuple[int, int, int, int]] = {
     LAYER_SUBSTRUCTURE: (120, 90, 70, 255),
     LAYER_CULVERT: (130, 150, 150, 255),
     LAYER_SITE: (150, 140, 120, 255),
+    LAYER_HAUNCHES: (200, 200, 190, 255),
+    LAYER_SHEAR_STUDS: (200, 120, 40, 255),
+    LAYER_LOAD_PLATES: (90, 90, 100, 255),
 }
 
 

@@ -181,9 +181,15 @@ def load_plate_tags(bid: str, *, thickness_in: float, grade: str = "50",
 
 
 def haunch_tags(bid: str, *, depth_in: float, width_in: float,
-                fc_psi: float = 4500.0) -> dict:
-    return {**_base("haunch", bid), "haunch.depth_in": f"{depth_in:g}",
+                fc_psi: float = 4500.0,
+                volume_cy: float | None = None) -> dict:
+    """Haunch concrete is conventionally measured with the superstructure
+    (deck) concrete item, so a ``volume_cy`` rolls into ``511E12100``."""
+    tags = {**_base("haunch", bid), "haunch.depth_in": f"{depth_in:g}",
             "haunch.width_in": f"{width_in:g}", **concrete_mat(fc_psi, "QC2")}
+    if volume_cy is not None:
+        tags.update(_pay_tags("511E12100", volume_cy))
+    return tags
 
 
 def rebar_tags(bid: str, *, size: int, coating: str = "epoxy", mat: str = "top",

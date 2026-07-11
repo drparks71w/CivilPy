@@ -11,22 +11,17 @@ Status legend: `[ ]` todo · `[~]` in progress · `[x]` done · `[!]` needs revi
 
 ## Phase 0 — Foundation (do first; everything else builds on these)
 
-- [ ] **0.1 Units.** Rhino must always be in the **Large Objects – Feet + Inches**
-  template (Feet, not mm). Draw in feet directly (drop the ×304.8 scale). Set
-  `ModelUnitSystem = Feet`, large-object tolerance.
-- [ ] **0.2 BIM attribute schema (`civilpy.structural.bim`).** One typed
-  attribute contract per component, replacing the blanket `gdr.*`. Every object
-  carries `bim.type` + `bim.id` (unique) and, where relevant, **`bim.scd` +
-  `bim.scd_year`** (the highest-value BIM keys), plus a **pay item** and
-  **material** block. Source of truth = civilpy (testable), consumed by the
-  Rhino draw, MIDAS, and estimating.
-  - Namespaces: `girder.*`, `deck.*`, `parapet.*`, `bearing.*`, `load_plate.*`,
-    `haunch.*`, `shear_stud.*`, `rebar.*`, `diaphragm.*`, plus shared
-    `bim.*`, `pay.*`, `mat.*`.
-- [ ] **0.3 Pay-item catalog (`civilpy.structural.pay_items`).** ODOT item
-  numbers with description, unit, level. Seed: `513E10220` structural steel
-  (per lb), `513E20000` welded shear studs (ea), deck/parapet concrete (cy),
-  epoxy-coated reinforcing (lb), etc. Each component maps to its item.
+- [x] **0.1 Units.** The emit layer and driver are feet-native:
+  `rhino_bim.girder_bridge_emit` emits feet, `draw_bim_emit.py` scales into the
+  document's unit system. Keep new documents on the **Large Objects – Feet +
+  Inches** template (`ModelUnitSystem = Feet`).
+- [x] **0.2 BIM attribute schema (`civilpy.structural.bim`).** Typed tag
+  builders per component (`girder_tags` … `rebar_tags`) with shared `bim.*`,
+  `pay.*`, `mat.*` blocks; consumed by `rhino_bim` so every drawn object
+  carries `bim.type` + unique `bim.id`, SCD keys where standard.
+- [x] **0.3 Pay-item catalog.** Seed `PAY_ITEMS` in `civilpy.structural.bim`
+  (`513E10220`, `513E20000` confirmed; concrete/reinforcing/bearing numbers
+  flagged `[CONFIRM]` until checked against the CMS item master).
 
 ## Phase 1 — Geometry correctness (the visible bugs)
 
@@ -42,11 +37,10 @@ Status legend: `[ ]` todo · `[~]` in progress · `[x]` done · `[!]` needs revi
   every bar `depth_in` below the *local* deck surface: both mats follow the
   crown/cross-slope (transverse bars crank at the crown as 3-vertex polylines)
   and stay inside the slab; edge clipping unchanged.
-- [ ] **1.4 Girder fillets (no square corners).** Model the web-to-flange
-  fillet (k region) so haunch rebar and splice plates have realistic clearance
-  — square re-entrant corners mislead detailing.
-- [ ] **1.5 Shear studs.** Rows of welded studs on the top flange (composite).
-  Own object + `513E20000` pay item (ea).
+- [x] **1.4 Girder fillets (no square corners).** `rhino_bim.i_profile_wh`
+  tessellates the k-region fillets into the girder prism outline.
+- [x] **1.5 Shear studs.** `rhino_bim` emits stud cylinders (7/8 in × 6 in,
+  rows of 3 at 24 in pitch, composite layouts only) each tagged `513E20000`.
 - [ ] **1.6 Parapet rebar per SCD.** Current cage is generic; ODOT SBR-1-20
   rebar **extends down into the deck** (dowels) and follows the barrier bar
   schedule. Match the SCD: vertical dowels lapping into the deck, longitudinal
@@ -54,21 +48,24 @@ Status legend: `[ ]` todo · `[~]` in progress · `[x]` done · `[!]` needs revi
 
 ## Phase 2 — BIM attributes populated (per object)
 
-- [ ] **2.1 Girders.** `girder.shape`, `mat.spec` (ASTM A709), `mat.grade`
-  (36/50/50W/70), `mat.type` (weathering/carbon), `mat.treatment`
-  (none/galvanized/painted), `pay.item` 513E10220 (lb) + computed weight.
-- [ ] **2.2 Shear studs.** dia, length, count, `513E20000` (ea).
-- [ ] **2.3 Deck.** thickness, **deck slope**, **crown offset**, `mat.fc_psi`,
-  `mat.class` (Class S), concrete pay item (cy) + volume.
-- [ ] **2.4 Parapets.** `bim.scd`/`bim.scd_year`, height, `mat.fc_psi`, pay
-  item (ft or cy) + length/volume.
-- [ ] **2.5 Bearings.** type (elastomeric), **plies/ply thickness**, total
-  thickness, fixity, pay item.
-- [ ] **2.6 Load plates.** thickness, `mat.spec`/`grade`, weight, pay item.
-- [ ] **2.7 Rebar.** size, diameter, **coating** (epoxy/GFRP/stainless/black),
-  **bend shape**, length, weight, pay item (e.g. epoxy-coated reinforcing, lb).
-- [ ] **2.8 Concrete (deck/parapet/haunch).** material properties (f'c, unit
-  wt, Ec) + concrete pay items.
+All populated by `rhino_bim.girder_bridge_emit` through the `bim` tag
+builders; verified in `tests/structural/test_rhino_bim.py`.
+
+- [x] **2.1 Girders.** `girder.shape`, `mat.spec/grade/type/treatment`,
+  `513E10220` (lb) with weight from the AISC plf × length.
+- [x] **2.2 Shear studs.** dia, length, `513E20000` (ea, one per stud).
+- [x] **2.3 Deck.** thickness, `deck.slope_pct`, `deck.crown_offset_ft`,
+  `mat.fc_psi`/class, concrete item (cy) with the true crowned-profile volume.
+- [x] **2.4 Parapets.** `bim.scd`/`bim.scd_year`, height, `mat.fc_psi`, pay
+  item (cy) + length/volume.
+- [x] **2.5 Bearings.** elastomeric, plies × ply thickness, total thickness,
+  fixity, pay item (ea).
+- [x] **2.6 Load plates.** thickness, `mat.spec`/grade 50, computed weight,
+  `513E10220`.
+- [x] **2.7 Rebar.** size/diameter/weight-per-foot, coating, bend
+  (straight / crown-crank), length, weight into the reinforcing item (lb).
+- [x] **2.8 Concrete (deck/parapet/haunch).** `mat.*` blocks on all three;
+  haunch volume rolls into the superstructure concrete item per convention.
 
 ## Phase 3 — Presentation & round-trip
 
