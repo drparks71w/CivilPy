@@ -124,6 +124,86 @@ class BoxBeamLineChecks:
         return "\n".join(lines)
 
 
+def structural_model_from_box(box: str, span_ft: float, n_beams: int, *,
+                              ties: bool = True, dead_loads: bool = True,
+                              barrier_klf: float = 0.0,
+                              fws_klf: float = 0.0):
+    """Build the :class:`~civilpy.structural.structural_model
+    .StructuralModel` hub for an adjacent box-beam bridge — the MIDAS
+    spoke (work-plan 5.4), one line of beam elements per box broken at
+    the diaphragm stations, transverse tie elements there (the tie-rod /
+    keyway load path), a pin + roller per line, and the DC1/DC2/DW beam
+    loads matching :func:`box_beam_line_checks` exactly, so the L1
+    envelope and the MIDAS run reconcile by construction.
+
+    Elements carry the box designation as their section label plus the
+    PSBD section constants in metadata (``section.area_in2`` /
+    ``section.i_in4`` / ``section.j_in4``) for a value-type section on
+    the MAPI side."""
+    from civilpy.structural.odot import diaphragm_stations_ft
+    from civilpy.structural.structural_model import StructuralModel, Units
+
+    design = box_beam_design(box, int(span_ft))
+    sec = box_section_properties(design.depth)
+    composite = design.beam_type == "composite"
+    span = float(span_ft)
+    width_ft = sec.width / 12.0
+    j = box_torsion_constant_in4(design.depth, sec.width)
+
+    stations = [0.0, *diaphragm_stations_ft(span, design.depth), span]
+    stations = sorted(set(round(s, 6) for s in stations))
+
+    model = StructuralModel(units=Units(force="kips", length="ft"))
+    grid: dict[tuple[int, int], str] = {}
+    beam_elems: dict[int, list] = {}
+    for b in range(n_beams):
+        y_c = (b + 0.5) * width_ft
+        for i, st in enumerate(stations):
+            grid[(b, i)] = model.add_node(
+                st, y_c, design.depth / 12.0, label=f"BB{b + 1}_S{i}").id
+        elems = []
+        for i in range(len(stations) - 1):
+            e = model.add_element(
+                grid[(b, i)], grid[(b, i + 1)], role="girder",
+                midas_type="BEAM", section=box,
+                material=design.beam_type)
+            e.metadata.update({
+                "gdr.line": str(b + 1), "gdr.family": "box",
+                "section.area_in2": sec.area, "section.i_in4": sec.i,
+                "section.j_in4": j})
+            elems.append(e.id)
+        beam_elems[b] = elems
+        model.add_restraint(grid[(b, 0)], fix_x=True, fix_y=True,
+                            fix_z=True).preset = "fixed"
+        model.add_restraint(grid[(b, len(stations) - 1)], fix_x=False,
+                            fix_y=True, fix_z=True).preset = "expansion"
+
+    if ties:
+        for b in range(n_beams - 1):
+            for i in range(1, len(stations) - 1):
+                e = model.add_element(grid[(b, i)], grid[(b + 1, i)],
+                                      role="diaphragm", midas_type="BEAM")
+                e.metadata["gdr.kind"] = "tie"
+
+    if dead_loads:
+        w_sw = sec.area / 144.0 * CONCRETE_KCF
+        t_top_in = (COMPOSITE_SLAB_STRUCTURAL_THICKNESS_IN
+                    + COMPOSITE_SLAB_WEARING_SURFACE_IN)
+        w_top = width_ft * t_top_in / 12.0 * CONCRETE_KCF \
+            if composite else 0.0
+        dc2 = barrier_klf / n_beams
+        dw = fws_klf / n_beams
+        for elems in beam_elems.values():
+            for eid in elems:
+                model.add_beam_load(eid, -(w_sw + w_top), case="DC1")
+                if dc2:
+                    model.add_beam_load(eid, -dc2, case="DC2")
+                if dw:
+                    model.add_beam_load(eid, -dw, case="DW")
+
+    return model
+
+
 def box_beam_line_checks(box: str, span_ft: float, n_beams: int, *,
                          strand_area_in2: float = 0.153,
                          fci_ksi: float = 4.0, fc_ksi: float = 5.5,

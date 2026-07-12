@@ -104,6 +104,33 @@ def test_longest_span_flags_debonding_condition():
     assert chk.demand / chk.capacity < 1.15
 
 
+def test_structural_model_spoke():
+    from civilpy.structural.box_beam_pipeline import structural_model_from_box
+    from civilpy.structural.odot import (
+        box_beam_design, box_section_properties, diaphragm_stations_ft)
+
+    m = structural_model_from_box("CB27-48", 60.0, 9,
+                                  barrier_klf=1.0, fws_klf=0.54)
+    n_sta = len(diaphragm_stations_ft(60.0, 27)) + 2
+    assert len(m.nodes) == 9 * n_sta
+    girders = [e for e in m.elements.values() if e.role == "girder"]
+    ties = [e for e in m.elements.values() if e.role == "diaphragm"]
+    assert len(girders) == 9 * (n_sta - 1)
+    assert len(ties) == 8 * (n_sta - 2)          # interior stations only
+    assert len(m.restraints) == 18
+    g = girders[0]
+    assert g.section == "CB27-48"
+    sec = box_section_properties(27)
+    assert g.metadata["section.area_in2"] == sec.area
+    # DC1 = self weight + topping, applied per girder element
+    dc1 = [bl for bl in m.beam_loads if bl.case == "DC1"]
+    assert len(dc1) == len(girders)
+    w = sec.area / 144.0 * 0.150 + 4.0 * 0.5 * 0.150
+    assert dc1[0].w_start == pytest.approx(-w)
+    cases = {bl.case for bl in m.beam_loads}
+    assert cases == {"DC1", "DC2", "DW"}
+
+
 def test_summary_readable(checks):
     text = checks.summary()
     assert "CB27-48 @ 60 ft" in text
