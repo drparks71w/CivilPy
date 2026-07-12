@@ -181,29 +181,38 @@ patterns per box/span), `odot/box_beam.py`, `rhino_box_beam.py` (legacy
 direct writer), adjacent-box factors in `aashto/lrfd/distribution.py`,
 `strip_seal_joint_box_beam.py`.
 
-- [ ] **5.1 `BoxBeamBridgeInput` / layout.** Adjacent boxes across the width
-  (box size from the PSBD tables), shear keys, transverse tie rods per the
-  SCD, skew; composite topping (6 in min) vs non-composite with waterproofing
-  + asphalt wearing surface as the two deck options.
-- [ ] **5.2 Prestress from the standard designs.** Strand pattern/count from
-  `box_beam_design(box, span)`; verify release + final stresses, approximate
-  losses (LRFD 5.9.3), camber, and flexural/shear capacity as the pure-Python
-  L1 gate.
-- [ ] **5.3 Live-load distribution.** Wire the adjacent-box `moment_df` /
-  `shear_df` (4.6.2.2.2b/3c) into the `girder_pipeline` envelope the way the
-  steel slice used the beam factors.
-- [ ] **5.4 MIDAS spoke.** `structural_model_from_layout` analog for the box
-  layout (line beams per box minimum; grillage with transverse ties as the
-  refinement); reconcile with the L1 baseline per the roadmap validation
-  gate.
-- [ ] **5.5 BrIM emit.** Port `rhino_box_beam.py` to the `rhino_bim` emit
-  architecture: box prisms with voids, strands as tagged polylines, tie
-  rods, shear keys, bearing pads, railing per SCD on the boxes/topping;
-  prestressed member pay item (515E, ea/ft) `[CONFIRM]`.
+- [~] **5.1 `BoxBridgeInput` / layout.** Adjacent boxes across the width
+  (box size + span from the PSBD tables), transverse tie rods and
+  diaphragms per the SCD, composite topping vs non-composite from the
+  design line (`rhino_box_bim.BoxBridgeInput`). Remaining: skew (sheet
+  2/6 diaphragm/tie offset rules) and shear-key geometry.
+- [x] **5.2 Prestress from the standard designs.** `box_beam_pipeline
+  .box_beam_line_checks`: strand pattern from `box_beam_design(box,
+  span)`, elastic shortening + approximate lump-sum losses (5.9.3),
+  transfer stresses at the 60-diameter transfer length and service
+  stresses (5.9.2.3), Strength I flexure (5.6.3), tabulated camber
+  passed through. Fully-bonded transfer check is conservative at the
+  longest catalog spans (the sheet debonds there — flagged, not
+  modeled).
+- [x] **5.3 Live-load distribution.** Adjacent-box `moment_df_interior_
+  box` / `shear_df_interior_box` (4.6.2.2.2b/3c, thin-wall J) feed the
+  same `girder_line_envelope` machinery the steel slice uses.
+- [~] **5.4 MIDAS spoke.** `structural_model_from_box`: line beams per
+  box broken at the diaphragm stations, transverse tie elements, loads
+  matched to the L1 pipeline; PSBD section constants in element
+  metadata for a value-type MAPI section. Remaining: the grillage
+  refinement and a live-MIDAS reconciliation run.
+- [x] **5.5 BrIM emit.** `rhino_box_bim.box_beam_bridge_emit`: hollow-
+  tube members (four wall prisms), strand rows, tie rods, diaphragms,
+  bearing pads, composite topping; one `515E10000` member count per
+  beam `[CONFIRM]`; drawn by the same `draw_bim_emit.py`, read back by
+  the same `read_bim_quantities`. Remaining: railing on the topping.
 - [ ] **5.6 Substructure reuse.** Same reactions → `optimize_pier_cap` /
-  abutment path as the steel slice; Phase 4 emit applies unchanged.
-- [ ] **5.7 Walkthrough notebook.** Box-beam analog of the Steel Girder
-  Bridge Walkthrough, ending in the same quantities read-back.
+  abutment path as the steel slice; needs the support-station/bearing
+  frame on the box layout so `assemble_substructure` can place under it.
+- [x] **5.7 Walkthrough notebook.** `Notebooks/Box Beam Bridge
+  Walkthrough.ipynb`: design line → L1 checks (all passing) → tagged
+  emit + quantities → MIDAS hub model.
 
 ---
 
