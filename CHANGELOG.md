@@ -7,6 +7,93 @@ Versions follow [Semantic Versioning](https://semver.org/) (major.minor.patch).
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-07-12
+
+The BrIM "source of truth" release: the Rhino model now carries faithful
+geometry **and** a complete per-object BIM attribute record (pay items,
+SCD keys, materials) for three full bridge types — steel girder,
+adjacent box beam, and prestressed I-beam — plus the substructure, all
+regenerable into MIDAS models and quantity estimates. See
+`docs/BrIM_Work_Plan.md` for the phase-by-phase record.
+
+- **BrIM emit architecture (`structural.bim` + `structural.rhino_bim`).**
+  Typed per-component tag builders (`bim.*` / `pay.*` / `mat.*`), a
+  seeded ODOT pay-item catalog, and the transport-neutral
+  `girder_bridge_emit` → `EmitObject` record drawn by the pure-Rhino
+  `draw_bim_emit.py` driver. Deck as a crowned closed solid with BDM
+  Figure 309-4 overhangs, vertical-sided haunches (BDM 309.3.5), girder
+  k-fillets, shear studs, crown-following deck rebar mats, and the
+  SBR-1-20 parapet with its true bar cage. `read_bim_tags` /
+  `read_bim_quantities` / `pay_item_quantities` round-trip every tagged
+  object back into a pay-item rollup.
+
+- **Substructure (work-plan Phase 4/4v).** `substructure_layout` places
+  skew-aligned units under the layout with stepped beam seats that land
+  the bearing pads exactly; emit dimensions come from the executed
+  design objects (`PierCapDesign` STM ties drive the cap steel). Five
+  substructure types, mixable per support line via typed specs:
+  multi-column bent, capped-pile bent, hammerhead (tapered cap,
+  top-chord tie steel), seat / semi-integral / integral abutments (the
+  integral type skips the bearing stack entirely). Cap STM results
+  overlay in place; all concrete/pile/reinforcing quantities roll into
+  the 511/507/509 items.
+
+- **Adjacent box beams (Phase 5).** `box_beam_pipeline` re-derives the
+  PSBDD-1-25 standard designs' governing checks (adjacent-box LLDF,
+  elastic shortening + lump-sum losses, transfer/service stresses,
+  Strength I flexure) and builds the MIDAS line-beam hub with tie
+  elements; `rhino_box_bim` emits hollow members, strand rows, tie
+  rods, diaphragms, pads, and the composite topping. Walkthrough
+  notebook: design line → checks → tagged emit → MIDAS model.
+
+- **Prestressed I-beams (Phase 6, PSID-1-13).** The catalog now carries
+  all 13 sections — the seven WF36-49..WF72-49 wide-flange sections
+  were added, and the Modified AASHTO Type 4 top-flange widths were
+  **corrected** from Type 4's 20 in to the sheet's wide thin flanges
+  (36 in for the 60/66 in beams, 48 in for the 72 in) — plus the
+  permissible strand grids (vector-extracted from the drawing; row
+  totals reconcile with the stated 26/40/52/62 counts), draped-required
+  and shipping-strand locations, true tapered outlines, and the sheet
+  10 design constants. With no PSIDD companion sheet, the new
+  `ps_i_beam_pipeline` *designs* the strand pattern: smallest even
+  straight count passing Service III + Strength I on the composite
+  section, with end debonding designed in pairs (5.9.4.3.3, 45 % cap)
+  when transfer overstresses the beam end. MIDAS spoke breaks lines at
+  the sheet 5 diaphragm stations; `rhino_ps_i_bim` emits the slice with
+  the designed strand rows (and debond counts) in the tags.
+
+- **Railing program (SCD Waves 8-9).** RM-4.6 concrete barrier end
+  sections (Type B/B1/D lofting stations down to the 32 in
+  terminal-ready end), RM-4.4 single-slope barrier transitions
+  (plan-width tapers at sign supports and pier protection), RM-5.2
+  bikeway railing (new treated-wood post-and-rail module), RM-4.7
+  thrie-beam transitions between 32 in PCB families (three connection
+  pairs; the J-J Hook NJ shape correctly refuses). MGS bridge terminal
+  assemblies Type 1 / Type 2 / TST-2 as post-by-post layouts joining
+  guardrail runs to the bridge railings, plus `layout_mgs_run` and
+  registry-note coverage of the remaining MGS sheets.
+
+- **Roadway alignment + terrain.** New `transportation` alignment
+  module (horizontal/vertical geometry) with terrain support and a
+  point-cloud processing notebook — the first leg of the native
+  Alignment/Terrain roadmap.
+
+- **SCD review pass.** Every previously-built SCD component
+  (A-1-20 through VPF-1-24) re-verified against its drawing; findings
+  folded into the modules and `Validation TODOs.md`. The
+  `tests/functional_tests/ODOT SCD Components Verification.ipynb`
+  notebook now exercises all 33 component families end to end,
+  including the three BrIM emits, the substructure type gallery, and
+  every barrier shape family generated to a tagged `.3dm`.
+
+### Breaking
+
+- `odot.ps_i_beam`: the Modified AASHTO Type 4 sections'
+  `top_flange_width_in` changed from the incorrect `20.0` to the
+  drawing's `36.0` / `36.0` / `48.0`; anything consuming those values
+  (haunch widths, emit geometry) gets different — now correct —
+  dimensions.
+
 ## [0.3.9] - 2026-07-07
 
 - **Python 3.9 support (Rhino compatibility).** Lowered `requires-python` to
