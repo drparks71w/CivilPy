@@ -283,6 +283,31 @@ def test_hammerhead_tip_depth_validation(layout):
                             tip_depth_ft=7.0)
 
 
+def test_semi_integral_abutment(layout, abutment_spec):
+    from civilpy.structural.substructure_layout import (
+        semi_integral_abutment_geometry)
+
+    cap_design = _cap_design(span=32.0, depth=3.5, thickness=3.0)
+    a1 = semi_integral_abutment_geometry(
+        layout, substructure_units(layout)[0], cap_design, abutment_spec,
+        diaphragm_thickness_in=30.0)
+    assert a1.kind == "semi-integral"
+    assert a1.backwall is None and a1.diaphragm is not None
+    # seats and piles unchanged from the seat abutment
+    assert len(a1.seats) == 4 and len(a1.piles) == 4
+    d = a1.diaphragm
+    assert d.thickness_ft == pytest.approx(2.5)
+    # sits at the bearing plane, rises to the crown (deck top z = 0)
+    assert d.origin[2] == pytest.approx(a1.cap.origin[2] + 3.0 / 12.0)
+    assert d.origin[2] + d.height_ft == pytest.approx(0.0)
+    # back face over the cap back edge, body reaching into the span (+x)
+    assert d.origin[0] - d.thickness_ft / 2.0 == pytest.approx(
+        -a1.cap.width_ft / 2.0)
+    a2 = semi_integral_abutment_geometry(
+        layout, substructure_units(layout)[-1], cap_design, abutment_spec)
+    assert a2.diaphragm.origin[0] < 160.0 + a2.cap.width_ft / 2.0
+
+
 def test_assemble_missing_spec_raises(layout, abutment_spec):
     from civilpy.structural.substructure_layout import (
         SeatAbutmentSpec, assemble_substructure)

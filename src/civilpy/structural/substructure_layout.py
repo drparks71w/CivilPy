@@ -41,7 +41,7 @@ layers.
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from civilpy.structural.substructure import SubstructureUnit, substructure_units
 
@@ -519,6 +519,54 @@ def abutment_geometry(layout, unit: SubstructureUnit, cap_design,
                             backwall=backwall, wingwalls=tuple(wingwalls))
 
 
+def _deck_top_high(layout) -> float:
+    """Highest top-of-deck elevation across the width (the crown when it
+    falls inside the deck) — the end-diaphragm top."""
+    inp = layout.inputs
+    y_lo = -inp.overhang_ft
+    y_hi = (inp.girder_count - 1) * inp.girder_spacing_ft + inp.overhang_ft
+    ys = [y_lo, y_hi]
+    if y_lo < layout.crown_y_ft < y_hi:
+        ys.append(layout.crown_y_ft)
+    return max(layout.deck_top_z(y) for y in ys)
+
+
+def semi_integral_abutment_geometry(layout, unit: SubstructureUnit,
+                                    cap_design, spec: AbutmentSpec, *,
+                                    diaphragm_thickness_in: float = 30.0,
+                                    bearing_stack_in: float =
+                                    DEFAULT_BEARING_STACK_IN,
+                                    seat_min_in: float = SEAT_MIN_IN,
+                                    seat_side_in: float = SEAT_SIDE_IN,
+                                    pile_embed_in: float = PILE_EMBED_IN
+                                    ) -> AbutmentGeometry:
+    """Place one semi-integral abutment: the seat abutment (cap on piles,
+    stepped seats, bearings) with the backwall replaced by an **end
+    diaphragm** that encases the girder ends and moves with the
+    superstructure.  The diaphragm runs the cap length, offset *inward*
+    (toward the span) so its back face sits over the cap's back edge,
+    from the bearing plane up to the high deck edge (drawn level; the
+    crown-following top is the same refinement flagged for backwalls)."""
+    geom = abutment_geometry(layout, unit, cap_design, spec,
+                             bearing_stack_in=bearing_stack_in,
+                             seat_min_in=seat_min_in,
+                             seat_side_in=seat_side_in,
+                             pile_embed_in=pile_embed_in)
+    cap = geom.cap
+    inward = 1.0 if unit.index == 0 else -1.0
+    t = diaphragm_thickness_in / 12.0
+    z_base = cap.origin[2] + seat_min_in / 12.0    # lowest pad bottom
+    ox, oy, _ = cap.origin
+    at, u = _support_frame(layout, unit.station_ft)
+    shift = inward * (t / 2.0 - cap.width_ft / 2.0)
+    diaphragm = WallPanel(
+        origin=(ox + shift, oy, z_base), axis=u,
+        length_ft=cap.length_ft, thickness_ft=t,
+        height_ft=_deck_top_high(layout) - z_base)
+    return replace(geom, kind="semi-integral", backwall=None,
+                   diaphragm=diaphragm)
+
+
 # ── per-unit type specs (mix substructure types on one bridge) ────────────
 
 @dataclass(frozen=True)
@@ -581,6 +629,21 @@ class SeatAbutmentSpec:
     def build(self, layout, unit, **frame_kw) -> AbutmentGeometry:
         return abutment_geometry(layout, unit, self.cap_design, self.spec,
                                  **frame_kw)
+
+
+@dataclass(frozen=True)
+class SemiIntegralAbutmentSpec:
+    """Seat abutment plus the superstructure-borne end diaphragm (see
+    :func:`semi_integral_abutment_geometry`)."""
+
+    cap_design: object
+    spec: AbutmentSpec
+    diaphragm_thickness_in: float = 30.0
+
+    def build(self, layout, unit, **frame_kw) -> AbutmentGeometry:
+        return semi_integral_abutment_geometry(
+            layout, unit, self.cap_design, self.spec,
+            diaphragm_thickness_in=self.diaphragm_thickness_in, **frame_kw)
 
 
 def assemble_substructure(layout, assignments: dict, *,

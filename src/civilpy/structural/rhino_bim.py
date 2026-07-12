@@ -75,6 +75,7 @@ from civilpy.structural.rhino_layers import (
     LAYER_BARRIERS,
     LAYER_BEARINGS,
     LAYER_BRIDGE_DECK,
+    LAYER_DIAPHRAGMS,
     LAYER_GIRDERS,
     LAYER_HAUNCHES,
     LAYER_LOAD_PLATES,
@@ -924,6 +925,15 @@ def substructure_emit(sub, *, fc_psi: float = SUB_FC_PSI,
             if rebar is not None:
                 objects += _wall_rebar(ab.backwall, pid, "BW", "backwall",
                                        rebar)
+        if ab.diaphragm is not None:
+            objects.append(_wall_prism(
+                ab.diaphragm, LAYER_DIAPHRAGMS, bim.diaphragm_tags(
+                    f"{pid}-DIA",
+                    thickness_in=ab.diaphragm.thickness_ft * 12.0,
+                    volume_cy=ab.diaphragm.volume_cy)))
+            if rebar is not None:
+                objects += _wall_rebar(ab.diaphragm, pid, "DIA",
+                                       "diaphragm", rebar)
         for i, wing in enumerate(ab.wingwalls, start=1):
             objects.append(_wall_prism(
                 wing, LAYER_SUB_WINGWALLS,

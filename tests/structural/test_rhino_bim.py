@@ -497,6 +497,35 @@ def test_hammerhead_pier_emit(emit):
     assert len(cols) == 1
 
 
+def test_semi_integral_abutment_emit(emit):
+    from civilpy.structural.rhino_bim import substructure_emit
+    from civilpy.structural.substructure_layout import (
+        AbutmentSpec, PileBentSpec, SemiIntegralAbutmentSpec,
+        assemble_substructure)
+    from tests.structural.test_substructure_layout import _cap_design
+
+    cap = _cap_design(span=37.0, depth=3.5, thickness=3.0)
+    sub = assemble_substructure(emit.layout, {
+        "pier": PileBentSpec(cap_design=cap,
+                             pile_xs_ft=(1.0, 11.0, 21.0, 31.0)),
+        "abutment": SemiIntegralAbutmentSpec(
+            cap_design=cap,
+            spec=AbutmentSpec(pile_xs_ft=(1.0, 11.0, 21.0, 31.0)),
+            diaphragm_thickness_in=30.0)})
+    objs = substructure_emit(sub)
+    dias = [o for o in objs if o.tags.get("bim.type") == "diaphragm"]
+    assert len(dias) == 2
+    for d in dias:
+        assert d.layer == "Superstructure::Diaphragms"
+        assert d.tags["pay.item"] == "511E12100"     # superstructure item
+        assert d.tags["mat.class"] == "QC2"
+        assert float(d.tags["pay.qty"]) > 0
+    assert not [o for o in objs if o.tags.get("bim.type") == "backwall"]
+    # the diaphragm carries its own two-face mat
+    assert [o for o in objs
+            if o.tags.get("bim.id", "").startswith("ABUT1-DIA-")]
+
+
 def test_stm_overlay_lands_in_the_cap(sub_emit):
     from civilpy.structural.rhino_bim import stm_overlay_emit
     from civilpy.structural.strut_and_tie import StrutAndTieModel

@@ -237,6 +237,18 @@ def substructure_concrete_tags(btype: str, bid: str, *,
     return tags
 
 
+def diaphragm_tags(bid: str, *, thickness_in: float, fc_psi: float = 4500.0,
+                   volume_cy: float | None = None) -> dict:
+    """Concrete end/intermediate diaphragm.  Integral and semi-integral
+    end diaphragms are cast with (and move with) the superstructure, so
+    their concrete measures into the superstructure item like the
+    haunches."""
+    return {**_base("diaphragm", bid),
+            "diaphragm.thickness_in": f"{thickness_in:g}",
+            **concrete_mat(fc_psi, "QC2"),
+            **_pay_tags("511E12100", volume_cy)}
+
+
 def pile_tags(bid: str, *, shape: str, length_ft: float, grade: str = "50",
               spec: str = "ASTM A572") -> dict:
     """Driven steel HP pile: pay quantity is the furnished+driven length
