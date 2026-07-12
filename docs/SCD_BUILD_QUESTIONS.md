@@ -621,3 +621,51 @@ CPA-1-08, CPP-1-08, A-1-20 all done.
   given as a fixed sheet dimension; both are cataloged with the
   concrete-face-only trapezoid and documented as not modeling the
   variable tie-in width, rather than guessing a value.
+
+## PSID-1-13 extension + Wave 8/9 railings (2026-07-12)
+
+- **PSID-1-13 permissible strand grids were extracted from the PDF's
+  vector marks, not read visually.** Each `+` mark is a distinctive
+  drawing signature (a 7.5 pt horizontal+vertical stroked line pair);
+  filled 4.2 pt circles turned out to be *rebar* section cuts, not
+  strands. The per-row extraction reconciles exactly with each
+  diagram's stated permissible count (26/40/52/62), which is the
+  validation that made the transcription trustworthy.
+- **Modified AASHTO Type 4 top-flange widths corrected.** The earlier
+  catalog carried Type 4's 20 in flange for all three Modified
+  sections with a "not re-verified" caveat; sheet 1's own dimension
+  strings (3'-0" / 4'-0") and the shipping-strand offsets (+/-15.5 in
+  and +/-21.5 in — impossible inside a 20 in flange) prove the wide
+  thin flange: 36 in (60/66) and 48 in (72). `test_modified_type4_*`
+  now locks the corrected values.
+- **`ps_i_beam_profile` outlines are straight-line.** AASHTO 2/3/4
+  close on the published areas to ~1 in^2; the Modified Type 4 / WF
+  top-flange edge split between vertical edge and underside slope is
+  read to the nearest inch, so those polygons run a few percent over
+  the published areas — quantities must use the published area/weight
+  (the emit does).
+- **The strand designer models debonding, not draping.** Fill order is
+  bottom-row-up / outside-in; when the fully-bonded end overstresses
+  at transfer, outermost bottom-row strands are debonded in pairs up
+  to the 5.9.4.3.3 cap (45 % default, the 8th-Edition limit; pass
+  0.25 for pre-2018 designs). The WF web locations the sheet marks
+  "must be draped if utilized" are simply never used. Staggered debond
+  lengths and hold-down geometry are not modeled.
+- **RM-4.4 is not what the remaining-work table guessed.** The sheet
+  is *plan-width* transitions (40 ft tapers wrapping sign-support /
+  light-tower foundations and pier columns) rather than profile-to-
+  profile lofts; `layout_barrier_transition` returns width-vs-station
+  accordingly.
+- **RM-4.6 Type D's intermediate sections are approximated.** The
+  sheet's M-M section shows a one-side-sloped 30 in-base body that
+  doesn't match RM-4.5's symmetric catalog profile exactly; the layout
+  lofts from the RM-4.5 profile to the 20 in vertical-faced end and
+  the 4:1 plan end flare is note-only, not geometry.
+- **RM-5.2 heights are derived, not dimensioned as one number.** The
+  42 in `RAILING_HEIGHT_IN` composes the 3 ft post reveal plus the
+  top-rail zone; the drawing dimensions the pieces (1'-0" face-rail
+  moduli, 6 in bottom gap) rather than an overall height.
+- **MGS-3.x layouts keep each sheet's own stationing direction**
+  (`origin` field): Type 1 from the parapet end, TST-2 from the MGS
+  end, Type 2 from the connector — flipping any of them to a common
+  origin invited transcription errors for no modeling benefit.

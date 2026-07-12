@@ -36,3 +36,11 @@ skipped-by-rating. Companion decisions and open questions live in
 | RM-4.2 | done | `structural/odot/roadway_portable_barrier.py` (32 in, pin & loop) | `Notebooks/res/RM-4.1_RM-4.2.py` | 8 (`test_odot_roadway_portable_barrier.py`, shared) |
 | RM-4.1 | done | `structural/odot/roadway_portable_barrier.py` (50 in, hinge bar + `TRANSITION_50_TO_32`) | `Notebooks/res/RM-4.1_RM-4.2.py` | shared with above |
 | BP-5.1 | done | `structural/odot/concrete_curb.py` (13 catalog entries, 19 sheet labels) | `Notebooks/res/BP-5.1.py` | 10 (`test_odot_concrete_curb.py`) |
+| PSID-1-13 (extension) | done | `structural/odot/ps_i_beam.py` (13 sections: +7 WF, MT4 flange fix, strand grids, profiles) + `structural/ps_i_beam_pipeline.py` + `structural/rhino_ps_i_bim.py` | `draw_bim_emit.py` (generic driver, no new script) | 30 (`test_odot_ps_i_beam.py` + `test_ps_i_beam_pipeline.py`) + 9 (`test_rhino_ps_i_bim.py`) |
+| RM-4.6 | done | `structural/odot/roadway_barrier.py` (`BARRIER_END_SECTIONS`, `layout_barrier_end_section`, Types B/B1/D) | — | 5 (`test_odot_barrier_extensions.py`, shared) |
+| RM-4.4 | done | `structural/odot/roadway_barrier.py` (`layout_barrier_transition`: sign support / pier plan-width transitions) | — | 3 (shared) |
+| RM-5.2 | done | `structural/odot/bikeway_railing.py` (wood post-and-rail, `layout_bikeway_railing`) | — | 3 (shared) |
+| RM-4.7 | done (catalog) | `structural/odot/roadway_portable_barrier.py` (`THRIE_BEAM_PCB_TRANSITIONS`, 3 pairs + hardware) | — | 3 (shared) |
+| MGS-3.1, MGS-3.2, MGS-3.3 | done | `structural/odot/guardrail.py` (`BRIDGE_TERMINALS`, `layout_bridge_terminal`) | — | 6 (`test_odot_mgs_terminals.py`, shared) |
+| MGS-2.1 (extension) | done | `structural/odot/guardrail.py` (`layout_mgs_run`; parameters pre-existing) | — | 2 (shared) |
+| MGS-2.2/2.3/2.4, MGS-4.1/4.2, MGS-6.1 | done (registry notes, proportional) | `structural/odot/guardrail.py` (`MGS_DRAWINGS` notes) | — | 1 (shared) |

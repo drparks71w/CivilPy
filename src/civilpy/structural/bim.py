@@ -70,6 +70,12 @@ PAY_ITEMS: dict[str, PayItem] = {
     "515E10000": PayItem("515E10000",
                          "Prestressed concrete box beam member [CONFIRM]",
                          "ea", "515", 1),
+    "515E20000": PayItem("515E20000",
+                         "Prestressed concrete I-beam member [CONFIRM]",
+                         "ea", "515", 1),
+    "515E30000": PayItem("515E30000",
+                         "Intermediate diaphragms [CONFIRM]",
+                         "ea", "515", 1),
 }
 
 
@@ -265,11 +271,42 @@ def box_beam_tags(bid: str, *, box: str, depth_in: float, beam_type: str,
     return tags
 
 
-def tendon_tags(bid: str, *, strands: int, row_in: float) -> dict:
-    """One schematic prestressing-strand row (paid with the member)."""
-    return {**_base("tendon", bid), "tendon.strands": str(strands),
+def ps_i_beam_tags(bid: str, *, section: str, depth_in: float,
+                   span_ft: float, scd: str | None = "PSID-1-13",
+                   scd_year: str | int | None = 2025,
+                   fc_psi: float = 5500.0, n_strands: int | None = None,
+                   n_debonded: int | None = None,
+                   concrete_cy: float | None = None,
+                   count: int | None = None) -> dict:
+    """Prestressed I-beam member (PSID-1-13).  One prism per beam; the
+    member carries the 515 I-beam item (strands, embedded sole plates,
+    and anchorage-zone steel are included in the member per sheet 10)."""
+    tags = {**_base("ps_i_beam", bid, scd=scd, scd_year=scd_year),
+            "ps_i_beam.section": section,
+            "ps_i_beam.depth_in": f"{depth_in:g}",
+            "ps_i_beam.span_ft": f"{span_ft:g}",
+            **concrete_mat(fc_psi, "prestressed")}
+    if n_strands is not None:
+        tags["ps_i_beam.n_strands"] = str(n_strands)
+    if n_debonded is not None:
+        tags["ps_i_beam.n_debonded"] = str(n_debonded)
+    if concrete_cy is not None:
+        tags["ps_i_beam.concrete_cy"] = f"{concrete_cy:g}"
+    if count is not None:
+        tags.update(_pay_tags("515E20000", count))
+    return tags
+
+
+def tendon_tags(bid: str, *, strands: int, row_in: float,
+                debonded: int | None = None) -> dict:
+    """One schematic prestressing-strand row (paid with the member).
+    ``debonded`` counts the row's strands debonded at each beam end."""
+    tags = {**_base("tendon", bid), "tendon.strands": str(strands),
             "tendon.row_in": f"{row_in:g}",
             "mat.spec": "prestressing strand, AASHTO M203 Gr 270"}
+    if debonded:
+        tags["tendon.debonded"] = str(debonded)
+    return tags
 
 
 def tie_rod_tags(bid: str, *, diameter_in: float,
@@ -281,17 +318,22 @@ def tie_rod_tags(bid: str, *, diameter_in: float,
 
 
 def diaphragm_tags(bid: str, *, thickness_in: float, fc_psi: float = 4500.0,
-                   volume_cy: float | None = None, pay: bool = True) -> dict:
+                   volume_cy: float | None = None, pay: bool = True,
+                   item: str = "511E12100",
+                   count: float | None = None) -> dict:
     """Concrete end/intermediate diaphragm.  Integral and semi-integral
     end diaphragms are cast with (and move with) the superstructure, so
     their concrete measures into the superstructure item like the
     haunches; a box beam's precast diaphragms are included in the member
-    (``pay=False``)."""
+    (``pay=False``).  A PS I-beam bridge's intermediate diaphragms have
+    their own 515 each-measured item (PSID-1-13 sheet 10) — pass
+    ``item="515E30000"`` with ``count`` instead of ``volume_cy``."""
     tags = {**_base("diaphragm", bid),
             "diaphragm.thickness_in": f"{thickness_in:g}",
             **concrete_mat(fc_psi, "QC2")}
     if pay:
-        tags.update(_pay_tags("511E12100", volume_cy))
+        tags.update(_pay_tags(item, count if count is not None
+                              else volume_cy))
     return tags
 
 

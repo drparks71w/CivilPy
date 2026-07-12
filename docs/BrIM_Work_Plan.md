@@ -214,6 +214,46 @@ direct writer), adjacent-box factors in `aashto/lrfd/distribution.py`,
   Walkthrough.ipynb`: design line → L1 checks (all passing) → tagged
   emit + quantities → MIDAS hub model.
 
+## Phase 6 — Third vertical slice: prestressed I-beams (PSID-1-13)
+
+Unlike the box slice there is **no companion design-data sheet**
+(PSIDD does not exist), so this slice *designs* the strand pattern on
+the sheet's permissible grid instead of verifying a table.
+
+- [x] **6.1 Catalog extension.** `odot/ps_i_beam.py` now carries all
+  13 PSID-1-13 sections: the 7 WF sections (sheets 2-3 properties
+  table) added; the Modified Type 4 top-flange widths corrected to the
+  sheet (36/36/48 in wide thin flanges, not Type 4's 20 in); per-
+  section permissible strand grids vector-extracted from the drawing
+  (row totals reconcile with the stated 26/40/52/62 counts), WF
+  draped-required web locations, MT4/WF shipping strands, true tapered
+  outlines (`ps_i_beam_profile`), and the sheet 10 design constants
+  (0.6 in Gr 270 low-lax strand @ 0.217 in^2, f'c 5.5-7.0 /
+  f'ci 4.0-5.0 ksi, HL-93 + 60 psf FWS, S < 14 ft, skew < 45 deg).
+- [x] **6.2 Strand designer + line checks.** `ps_i_beam_pipeline
+  .ps_i_beam_line_checks`: smallest even straight pattern passing
+  Service III + Strength I (composite section with the CIP deck), ES +
+  approximate lump-sum losses, transfer checks at the 60-diameter
+  transfer length with **end debonding designed in pairs** (5.9.4.3.3,
+  45 % cap default) when the fully-bonded end overstresses; type-k
+  LLDF (4.6.2.2.2b/3a with Kg); elastic release camber. Long spans at
+  the 5.0 ksi f'ci ceiling correctly report the midspan release-
+  compression limit.
+- [x] **6.3 MIDAS spoke.** `structural_model_from_ps_i`: girder lines
+  broken at the sheet 5 diaphragm stations (midspan <= 80 ft, quarter
+  points beyond), transverse diaphragm elements, DC1/DC2/DW matching
+  the line checks; published section constants in element metadata.
+- [x] **6.4 BrIM emit.** `rhino_ps_i_bim.ps_i_bridge_emit`: true-
+  profile I-prisms driven by the executed design (strand rows with
+  debond counts in tags), 2 in haunches, flat CIP deck, CIP
+  intermediate diaphragms (515E30000 `[CONFIRM]` each), bearing pads;
+  `ps_i_beam` member item 515E20000 `[CONFIRM]`; drawn by the same
+  `draw_bim_emit.py`, read back by `read_bim_quantities`.
+- [ ] **6.5 Remaining.** Skew; crowned-deck/BridgeLayout integration
+  (deck is flat like the box topping); railing on the deck; draped-
+  strand modeling (only debonding is designed); substructure reuse
+  (same gap as box 5.6); walkthrough notebook.
+
 ---
 
 ## Notes / decisions

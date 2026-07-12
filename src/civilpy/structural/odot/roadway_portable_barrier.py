@@ -112,3 +112,105 @@ def roadway_portable_barrier(designation: str) -> BridgeRailing:
             f"unknown roadway portable barrier {designation!r}; choose one "
             f"of {sorted(ROADWAY_PORTABLE_BARRIERS)}"
         )
+
+
+# ═══════════════ RM-4.7 thrie-beam transition between PCB types ═══════════
+#
+# Transcribed from SCD RM-4.7, "Thrie-Beam Transition for Portable
+# Concrete Barrier" (rev. 2025-01-17, 3 sheets, one connection pair per
+# sheet).  A 6 ft-3 in nested 12-gauge thrie-beam bridges the <= 1 ft
+# gap between two 32 in PCB runs of different shape families, with a
+# thrie-beam terminal connector (SCD MGS-1.1) bolted to each barrier
+# end and a common galvanized toe plate along the base.
+
+RM47_SCD = "RM-4.7"
+RM47_REVISION = "2025-01-17"
+
+#: Nested thrie-beam element bridging the joint.
+THRIE_BEAM_ELEMENT = "6 ft-3 in nested 12-gauge thrie-beam"
+#: Maximum plan gap between the two PCB ends.
+PCB_GAP_MAX_IN = 12.0
+#: Minimum distance from the PCB end to the terminal connector.
+CONNECTOR_END_DISTANCE_MIN_IN = 6.0
+#: Terminal-connector through bolts: 7/8 in dia ASTM A325 or A449; at
+#: least 5 installed, 3 in the outer vertical row, >= 6 in from the
+#: segment end and >= 3 in from lifting holes/voids.
+CONNECTOR_BOLT_SPEC = '7/8" dia through bolts, ASTM A325 or A449'
+CONNECTOR_BOLTS_MIN = 5
+#: Terminal-connector steel spacer (CMS 711.01, galvanized 711.02):
+#: 6 x 10 x 1/4 in plate with 1 in dia holes; add spacers to fit field
+#: conditions.
+SPACER_PLATE_IN = (6.0, 10.0, 0.25)
+#: Toe plate along the base (CMS 711.01, galvanized 711.02): 9 ft-0 in
+#: x 5-1/2 in x 5/8 in with 24 holes (1 in dia) at 4-3/4 in; anchors
+#: 7/8 x 6 in (CMS 712.01 or FF-S325 Grp VIII Type 1), >= 4 per end.
+TOE_PLATE_IN = (108.0, 5.5, 0.625)
+TOE_PLATE_ANCHOR_SPEC = '7/8" x 6" anchors, CMS 712.01'
+TOE_PLATE_ANCHORS_MIN_PER_END = 4
+#: Deployment limits (general notes, all sheets).
+USE_LIMIT = "once per mile with project engineer approval"
+UNANCHORED_PCB_MIN_FT = 100.0
+
+
+@dataclass(frozen=True)
+class ThrieBeamPCBTransition:
+    """One RM-4.7 connection pair (one sheet each).  ``barrier_a`` /
+    ``barrier_b`` name the generic/proprietary 32 in PCB shapes joined;
+    the hardware set is common to all three pairs."""
+
+    sheet: int
+    barrier_a: str
+    barrier_b: str
+    notes: str = ""
+
+
+#: RM-4.7 connection pairs keyed by ``(a, b)`` shape names.
+THRIE_BEAM_PCB_TRANSITIONS: dict[tuple[str, str], ThrieBeamPCBTransition] = {
+    (t.barrier_a, t.barrier_b): t
+    for t in (
+        ThrieBeamPCBTransition(
+            1, 'Generic 32" New Jersey shape PCB', 'Generic 32" F-shape PCB',
+            notes="May also connect barriers of the same shape. Not "
+            "approved for the J-J Hook 32 in New Jersey shape PCB."),
+        ThrieBeamPCBTransition(
+            2, 'Generic 32" New Jersey shape PCB', 'J-J Hook 32" F-shape PCB'),
+        ThrieBeamPCBTransition(
+            3, 'Generic 32" F-shape PCB', 'J-J Hook 32" F-shape PCB'),
+    )
+}
+
+
+def thrie_beam_pcb_transition(barrier_a: str,
+                              barrier_b: str) -> ThrieBeamPCBTransition:
+    """Look up the RM-4.7 pair joining two PCB shapes (order-free).
+    Raises ``ValueError`` naming the cataloged pairs otherwise — in
+    particular there is **no** approved pair involving the J-J Hook
+    32 in New Jersey shape PCB."""
+    for (a, b), t in THRIE_BEAM_PCB_TRANSITIONS.items():
+        if {a, b} == {barrier_a, barrier_b}:
+            return t
+    raise ValueError(
+        f"RM-4.7 has no transition joining {barrier_a!r} to {barrier_b!r}; "
+        f"cataloged pairs are {sorted(THRIE_BEAM_PCB_TRANSITIONS)}")
+
+
+def thrie_beam_transition_notes() -> tuple[str, ...]:
+    """The deployment / payment rules common to every RM-4.7 pair."""
+    return (
+        f"ODOT {RM47_SCD} thrie-beam transition for portable concrete "
+        f"barrier (rev. {RM47_REVISION})",
+        f"{THRIE_BEAM_ELEMENT} across a {PCB_GAP_MAX_IN:g} in max gap; "
+        "thrie-beam terminal connector (SCD MGS-1.1) each end, "
+        f"{CONNECTOR_BOLT_SPEC} ({CONNECTOR_BOLTS_MIN} min, outer "
+        "vertical row filled first, 6 in min from the segment end).",
+        "Galvanized terminal-connector spacer plate(s) "
+        f"{SPACER_PLATE_IN[0]:g} x {SPACER_PLATE_IN[1]:g} x "
+        f"{SPACER_PLATE_IN[2]:g} in and toe plate "
+        f"{TOE_PLATE_IN[0] / 12.0:g} ft x {TOE_PLATE_IN[1]:g} x "
+        f"{TOE_PLATE_IN[2]:g} in ({TOE_PLATE_ANCHOR_SPEC}, "
+        f"{TOE_PLATE_ANCHORS_MIN_PER_END} min per end).",
+        f"Use {USE_LIMIT}; {UNANCHORED_PCB_MIN_FT:g} ft of unanchored "
+        "PCB required each side; traffic on either or both sides.",
+        "Incidental to pay Item 622 - Portable Barrier, Unanchored "
+        "(all hardware, material, labor, installation, and removal).",
+    )

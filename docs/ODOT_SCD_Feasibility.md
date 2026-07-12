@@ -82,7 +82,7 @@ exists, the catalog module should encode it alongside the drawing.
 | SCD | Title | Rev | Rating | Notes |
 |---|---|---|---|---|
 | PSBD-1-25 | PS Box Beam Details | 2026-01 | **2** | ✅ DONE (earlier work) — sections/strands/ties/bearing pads in `odot.box_beam`/`box_beam_design`; full Rhino pipeline in `rhino_box_beam.build_box_beams`, tested (`test_odot_box_beam.py`, `test_rhino_box_beam.py`). |
-| PSID-1-13 | PS I-Beam Details | 2025-07 | **3** | ✅ DONE — `odot.ps_i_beam` + `Notebooks/res/PSID-1-13.py`, 7 tests. Section-properties table (6 standard sections) + a simplified straight-line I-shape solid (no bulb/fillet radii). Strand pattern, rebar (A-G series bars), end-block details not modeled — no PSIDD companion design-data sheet is archived yet. |
+| PSID-1-13 | PS I-Beam Details | 2025-07 | **3** | ✅ DONE (extended 2026-07-12) — `odot.ps_i_beam` now carries all **13** sections (7 WF sections from sheets 2-3 added; Modified Type 4 top flanges corrected to 36/36/48 in), permissible strand grids (vector-extracted; totals reconcile with the sheet's 26/40/52/62), true tapered outlines, sheet 10 design constants. No PSIDD sheet exists, so `ps_i_beam_pipeline` *designs* the strand pattern (Service III + Strength I, losses, transfer with designed end debonding per 5.9.4.3.3) and `rhino_ps_i_bim` emits the BrIM slice (work-plan Phase 6). 39 tests. |
 | ICD-1-20 | Integral details, steel on flexible abutments | 2024-01 | **4** | Not built as a standalone component — it's an end-condition add-on to the girder generator (`rhino_gdr`), not a separate structure. Revisit if/when the girder generator grows an abutment-type option. |
 | ICD-2-18 | Integral details, PS I-beams | 2024-01 | **4** | Same as ICD-1-20, for `odot.ps_i_beam` girders. |
 | SICD-1-21 | Semi-integral details, steel on rigid abutments | 2024-01 | **4** | Same posture as ICD-1-20/2-18. |
@@ -127,26 +127,26 @@ excluded.
 | RM-4.1 | 50" Portable Concrete Barrier | 2020-01 | **2** | ✅ DONE — Same pattern, taller; includes the 50"->32" transition section tying it to RM-4.2/PCB-91. |
 | BP-5.1 | Concrete Curbs and Curb & Gutter | 2026-01 | **1** | ✅ DONE — 19 sheet labels consolidated into 13 catalog entries (substrate-only variants share a profile); rolled curbs and Type 11's compound curve approximated as straight chamfers; Types 9/10/11 use the project-variable gutter-plate thickness T. |
 | RM-2.1 | Concrete Steps | 2013-07 | **2** | Small parametric stair. |
-| RM-5.2 | Bikeway Railing | 2023-07 | **2** | Post-and-rail on structures; pairs with BR-2-15. |
-| RM-4.6 | Concrete Barrier End Sections | 2025-07 | **2** | Lofted end tapers of the RM-4.x profiles. |
-| RM-4.4 | Single Slope Barrier Transitions | 2025-01 | **3** | Lofts between barrier profiles. |
-| RM-4.7 | Thrie-Beam Transition for PCB | 2025-01 | **3** | Steel transition hardware on the barrier engine. |
+| RM-5.2 | Bikeway Railing | 2023-07 | **2** | ✅ DONE — `odot.bikeway_railing`: a treated-wood 6x6 post / 2x8 top rail / 2x12 face-rail fence (not a crashworthy barrier — the BR-2-15 pairing was role-only), `layout_bikeway_railing` with flared ends and low-shoulder embedment; Item 607 wood fence. |
+| RM-4.6 | Concrete Barrier End Sections | 2025-07 | **2** | ✅ DONE — `roadway_barrier.BARRIER_END_SECTIONS` + `layout_barrier_end_section`: Type B/B1 (30 ft median) and Type D (14 ft roadside) as lofting stations down to the 32 in vertical-faced end; Item 622 Each; connects to MGS-3.x / attenuators. |
+| RM-4.4 | Single Slope Barrier Transitions | 2025-01 | **3** | ✅ DONE — the sheet is *plan-width* transitions (40 ft tapers wrapping sign-support/light-tower foundations, 36-48 in, and 48 in pier-column protection), not profile lofts; `layout_barrier_transition` returns width-vs-station with joint/raceway/payment rules. |
+| RM-4.7 | Thrie-Beam Transition for PCB | 2025-01 | **3** | ✅ DONE (catalog) — `roadway_portable_barrier.THRIE_BEAM_PCB_TRANSITIONS`: 3 connection pairs (generic NJ / generic F / J-J Hook F; no J-J Hook NJ) sharing the nested 6'-3" thrie beam + terminal connectors + spacer/toe-plate hardware; deployment limits and Item 622 incidental payment. |
 
 ## Wave 9 — guardrail systems (extends `odot.guardrail`)
 
 | SCD | Title | Rev | Rating | Notes |
 |---|---|---|---|---|
-| MGS-3.1 | Bridge Terminal Assembly, Type 1 | 2026-01 | **2** | Already cataloged in `odot.guardrail`; connects guardrail runs to the Wave 3 railings. |
-| MGS-3.2 | Bridge Terminal Assembly, Type 2 | 2025-07 | **2** | Same. |
-| MGS-3.3 | Bridge Terminal Assembly, Type TST-2 | 2026-01 | **2** | Mates with TST-2-21. |
-| MGS-2.1 | Midwest Guardrail System, standard run | 2026-01 | **2** | Posts/blockouts/W-beam as a linear assembly along an alignment. |
-| MGS-2.2 | MGS with Rub Rail | 2026-01 | **3** | Run variant. |
-| MGS-2.3 | Long Span Guardrail | 2025-07 | **3** | Run variant (unposted span over culverts — pairs with BCHW/HW). |
-| MGS-2.4 | Socketed Weak Post on Headwall | 2026-01 | **3** | Directly ties guardrail to the HW-series headwalls. |
-| MGS-4.1 | Type A Anchor Assembly | 2025-07 | **3** | End anchorage hardware. |
-| MGS-4.2 | Type T Anchor Assembly | 2025-07 | **3** | 7 sheets of anchor hardware. |
+| MGS-3.1 | Bridge Terminal Assembly, Type 1 | 2026-01 | **2** | ✅ DONE — `guardrail.BRIDGE_TERMINALS['Type 1']` + `layout_bridge_terminal`: 13 posts (9 quarter + 3 half spaces), long posts 1-6, thrie-beam rail stack, parapet/end-section connections, curb rule, Item 606 Each. |
+| MGS-3.2 | Bridge Terminal Assembly, Type 2 | 2025-07 | **2** | ✅ DONE — trailing-end W-beam terminal connector on an 11x10x5/8 in bearing plate (one-directional roadways only). |
+| MGS-3.3 | Bridge Terminal Assembly, Type TST-2 | 2026-01 | **2** | ✅ DONE — 10-post W-to-thrie transition to TST-2-21 (W6x9/W6x15 groups, symmetrical + single + nested thrie segments). |
+| MGS-2.1 | Midwest Guardrail System, standard run | 2026-01 | **2** | ✅ DONE — parameters were already cataloged; `layout_mgs_run` now lays out posts/panels at standard/half/quarter spacing. |
+| MGS-2.2 | MGS with Rub Rail | 2026-01 | **3** | ✅ registry notes (proportional) — rub rail below the W-beam; full build open if needed. |
+| MGS-2.3 | Long Span Guardrail | 2025-07 | **3** | ✅ registry notes (proportional) — unposted span over culverts, Item 606 Long-Span per foot. |
+| MGS-2.4 | Socketed Weak Post on Headwall | 2026-01 | **3** | ✅ registry notes (proportional) — weak posts socketed into HW-series headwalls, Item 606 With Socketed Posts per foot. |
+| MGS-4.1 | Type A Anchor Assembly | 2025-07 | **3** | ✅ registry notes (proportional) — buried anchor block, 18'-9" rail, Item 606 Each. |
+| MGS-4.2 | Type T Anchor Assembly | 2025-07 | **3** | ✅ registry notes (proportional) — tangent end terminal: rounded-end W-beam, breakaway posts, Type 2 BCT cable; Item 606 Each. |
 | MGS-4.3 | Guardrail Transitions | 2025-07 | **3** | Height/stiffness transitions. |
-| MGS-6.1 | Guardrail at Bridges | 2018-01 | **3** | Arrangement of runs + terminals at structures. |
+| MGS-6.1 | Guardrail at Bridges | 2018-01 | **3** | ✅ registry notes (proportional) — run arrangement at structures: 25 ft BTA + 12'-6" min MGS, 7:1 tapers/flare arcs. |
 | MGS-4.5 | Buried-in-Backslope Terminal | 2025-07 | **4** | Earthwork-dependent geometry. |
 | MGS-6.2 | MGS at Piers | 2025-07 | **4** | Pier-protection arrangement. |
 | MGS-6.3 | Thrie Beam Bullnose | 2025-07 | **4** | Median-nose layout, 8 sheets. |

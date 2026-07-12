@@ -25,41 +25,48 @@ Waves 1-7 are fully closed. Wave 8 is partially closed:
 
 ## Remaining: Wave 8 (roadway concrete barriers & curbs)
 
+Wave 8's railing-family items closed 2026-07-12:
+
+- **Done**: RM-4.6 (`roadway_barrier.layout_barrier_end_section` —
+  Type B/B1/D end sections as lofting stations), RM-4.4
+  (`roadway_barrier.layout_barrier_transition` — the sheet turned out
+  to be plan-width transitions at sign supports / pier protection, not
+  profile-to-profile lofts), RM-5.2 (`odot.bikeway_railing`, new wood
+  post-and-rail module), RM-4.7
+  (`roadway_portable_barrier.thrie_beam_pcb_transition`, 3 connection
+  pairs + shared hardware catalog). Tests in
+  `test_odot_barrier_extensions.py`.
+
 | SCD | Title | Rating | Scope note |
 |---|---|---|---|
-| RM-2.1 | Concrete Steps | 2 | Small parametric stair — new module, full build expected. |
-| RM-5.2 | Bikeway Railing | 2 | Post-and-rail on structures; pairs with BR-2-15 (Wave 3) — check whether it can reuse `bridge_railing`/`rhino_barrier` or needs its own family. |
-| RM-4.6 | Concrete Barrier End Sections | 2 | Lofted end tapers of the RM-4.x profiles already in `roadway_barrier.py` — extends that module rather than starting fresh. |
-| RM-4.4 | Single Slope Barrier Transitions | 3 | Lofts between different RM-4.x barrier profiles (e.g. Type B <-> Type D) — geometry-only extension of the same engine. |
-| RM-4.7 | Thrie-Beam Transition for PCB | 3 | Steel transition hardware bridging the barrier engine to guardrail steel — likely a lighter, catalog-heavy build (rated 3, proportional effort). |
+| RM-2.1 | Concrete Steps | 2 | Small parametric stair — new module, full build expected. (Not railing-family; deliberately left for its own pass.) |
 
 ## Remaining: Wave 9 (guardrail systems, extends `odot.guardrail`)
 
-`odot.guardrail` already exists with some cataloged data (see current
-module before starting — MGS-3.x may already have partial coverage).
+Rated-2 items + proportional rated-3 coverage closed 2026-07-12:
 
-| SCD | Title | Rating |
-|---|---|---|
-| MGS-3.1 | Bridge Terminal Assembly, Type 1 | 2 |
-| MGS-3.2 | Bridge Terminal Assembly, Type 2 | 2 |
-| MGS-3.3 | Bridge Terminal Assembly, Type TST-2 | 2 |
-| MGS-2.1 | Midwest Guardrail System, standard run | 2 |
-| MGS-2.2 | MGS with Rub Rail | 3 |
-| MGS-2.3 | Long Span Guardrail | 3 |
-| MGS-2.4 | Socketed Weak Post on Headwall | 3 |
-| MGS-4.1 | Type A Anchor Assembly | 3 |
-| MGS-4.2 | Type T Anchor Assembly | 3 |
-| MGS-4.3 | Guardrail Transitions | 3 |
-| MGS-6.1 | Guardrail at Bridges | 3 |
-| MGS-4.5 | Buried-in-Backslope Terminal | 4 |
-| MGS-6.2 | MGS at Piers | 4 |
-| MGS-6.3 | Thrie Beam Bullnose | 4 |
-| F-3.1 | Fence Details at Bridges | 5 |
+- **Done (full build)**: MGS-3.1 / MGS-3.2 / MGS-3.3 bridge terminal
+  assemblies (`guardrail.BRIDGE_TERMINALS` + `layout_bridge_terminal`
+  — post-by-post stations, post groups, rail elements, connections,
+  Item 606 payment), MGS-2.1 standard run (`layout_mgs_run`). Tests in
+  `test_odot_mgs_terminals.py`.
+- **Done (registry notes, proportional)**: MGS-2.2, MGS-2.3, MGS-2.4,
+  MGS-4.1, MGS-4.2, MGS-6.1 — key system/payment parameters recorded
+  on their `MGS_DRAWINGS` entries; full parametric builds remain open
+  if ever needed.
 
-Suggested order: MGS-3.1/3.2/3.3 and MGS-2.1 first (rated 2, standalone
-value), then the rated-3 run/transition variants, then the rated 4-5
-items get catalog/notes-only treatment per the established
-proportional-effort convention.
+| SCD | Title | Rating | Status |
+|---|---|---|---|
+| MGS-2.2 | MGS with Rub Rail | 3 | registry notes only |
+| MGS-2.3 | Long Span Guardrail | 3 | registry notes only |
+| MGS-2.4 | Socketed Weak Post on Headwall | 3 | registry notes only |
+| MGS-4.1 | Type A Anchor Assembly | 3 | registry notes only |
+| MGS-4.2 | Type T Anchor Assembly | 3 | registry notes only |
+| MGS-6.1 | Guardrail at Bridges | 3 | registry notes only |
+| MGS-4.5 | Buried-in-Backslope Terminal | 4 | registry only (per convention) |
+| MGS-6.2 | MGS at Piers | 4 | registry only (per convention) |
+| MGS-6.3 | Thrie Beam Bullnose | 4 | registry only (per convention) |
+| F-3.1 | Fence Details at Bridges | 5 | not started |
 
 ## Remaining: Wave 10 (drainage structures)
 
@@ -96,8 +103,12 @@ HW-2.1/HW-2.2 or `box_beam.py`'s section tables).
   because no current catalog entry exercises `side=0` on a New Jersey
   shape — worth a defensive fix or at least a guard if a freestanding NJ
   barrier is cataloged later (e.g. if RM-4.6/RM-4.4 ever need one).
-- No PSIDD (PS I-Beam design-data) companion sheet is archived yet for
-  PSID-1-13 (Wave 6) — noted in that SCD's feasibility row, not blocking.
+- No PSIDD (PS I-Beam design-data) companion sheet exists for
+  PSID-1-13 — resolved differently on 2026-07-12: `ps_i_beam_pipeline`
+  now *designs* the strand pattern on the sheet's own permissible grid
+  (all 13 sections cataloged, including the 7 WF sections sheet 1's
+  table omits; the Modified Type 4 top-flange widths were corrected to
+  36/36/48 in from the sheet). See BrIM_Work_Plan Phase 6.
 
 ## Validation notes
 
