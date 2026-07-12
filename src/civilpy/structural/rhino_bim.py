@@ -567,19 +567,45 @@ def _oriented_rect(cx: float, cy: float, z: float, half_u: float,
 
 
 def _cap_prism(cap, layer: str, tags: dict) -> EmitObject:
-    """Cap-beam prism: cross-section in the (normal, z) plane at the cap
-    origin, extruded along the (skewed) support line."""
+    """Cap-beam prism.  A constant-depth cap extrudes its cross-section
+    along the (skewed) support line; a cap with a ``soffit_profile``
+    (hammerhead) draws its elevation profile in the (axis, z) plane and
+    extrudes it across the width instead — still one prism."""
     x0, y0, z_top = cap.origin
     u = cap.axis
     n = (u[1], -u[0], 0.0)
     w2 = cap.width_ft / 2.0
-    loop = tuple((x0 + s * w2 * n[0], y0 + s * w2 * n[1], z)
-                 for s, z in ((-1, z_top), (1, z_top),
-                              (1, z_top - cap.depth_ft),
-                              (-1, z_top - cap.depth_ft)))
-    return EmitObject(kind="prism", layer=layer, points=loop,
-                      vector=(u[0] * cap.length_ft, u[1] * cap.length_ft,
+    if cap.soffit_profile is None:
+        loop = tuple((x0 + s * w2 * n[0], y0 + s * w2 * n[1], z)
+                     for s, z in ((-1, z_top), (1, z_top),
+                                  (1, z_top - cap.depth_ft),
+                                  (-1, z_top - cap.depth_ft)))
+        return EmitObject(kind="prism", layer=layer, points=loop,
+                          vector=(u[0] * cap.length_ft,
+                                  u[1] * cap.length_ft, 0.0), tags=tags)
+    bx, by = x0 - w2 * n[0], y0 - w2 * n[1]
+
+    def p(s: float, z: float) -> Point:
+        return (bx + s * u[0], by + s * u[1], z)
+
+    loop = [p(0.0, z_top), p(cap.length_ft, z_top)]
+    loop += [p(s, z_top - d) for s, d in reversed(cap.soffit_profile)]
+    return EmitObject(kind="prism", layer=layer, points=tuple(loop),
+                      vector=(cap.width_ft * n[0], cap.width_ft * n[1],
                               0.0), tags=tags)
+
+
+def _cap_depth_at(cap, s: float) -> float:
+    """Cap depth (ft) at ``s`` from the cap start, following the soffit
+    profile when present."""
+    prof = cap.soffit_profile
+    if prof is None:
+        return cap.depth_ft
+    for (s0, d0), (s1, d1) in zip(prof, prof[1:]):
+        if s0 <= s <= s1:
+            f = 0.0 if s1 == s0 else (s - s0) / (s1 - s0)
+            return d0 + (d1 - d0) * f
+    return prof[-1][1] if s > prof[-1][0] else prof[0][1]
 
 
 def _wall_prism(wall, layer: str, tags: dict) -> EmitObject:
@@ -635,7 +661,10 @@ def _cap_rebar(geom, cap_type: str, spec: SubRebarSpec) -> list[EmitObject]:
 
     if cap.tie_bar_count:
         dia_ft = cap.tie_bar_size / 8.0 / 12.0
-        z_bar = z_bot + c + dia_ft / 2.0
+        if cap.tie_z_frac is not None and cap.tie_z_frac > 0.5:
+            z_bar = z_top - c - dia_ft / 2.0    # cantilever: top chord
+        else:
+            z_bar = z_bot + c + dia_ft / 2.0
         half = cap.width_ft / 2.0 - c - dia_ft / 2.0
         length = cap.length_ft - 2.0 * c
         for k in range(cap.tie_bar_count):
@@ -654,12 +683,13 @@ def _cap_rebar(geom, cap_type: str, spec: SubRebarSpec) -> list[EmitObject]:
                     length_ft=length)))
 
     half_w = cap.width_ft / 2.0 - c
-    z_lo, z_hi = z_bot + c, z_top - c
-    hoop_len = 2.0 * (2.0 * half_w + (z_hi - z_lo))
     step = spec.stirrup_spacing_in / 12.0
     k, s = 0, step / 2.0
     while s <= cap.length_ft - step / 2.0 + 1e-9:
         k += 1
+        z_lo = z_top - _cap_depth_at(cap, s) + c   # follows a tapered soffit
+        z_hi = z_top - c
+        hoop_len = 2.0 * (2.0 * half_w + (z_hi - z_lo))
         cx, cy = x0 + s * u[0], y0 + s * u[1]
         corners = [(-half_w, z_lo), (half_w, z_lo), (half_w, z_hi),
                    (-half_w, z_hi), (-half_w, z_lo)]
@@ -784,10 +814,13 @@ def _unit_objects(geom, cap_type: str, *, fc_psi: float) -> list[EmitObject]:
     cap = geom.cap
     u = cap.axis
     n = (u[1], -u[0], 0.0)
+    dims = dict(length_ft=cap.length_ft, width_ft=cap.width_ft,
+                depth_ft=cap.depth_ft)
+    if cap.soffit_profile is not None:
+        dims["tip_depth_ft"] = min(d for _, d in cap.soffit_profile)
     out = [_cap_prism(cap, LAYER_SUB_CAPS, bim.substructure_concrete_tags(
         cap_type, f"{pid}-CAP", fc_psi=fc_psi, volume_cy=cap.volume_cy,
-        length_ft=cap.length_ft, width_ft=cap.width_ft,
-        depth_ft=cap.depth_ft))]
+        **dims))]
     for seat in geom.seats:
         cx, cy, z_top = seat.center
         h_ft = seat.height_in / 12.0

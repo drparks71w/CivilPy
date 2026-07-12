@@ -28,13 +28,19 @@ from civilpy.structural.substructure import substructure_units
 
 def _cap_design(span: float, depth: float, thickness: float,
                 *, tie_force: float = 700.0, bar_size: int = 10,
-                bar_count: int = 12) -> PierCapDesign:
+                bar_count: int = 12,
+                tie_at_top: bool = False) -> PierCapDesign:
     """A PierCapDesign shaped like an optimize_pier_cap result without
     paying for the topology sweep (the optimizer itself is covered by
-    the stm_topology tests and the substructure notebook)."""
+    the stm_topology tests and the substructure notebook).
+    ``tie_at_top`` puts the governing tie in the top chord, the way a
+    hammerhead cantilever solves."""
+    tie_y = depth - 0.2 if tie_at_top else 0.2
     tie = SimpleNamespace(force=tie_force, bar_size=bar_size,
-                          bar_count=bar_count)
-    result = SimpleNamespace(report=SimpleNamespace(ties=[tie]))
+                          bar_count=bar_count, member=("A", "B"))
+    model = SimpleNamespace(nodes={"A": (0.0, tie_y), "B": (span, tie_y)})
+    result = SimpleNamespace(report=SimpleNamespace(ties=[tie]),
+                             model=model)
     cand = DepthCandidate(depth=depth, cost=1.0, concrete_cost=1.0,
                           steel_lb=100.0, strut_angle=40.0, node_ratio=2.0,
                           max_tie=tie_force, complete=True, feasible=True,
@@ -234,6 +240,47 @@ def test_assemble_mixed_types_by_index(layout, pier_cap, bent,
     by_index = {p.unit.index: p for p in sub3.piers}
     assert by_index[1].columns and not by_index[1].piles
     assert by_index[2].piles and not by_index[2].columns
+
+
+def test_hammerhead_pier(layout):
+    from civilpy.structural.substructure_layout import hammerhead_geometry
+
+    cap_design = _cap_design(span=33.0, depth=6.0, thickness=5.0,
+                             tie_at_top=True)
+    stem = PierColumn(height=22.0 * 12.0, b=72.0, h=60.0,
+                      layers=[RebarLayer(area=10.0, depth=6.0),
+                              RebarLayer(area=10.0, depth=54.0)])
+    unit = substructure_units(layout)[1]
+    pier = hammerhead_geometry(layout, unit, cap_design, stem,
+                               tip_depth_ft=2.5,
+                               footing=FootingSpec(16.0, 16.0, 4.0))
+    cap = pier.cap
+    # taper: full 6 ft over the 6 ft column width centered at span/2,
+    # 2.5 ft at the tips
+    expected = ((0.0, 2.5), (16.5 - 3.0, 6.0), (16.5 + 3.0, 6.0),
+                (33.0, 2.5))
+    for got, exp in zip(cap.soffit_profile, expected):
+        assert got == pytest.approx(exp)
+    # tapered volume < prismatic volume
+    assert cap.volume_cy < 33.0 * 5.0 * 6.0 / 27.0
+    assert cap.tie_z_frac is not None and cap.tie_z_frac > 0.9
+    # single column centered on the girder group (13.5 ft), on station
+    col = pier.columns[0]
+    assert len(pier.columns) == 1
+    assert col.center == pytest.approx((80.0, 13.5))
+    assert col.z_top == pytest.approx(cap.origin[2] - 6.0)
+    assert pier.footings[0].z_top == pytest.approx(col.z_bot)
+
+
+def test_hammerhead_tip_depth_validation(layout):
+    from civilpy.structural.substructure_layout import hammerhead_geometry
+
+    cap_design = _cap_design(span=33.0, depth=6.0, thickness=5.0)
+    stem = PierColumn(height=240.0, diameter=66.0, layers=[])
+    unit = substructure_units(layout)[1]
+    with pytest.raises(ValueError, match="tip_depth_ft"):
+        hammerhead_geometry(layout, unit, cap_design, stem,
+                            tip_depth_ft=7.0)
 
 
 def test_assemble_missing_spec_raises(layout, abutment_spec):

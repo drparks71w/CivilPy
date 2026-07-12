@@ -441,6 +441,62 @@ def test_pile_bent_pier_emit(emit):
     assert not [o for o in objs if o.tags.get("bim.type") == "column"]
 
 
+def test_hammerhead_pier_emit(emit):
+    from civilpy.structural.pier import PierColumn
+    from civilpy.structural.aashto.lrfd.columns import RebarLayer
+    from civilpy.structural.rhino_bim import substructure_emit
+    from civilpy.structural.substructure_layout import (
+        AbutmentSpec, HammerheadSpec, SeatAbutmentSpec,
+        assemble_substructure)
+    from tests.structural.test_substructure_layout import _cap_design
+
+    stem = PierColumn(height=22.0 * 12.0, b=72.0, h=60.0,
+                      layers=[RebarLayer(area=10.0, depth=6.0)])
+    sub = assemble_substructure(emit.layout, {
+        "pier": HammerheadSpec(
+            cap_design=_cap_design(span=38.0, depth=6.0, thickness=5.0,
+                                   tie_at_top=True),
+            column=stem, tip_depth_ft=2.5),
+        "abutment": SeatAbutmentSpec(
+            cap_design=_cap_design(span=38.0, depth=3.5, thickness=3.0),
+            spec=AbutmentSpec(pile_xs_ft=(1.0, 12.0, 24.0, 35.0)))})
+    objs = substructure_emit(sub)
+
+    cap = next(o for o in objs if o.tags.get("bim.id") == "PIER2-CAP")
+    # elevation-profile prism: level top + 4-point tapered soffit,
+    # extruded across the width
+    assert len(cap.points) == 6
+    z_top = max(p[2] for p in cap.points)
+    assert min(p[2] for p in cap.points) == pytest.approx(z_top - 6.0)
+    # the tips stop at the taper depth
+    assert cap.points[2][2] == pytest.approx(z_top - 2.5)
+    assert cap.points[-1][2] == pytest.approx(z_top - 2.5)
+    assert cap.vector[1] == pytest.approx(0.0)
+    assert abs(cap.vector[0]) == pytest.approx(5.0)   # width across bridge
+    assert cap.tags["pier_cap.tip_depth_ft"] == "2.5"
+
+    # cantilever main steel lands in the top chord
+    bars = [o for o in objs
+            if o.tags.get("bim.id", "").startswith("PIER2-CAPBAR-")]
+    assert bars
+    for b in bars:
+        assert b.points[0][2] == pytest.approx(
+            z_top - (3.0 + 10.0 / 8.0 / 2.0) / 12.0)
+    # stirrups follow the tapered soffit: shorter hoops near the tips
+    stirrups = [o for o in objs
+                if o.tags.get("bim.id", "").startswith("PIER2-STIR-")]
+    tip_h = max(p[2] for p in stirrups[0].points) - min(
+        p[2] for p in stirrups[0].points)
+    mid = stirrups[len(stirrups) // 2]
+    mid_h = max(p[2] for p in mid.points) - min(p[2] for p in mid.points)
+    assert tip_h < mid_h
+    # one column, 22 ft tall, under the full-depth soffit
+    cols = [o for o in objs
+            if o.tags.get("bim.id", "").startswith("PIER2-COL")
+            and o.tags.get("bim.type") == "column"]
+    assert len(cols) == 1
+
+
 def test_stm_overlay_lands_in_the_cap(sub_emit):
     from civilpy.structural.rhino_bim import stm_overlay_emit
     from civilpy.structural.strut_and_tie import StrutAndTieModel

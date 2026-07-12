@@ -75,7 +75,14 @@ class CapBeam:
     """A cap beam along a (possibly skewed) support line.  ``origin`` is
     the cap-top centerline point at ``s = s0``; ``axis`` the unit vector
     along the cap.  ``tie_bar_*`` carry the governing STM tie's bar
-    schedule for the rebar emit (None when no design was attached)."""
+    schedule for the rebar emit and ``tie_z_frac`` its height in the cap
+    (0 = soffit, 1 = top — a hammerhead's governing tie is the top
+    chord); None when no design was attached.
+
+    ``soffit_profile`` makes the cap non-prismatic: ``(s_rel, depth_ft)``
+    breakpoints from the cap start, linearly interpolated — the top stays
+    level and the soffit steps/tapers (hammerhead cantilevers).  ``None``
+    is the constant-depth cap."""
 
     origin: Point
     axis: Point
@@ -84,10 +91,18 @@ class CapBeam:
     depth_ft: float
     tie_bar_size: int | None = None
     tie_bar_count: int | None = None
+    tie_z_frac: float | None = None
+    soffit_profile: tuple[tuple[float, float], ...] | None = None
 
     @property
     def volume_cy(self) -> float:
-        return self.length_ft * self.width_ft * self.depth_ft / 27.0
+        if self.soffit_profile is None:
+            return self.length_ft * self.width_ft * self.depth_ft / 27.0
+        area = 0.0
+        pts = self.soffit_profile
+        for (s0, d0), (s1, d1) in zip(pts, pts[1:]):
+            area += (d0 + d1) / 2.0 * (s1 - s0)
+        return area * self.width_ft / 27.0
 
 
 @dataclass(frozen=True)
@@ -269,15 +284,27 @@ def _seat_plane(layout, station_index: int, *, bearing_stack_in: float,
 
 
 def _governing_tie(cap_design):
-    """Bar schedule of the highest-force tie in a solved cap design."""
+    """Bar schedule of the highest-force tie in a solved cap design, plus
+    its height fraction in the cap (from the STM node elevations) so the
+    rebar emit knows whether the main steel is a bottom or top chord."""
     report = cap_design.report
     if report is None or not report.ties:
-        return None, None
+        return None, None, None
     t = max(report.ties, key=lambda t: t.force)
-    return t.bar_size, t.bar_count
+    frac = None
+    model = getattr(cap_design, "model", None)
+    member = getattr(t, "member", None)
+    if model is not None and member is not None:
+        try:
+            ys = [model.nodes[node][1] for node in member]
+            frac = (sum(ys) / len(ys)) / cap_design.optimal.depth
+        except (KeyError, TypeError, AttributeError, ZeroDivisionError):
+            frac = None
+    return t.bar_size, t.bar_count, frac
 
 
-def _cap_from_design(layout, station_ft: float, cap_top: float, cap_design):
+def _cap_from_design(layout, station_ft: float, cap_top: float, cap_design,
+                     soffit_profile=None):
     """Center the designed cap on the girder group along the support
     line and hang its depth from the seat plane."""
     if cap_design.optimal is None:
@@ -287,12 +314,13 @@ def _cap_from_design(layout, station_ft: float, cap_top: float, cap_design):
     width_along_cap = (inp.girder_count - 1) * inp.girder_spacing_ft / cos_skew
     s0 = (width_along_cap - cap_design.span) / 2.0
     at, u = _support_frame(layout, station_ft)
-    bar_size, bar_count = _governing_tie(cap_design)
+    bar_size, bar_count, frac = _governing_tie(cap_design)
     return CapBeam(origin=at(s0, cap_top), axis=u,
                    length_ft=cap_design.span,
                    width_ft=cap_design.thickness,
                    depth_ft=cap_design.optimal.depth,
-                   tie_bar_size=bar_size, tie_bar_count=bar_count), s0
+                   tie_bar_size=bar_size, tie_bar_count=bar_count,
+                   tie_z_frac=frac, soffit_profile=soffit_profile), s0
 
 
 def _piles_along_cap(at, z_cap_bot: float, xs, shape: str, length_ft: float,
@@ -365,6 +393,67 @@ def pile_bent_geometry(layout, unit: SubstructureUnit, cap_design,
     piles = _piles_along_cap(at, cap_top - cap.depth_ft, pile_xs_ft,
                              pile_shape, pile_length_ft, pile_embed_in)
     return PierGeometry(unit=unit, cap=cap, seats=seats, piles=piles)
+
+
+def hammerhead_geometry(layout, unit: SubstructureUnit, cap_design,
+                        column, *, tip_depth_ft: float | None = None,
+                        footing: FootingSpec | None = None,
+                        bearing_stack_in: float = DEFAULT_BEARING_STACK_IN,
+                        seat_min_in: float = SEAT_MIN_IN,
+                        seat_side_in: float = SEAT_SIDE_IN
+                        ) -> PierGeometry:
+    """Place one hammerhead pier: the cap from ``cap_design`` (an
+    :func:`optimize_pier_cap` run with a **single** column support — the
+    cantilever D-region is exactly what the STM checks, and its governing
+    tie lands in the top chord, which the rebar emit follows), the stem
+    from ``column`` (a :class:`~civilpy.structural.pier.PierColumn` for
+    section/height/steel).
+
+    ``tip_depth_ft`` tapers the soffit linearly from the full design
+    depth at the column faces to this depth at the cantilever tips
+    (``None`` keeps the cap prismatic).  The STM was solved on the full-
+    depth rectangle, so the tie schedule carries over; the taper is the
+    conventional weight/formwork refinement outside the nodal zones."""
+    cap_top, seats = _seat_plane(layout, unit.index,
+                                 bearing_stack_in=bearing_stack_in,
+                                 seat_min_in=seat_min_in,
+                                 seat_side_in=seat_side_in)
+    inp = layout.inputs
+    cos_skew = math.cos(math.radians(inp.skew_deg))
+    s_col = (inp.girder_count - 1) * inp.girder_spacing_ft / cos_skew / 2.0
+
+    profile = None
+    col_b_ft = (column.diameter if column.diameter is not None
+                else column.b) / 12.0
+    if tip_depth_ft is not None:
+        depth = cap_design.optimal.depth
+        if not 0.0 < tip_depth_ft <= depth:
+            raise ValueError("tip_depth_ft must be in (0, cap depth]")
+        # breakpoints in cap-start coordinates; the builder recenters,
+        # so the column sits at span/2
+        half = cap_design.span / 2.0
+        profile = ((0.0, tip_depth_ft),
+                   (half - col_b_ft / 2.0, depth),
+                   (half + col_b_ft / 2.0, depth),
+                   (cap_design.span, tip_depth_ft))
+    cap, s0 = _cap_from_design(layout, unit.station_ft, cap_top, cap_design,
+                               soffit_profile=profile)
+    at, _ = _support_frame(layout, unit.station_ft)
+    x, y, _ = at(s_col, 0.0)
+    z_col_top = cap_top - cap.depth_ft
+    z_col_bot = z_col_top - column.height / 12.0
+    col = ColumnGeometry(center=(x, y), z_top=z_col_top, z_bot=z_col_bot,
+                         diameter_in=column.diameter, b_in=column.b,
+                         h_in=column.h,
+                         bars_area_in2=sum(l.area for l in column.layers))
+    footings = ()
+    if footing is not None:
+        footings = (FootingGeometry(
+            center=(x, y), z_top=z_col_bot, length_ft=footing.length_ft,
+            width_ft=footing.width_ft, thickness_ft=footing.thickness_ft,
+            axis=cap.axis),)
+    return PierGeometry(unit=unit, cap=cap, seats=seats, columns=(col,),
+                        footings=footings)
 
 
 def abutment_geometry(layout, unit: SubstructureUnit, cap_design,
@@ -461,6 +550,24 @@ class PileBentSpec:
                                   pile_shape=self.pile_shape,
                                   pile_length_ft=self.pile_length_ft,
                                   **frame_kw)
+
+
+@dataclass(frozen=True)
+class HammerheadSpec:
+    """Single-column hammerhead pier (see :func:`hammerhead_geometry`).
+    ``column`` is the executed :class:`~civilpy.structural.pier
+    .PierColumn`."""
+
+    cap_design: object
+    column: object
+    tip_depth_ft: float | None = None
+    footing: FootingSpec | None = None
+
+    def build(self, layout, unit, **frame_kw) -> PierGeometry:
+        return hammerhead_geometry(layout, unit, self.cap_design,
+                                   self.column,
+                                   tip_depth_ft=self.tip_depth_ft,
+                                   footing=self.footing, **frame_kw)
 
 
 @dataclass(frozen=True)
