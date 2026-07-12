@@ -134,6 +134,36 @@ executed design drives the drawn substructure.
   `Terrain.elevation_at` once a surface is attached; nominal fixed
   elevations until then.
 
+## Phase 4v — Substructure type variants
+
+Phase 4 built one pier type (multi-column bent) and one abutment type
+(capped-pile seat). Cover the rest of the ODOT substructure vocabulary,
+one type at a time, each carried through placement → emit → tests the
+same way. Per-unit assignment through typed specs so a bridge can mix
+types (e.g. integral abutments with a hammerhead center pier).
+
+- [ ] **4v.1 Capped-pile pier (pile bent).** Cap directly on driven
+  piles — the CPP-1-08 pattern generalized off the slab-bridge sheet
+  (`odot/capped_pile_pier.py` keeps the SCD limits/defaults: HP12X53,
+  7'-6" max spacing). Cap STM from `optimize_pier_cap` with the piles as
+  supports, like the abutment cap.
+- [ ] **4v.2 Hammerhead pier.** Single column with cantilevered cap,
+  tapered soffit from the column face to the tips; the cap STM *is* the
+  natural check (cantilever D-region). Cap profile as a generic soffit
+  polyline so the emit stays one prism.
+- [ ] **4v.3 Semi-integral abutment.** Seat abutment (cap + piles +
+  bearings) plus the end diaphragm encasing the girder ends that moves
+  with the superstructure; diaphragm concrete measures with the
+  superstructure item, drawn on `Superstructure::Diaphragms`.
+- [ ] **4v.4 Integral abutment.** Single row of HP piles into a
+  full-height end diaphragm; **no bearings** at that support line
+  (superstructure emit skips the pad/plate stack there while keeping the
+  `gdr.*` support point for the analysis reader). Diaphragm depth derived
+  from the layout (deck top to below the girder bottom), not a free
+  parameter.
+- [ ] **4v.5 Type gallery.** Regression tests that mix types on one
+  bridge and a demonstration model showing each variant.
+
 ## Phase 5 — Second vertical slice: prestressed box beams
 
 Roadmap slice 3 (`Notebooks/Rhino Components/Work Plan.md`) carried through
