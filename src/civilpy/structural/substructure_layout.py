@@ -632,6 +632,79 @@ class SeatAbutmentSpec:
 
 
 @dataclass(frozen=True)
+class IntegralAbutmentSpec:
+    """Integral abutment: a full-height end diaphragm cast around the
+    girder ends on a **single row** of piles — no bearings.  The
+    diaphragm depth is derived from the layout (high deck edge down to
+    ``embed_below_girder_ft`` under the girder bottom flange), not a free
+    parameter; piles embed ``pile_embed_in`` (2 ft typical) into it."""
+
+    pile_xs_ft: tuple[float, ...]
+    pile_shape: str = "HP10X42"
+    pile_length_ft: float = 40.0
+    diaphragm_thickness_in: float = 36.0
+    embed_below_girder_ft: float = 1.0
+    end_extension_ft: float = 2.0
+    pile_embed_in: float = 24.0
+    wingwall: object | None = None          # RetainingWall
+    wingwall_length_ft: float = 0.0
+
+    def build(self, layout, unit, **_frame_kw) -> AbutmentGeometry:
+        return integral_abutment_geometry(layout, unit, self)
+
+
+def integral_abutment_geometry(layout, unit: SubstructureUnit,
+                               spec: IntegralAbutmentSpec
+                               ) -> AbutmentGeometry:
+    """Place one integral abutment (see :class:`IntegralAbutmentSpec`).
+    The superstructure emit must skip the bearing stack at this support
+    line (``girder_bridge_emit(..., integral_supports=...)``); the
+    ``gdr.*`` support points stay for the analysis reader."""
+    inp = layout.inputs
+    at, u = _support_frame(layout, unit.station_ft)
+    cos_skew = math.cos(math.radians(inp.skew_deg))
+    width_along_cap = (inp.girder_count - 1) * inp.girder_spacing_ft / cos_skew
+    s0 = -spec.end_extension_ft
+    length = width_along_cap + 2.0 * spec.end_extension_ft
+
+    z_gb = min(bp.location[2] for bp in layout.bearings
+               if bp.station_index == unit.index)   # girder bottom flange
+    z_bot = z_gb - spec.embed_below_girder_ft
+    z_top = _deck_top_high(layout)
+    t = spec.diaphragm_thickness_in / 12.0
+
+    cap = CapBeam(origin=at(s0, z_top), axis=u, length_ft=length,
+                  width_ft=t, depth_ft=z_top - z_bot)
+    diaphragm = WallPanel(origin=at(s0, z_bot), axis=u, length_ft=length,
+                          thickness_ft=t, height_ft=z_top - z_bot)
+    piles = _piles_along_cap(at, z_bot, spec.pile_xs_ft, spec.pile_shape,
+                             spec.pile_length_ft, spec.pile_embed_in)
+
+    wingwalls: list[WallPanel] = []
+    if spec.wingwall is not None and spec.wingwall_length_ft > 0.0:
+        wall = spec.wingwall
+        back = -1.0 if unit.index == 0 else 1.0
+        w_axis = (back, 0.0, 0.0)
+        z_stem_bot = z_top - wall.stem_height
+        for s_end in (s0, s0 + length):
+            x, y, _ = at(s_end, 0.0)
+            wingwalls.append(WallPanel(
+                origin=(x, y, z_stem_bot), axis=w_axis,
+                length_ft=spec.wingwall_length_ft,
+                thickness_ft=wall.stem_thickness,
+                height_ft=wall.stem_height))
+            wingwalls.append(WallPanel(
+                origin=(x, y, z_stem_bot - wall.footing_thickness),
+                axis=w_axis, length_ft=spec.wingwall_length_ft,
+                thickness_ft=wall.base_width,
+                height_ft=wall.footing_thickness))
+
+    return AbutmentGeometry(unit=unit, cap=cap, seats=(), piles=piles,
+                            backwall=None, wingwalls=tuple(wingwalls),
+                            kind="integral", diaphragm=diaphragm)
+
+
+@dataclass(frozen=True)
 class SemiIntegralAbutmentSpec:
     """Seat abutment plus the superstructure-borne end diaphragm (see
     :func:`semi_integral_abutment_geometry`)."""

@@ -526,6 +526,48 @@ def test_semi_integral_abutment_emit(emit):
             if o.tags.get("bim.id", "").startswith("ABUT1-DIA-")]
 
 
+def test_integral_abutment_emit_suppresses_bearings():
+    from civilpy.structural.rhino_bim import substructure_emit
+    from civilpy.structural.substructure_layout import (
+        IntegralAbutmentSpec, PileBentSpec, assemble_substructure)
+    from tests.structural.test_substructure_layout import _cap_design
+
+    inp = BridgeInput(spans_ft=(70.0, 70.0), girder_count=5,
+                      girder_spacing_ft=8.0, girder_label="W36X150",
+                      overhang_ft=3.0, railing="SBR-1-20",
+                      grade="Grade 50W")
+    e = girder_bridge_emit(inp, integral_supports=(0, 2))
+    # bearings only at the pier line: 5 pads + 5 plates
+    assert len(e.of_type("bearing")) == 5
+    assert len(e.of_type("load_plate")) == 5
+    # every gdr support point survives for the analysis reader
+    supports = [o for o in e.objects
+                if o.tags.get("gdr.kind") == "support"]
+    assert len(supports) == 15
+    integral_pts = [o for o in supports
+                    if o.tags.get("gdr.integral") == "true"]
+    assert len(integral_pts) == 10
+    assert e.doc_tags["bim.integral_supports"] == "0,2"
+
+    sub = assemble_substructure(e.layout, {
+        "pier": PileBentSpec(
+            cap_design=_cap_design(span=37.0, depth=3.0, thickness=3.0),
+            pile_xs_ft=(1.0, 11.0, 21.0, 31.0)),
+        "abutment": IntegralAbutmentSpec(
+            pile_xs_ft=(2.0, 10.0, 18.0, 26.0, 34.0))})
+    objs = substructure_emit(sub)
+    # no abutment cap, no seats at the integral ends; diaphragm instead
+    assert not [o for o in objs
+                if o.tags.get("bim.type") == "abutment_cap"]
+    assert not [o for o in objs
+                if o.tags.get("bim.id", "").startswith("ABUT1-SEAT")]
+    dias = [o for o in objs if o.tags.get("bim.type") == "diaphragm"]
+    assert len(dias) == 2
+    abut_piles = [o for o in objs
+                  if o.tags.get("bim.id", "").startswith("ABUT1-PILE-")]
+    assert len(abut_piles) == 5
+
+
 def test_stm_overlay_lands_in_the_cap(sub_emit):
     from civilpy.structural.rhino_bim import stm_overlay_emit
     from civilpy.structural.strut_and_tie import StrutAndTieModel

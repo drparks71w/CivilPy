@@ -308,6 +308,33 @@ def test_semi_integral_abutment(layout, abutment_spec):
     assert a2.diaphragm.origin[0] < 160.0 + a2.cap.width_ft / 2.0
 
 
+def test_integral_abutment(layout):
+    from civilpy.structural.substructure_layout import (
+        IntegralAbutmentSpec, integral_abutment_geometry)
+
+    spec = IntegralAbutmentSpec(pile_xs_ft=(2.0, 10.0, 17.0, 25.0),
+                                diaphragm_thickness_in=36.0)
+    unit = substructure_units(layout)[0]
+    a1 = integral_abutment_geometry(layout, unit, spec)
+    assert a1.kind == "integral"
+    assert a1.seats == () and a1.backwall is None
+    d = a1.diaphragm
+    # depth derived from the layout: high deck edge (crown, z=0) down to
+    # 1 ft below the lowest girder bottom flange
+    z_gb = min(bp.location[2] for bp in layout.bearings
+               if bp.station_index == 0)
+    assert d.origin[2] == pytest.approx(z_gb - 1.0)
+    assert d.origin[2] + d.height_ft == pytest.approx(0.0)
+    assert d.thickness_ft == pytest.approx(3.0)
+    # centered on the support line, extended past the fascia girders
+    assert d.origin[1] == pytest.approx(-2.0)
+    assert d.length_ft == pytest.approx(27.0 + 4.0)
+    # piles embed 2 ft into the diaphragm
+    for pile in a1.piles:
+        assert pile.head[2] == pytest.approx(d.origin[2] + 2.0)
+    assert a1.cap.depth_ft == pytest.approx(d.height_ft)
+
+
 def test_assemble_missing_spec_raises(layout, abutment_spec):
     from civilpy.structural.substructure_layout import (
         SeatAbutmentSpec, assemble_substructure)

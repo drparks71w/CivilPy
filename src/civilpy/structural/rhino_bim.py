@@ -237,13 +237,19 @@ def girder_bridge_emit(inp: BridgeInput, *,
                        stud_dia_in: float = STUD_DIA_IN,
                        stud_length_in: float = STUD_LENGTH_IN,
                        side_cover_in: float = 2.0,
-                       rebar_coating: str = "epoxy") -> BridgeEmit:
+                       rebar_coating: str = "epoxy",
+                       integral_supports: tuple[int, ...] = ()
+                       ) -> BridgeEmit:
     """Build the tagged BrIM geometry for one steel-girder bridge.
 
     Shear studs are emitted only for a ``composite`` layout — they *are*
     the physical composite connection, mirroring the toggle the analysis
-    models use.  Raises whatever :func:`layout_bridge` raises for inputs
-    that violate the ODOT standard-design assumptions.
+    models use.  ``integral_supports`` lists support-line indices with
+    integral abutments: no load plate / bearing pad is drawn there (the
+    girder ends are cast into the end diaphragm) while the tagged
+    ``gdr.*`` support point stays for the analysis reader.  Raises
+    whatever :func:`layout_bridge` raises for inputs that violate the
+    ODOT standard-design assumptions.
     """
     layout = layout_bridge(inp)
     L = layout.total_length_ft
@@ -270,6 +276,9 @@ def girder_bridge_emit(inp: BridgeInput, *,
         "bim.composite": str(inp.composite).lower(),
         "bim.railing": inp.railing,
     })
+    if integral_supports:
+        doc_tags["bim.integral_supports"] = ",".join(
+            str(i) for i in sorted(integral_supports))
     objects.append(EmitObject(
         kind="point", layer=LAYER_BRIDGE_DECK, points=((0.0, 0.0, 0.0),),
         tags={"bim.type": "bridge", "bim.id": "BRIDGE", **doc_tags}))
@@ -397,6 +406,12 @@ def girder_bridge_emit(inp: BridgeInput, *,
     for bp in layout.bearings:
         x, y, z = bp.location            # girder bottom flange
         bid = f"BRG-G{bp.line_no}-S{bp.station_index}"
+        if bp.station_index in integral_supports:
+            # cast into the end diaphragm: analysis point only
+            objects.append(EmitObject(
+                kind="point", layer=LAYER_BEARINGS, points=(bp.location,),
+                tags={**bp.tags, "bim.id": bid, "gdr.integral": "true"}))
+            continue
         plate_loop = tuple((x + dx, y + dy, z - plate_t_ft) for dx, dy in
                            ((-plate_half, -plate_half),
                             (plate_half, -plate_half),
@@ -810,18 +825,23 @@ def _wall_rebar(wall, pid: str, name: str, mat: str,
 
 
 def _unit_objects(geom, cap_type: str, *, fc_psi: float) -> list[EmitObject]:
-    """Emit one substructure unit (the parts piers and abutments share)."""
+    """Emit one substructure unit (the parts piers and abutments share).
+    An integral abutment draws no cap of its own — its full-height end
+    diaphragm (drawn by the caller) *is* the cap."""
     pid = _unit_prefix(geom.unit)
     cap = geom.cap
     u = cap.axis
     n = (u[1], -u[0], 0.0)
-    dims = dict(length_ft=cap.length_ft, width_ft=cap.width_ft,
-                depth_ft=cap.depth_ft)
-    if cap.soffit_profile is not None:
-        dims["tip_depth_ft"] = min(d for _, d in cap.soffit_profile)
-    out = [_cap_prism(cap, LAYER_SUB_CAPS, bim.substructure_concrete_tags(
-        cap_type, f"{pid}-CAP", fc_psi=fc_psi, volume_cy=cap.volume_cy,
-        **dims))]
+    out: list[EmitObject] = []
+    if getattr(geom, "kind", "") != "integral":
+        dims = dict(length_ft=cap.length_ft, width_ft=cap.width_ft,
+                    depth_ft=cap.depth_ft)
+        if cap.soffit_profile is not None:
+            dims["tip_depth_ft"] = min(d for _, d in cap.soffit_profile)
+        out.append(_cap_prism(
+            cap, LAYER_SUB_CAPS, bim.substructure_concrete_tags(
+                cap_type, f"{pid}-CAP", fc_psi=fc_psi,
+                volume_cy=cap.volume_cy, **dims)))
     for seat in geom.seats:
         cx, cy, z_top = seat.center
         h_ft = seat.height_in / 12.0
@@ -909,7 +929,7 @@ def substructure_emit(sub, *, fc_psi: float = SUB_FC_PSI,
         u = ab.cap.axis
         n = (u[1], -u[0], 0.0)
         objects += _unit_objects(ab, "abutment_cap", fc_psi=fc_psi)
-        if rebar is not None:
+        if rebar is not None and ab.kind != "integral":
             objects += _cap_rebar(ab, "abutment_cap", rebar)
         for i, pile in enumerate(ab.piles, start=1):
             pile = _WithId(pile, f"{pid}-PILE-{i}")
