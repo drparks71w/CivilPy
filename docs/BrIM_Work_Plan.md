@@ -142,27 +142,35 @@ one type at a time, each carried through placement → emit → tests the
 same way. Per-unit assignment through typed specs so a bridge can mix
 types (e.g. integral abutments with a hammerhead center pier).
 
-- [ ] **4v.1 Capped-pile pier (pile bent).** Cap directly on driven
-  piles — the CPP-1-08 pattern generalized off the slab-bridge sheet
-  (`odot/capped_pile_pier.py` keeps the SCD limits/defaults: HP12X53,
-  7'-6" max spacing). Cap STM from `optimize_pier_cap` with the piles as
+- [x] **4v.1 Capped-pile pier (pile bent).** `PileBentSpec` /
+  `pile_bent_geometry`: cap directly on driven piles — the CPP-1-08
+  pattern generalized off the slab-bridge sheet
+  (`odot/capped_pile_pier.py` keeps the SCD limits; the HP12X53 default
+  carries over). Cap STM from `optimize_pier_cap` with the piles as
   supports, like the abutment cap.
-- [ ] **4v.2 Hammerhead pier.** Single column with cantilevered cap,
-  tapered soffit from the column face to the tips; the cap STM *is* the
-  natural check (cantilever D-region). Cap profile as a generic soffit
-  polyline so the emit stays one prism.
-- [ ] **4v.3 Semi-integral abutment.** Seat abutment (cap + piles +
-  bearings) plus the end diaphragm encasing the girder ends that moves
-  with the superstructure; diaphragm concrete measures with the
-  superstructure item, drawn on `Superstructure::Diaphragms`.
-- [ ] **4v.4 Integral abutment.** Single row of HP piles into a
-  full-height end diaphragm; **no bearings** at that support line
-  (superstructure emit skips the pad/plate stack there while keeping the
-  `gdr.*` support point for the analysis reader). Diaphragm depth derived
-  from the layout (deck top to below the girder bottom), not a free
-  parameter.
-- [ ] **4v.5 Type gallery.** Regression tests that mix types on one
-  bridge and a demonstration model showing each variant.
+- [x] **4v.2 Hammerhead pier.** `HammerheadSpec` /
+  `hammerhead_geometry`: single column with cantilevered cap, soffit
+  tapered from the column faces to `tip_depth_ft` at the tips via the
+  generic `CapBeam.soffit_profile` (still one prism — the elevation
+  profile extrudes across the width). The rebar emit reads the governing
+  tie's height out of the STM, so the cantilever main steel lands in the
+  **top** chord and the stirrups follow the taper.
+- [x] **4v.3 Semi-integral abutment.** `SemiIntegralAbutmentSpec`: the
+  seat abutment with the backwall replaced by an end diaphragm that
+  moves with the superstructure — drawn on `Superstructure::Diaphragms`,
+  concrete measured with the superstructure item (511E12100), back face
+  over the cap back edge, encasing the girder ends.
+- [x] **4v.4 Integral abutment.** `IntegralAbutmentSpec`: single row of
+  HP piles embedded 2 ft into a full-height end diaphragm; **no
+  bearings** at that support (`girder_bridge_emit(...,
+  integral_supports=...)` skips the pad/plate stack, keeps the `gdr.*`
+  support point tagged `gdr.integral`). Diaphragm depth derived from the
+  layout (high deck edge to `embed_below_girder_ft` under the girder
+  bottom), not a free parameter.
+- [x] **4v.5 Type gallery.** Mixed-type regression tests
+  (`assemble_substructure` by index/role) in
+  `test_substructure_layout.py` / `test_rhino_bim.py`; per-unit specs
+  make any combination placeable on one bridge.
 
 ## Phase 5 — Second vertical slice: prestressed box beams
 
