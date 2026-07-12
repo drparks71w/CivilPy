@@ -67,6 +67,9 @@ PAY_ITEMS: dict[str, PayItem] = {
     "507E10000": PayItem("507E10000",
                          "Steel piles HP, furnished and driven [CONFIRM]",
                          "ft", "507", 1),
+    "515E10000": PayItem("515E10000",
+                         "Prestressed concrete box beam member [CONFIRM]",
+                         "ea", "515", 1),
 }
 
 
@@ -237,16 +240,59 @@ def substructure_concrete_tags(btype: str, bid: str, *,
     return tags
 
 
+def box_beam_tags(bid: str, *, box: str, depth_in: float, beam_type: str,
+                  part: str, span_ft: float, scd: str | None = "PSBD-1-25",
+                  scd_year: str | int | None = 2025,
+                  fc_psi: float = 6000.0, n_strands: int | None = None,
+                  concrete_cy: float | None = None,
+                  count: int | None = None) -> dict:
+    """Prestressed box-beam member.  The member is drawn as several
+    ``part`` prisms (top/bottom flange, webs) sharing a beam id prefix;
+    exactly one part per beam carries ``count`` so the 515 member item
+    counts each beam once (strands, tie rods, and precast diaphragms are
+    included in the member)."""
+    tags = {**_base("box_beam", bid, scd=scd, scd_year=scd_year),
+            "box_beam.box": box, "box_beam.depth_in": f"{depth_in:g}",
+            "box_beam.beam_type": beam_type, "box_beam.part": part,
+            "box_beam.span_ft": f"{span_ft:g}",
+            **concrete_mat(fc_psi, "prestressed")}
+    if n_strands is not None:
+        tags["box_beam.n_strands"] = str(n_strands)
+    if concrete_cy is not None:
+        tags["box_beam.concrete_cy"] = f"{concrete_cy:g}"
+    if count is not None:
+        tags.update(_pay_tags("515E10000", count))
+    return tags
+
+
+def tendon_tags(bid: str, *, strands: int, row_in: float) -> dict:
+    """One schematic prestressing-strand row (paid with the member)."""
+    return {**_base("tendon", bid), "tendon.strands": str(strands),
+            "tendon.row_in": f"{row_in:g}",
+            "mat.spec": "prestressing strand, AASHTO M203 Gr 270"}
+
+
+def tie_rod_tags(bid: str, *, diameter_in: float,
+                 station_ft: float) -> dict:
+    """Transverse tie rod (paid with the members)."""
+    return {**_base("tie_rod", bid), "tie_rod.diameter_in": f"{diameter_in:g}",
+            "tie_rod.station_ft": f"{station_ft:g}",
+            **steel_mat("ASTM A307", "307A")}
+
+
 def diaphragm_tags(bid: str, *, thickness_in: float, fc_psi: float = 4500.0,
-                   volume_cy: float | None = None) -> dict:
+                   volume_cy: float | None = None, pay: bool = True) -> dict:
     """Concrete end/intermediate diaphragm.  Integral and semi-integral
     end diaphragms are cast with (and move with) the superstructure, so
     their concrete measures into the superstructure item like the
-    haunches."""
-    return {**_base("diaphragm", bid),
+    haunches; a box beam's precast diaphragms are included in the member
+    (``pay=False``)."""
+    tags = {**_base("diaphragm", bid),
             "diaphragm.thickness_in": f"{thickness_in:g}",
-            **concrete_mat(fc_psi, "QC2"),
-            **_pay_tags("511E12100", volume_cy)}
+            **concrete_mat(fc_psi, "QC2")}
+    if pay:
+        tags.update(_pay_tags("511E12100", volume_cy))
+    return tags
 
 
 def pile_tags(bid: str, *, shape: str, length_ft: float, grade: str = "50",
