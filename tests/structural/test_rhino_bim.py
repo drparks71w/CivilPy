@@ -415,6 +415,32 @@ def test_substructure_pay_rollup(sub_emit):
     assert q["513E20000"]["qty"] == 5 * 115 * 3
 
 
+def test_pile_bent_pier_emit(emit):
+    from civilpy.structural.rhino_bim import substructure_emit
+    from civilpy.structural.substructure_layout import (
+        AbutmentSpec, PileBentSpec, SeatAbutmentSpec, assemble_substructure)
+    from tests.structural.test_substructure_layout import _cap_design
+
+    cap = _cap_design(span=37.0, depth=3.0, thickness=3.0)
+    sub = assemble_substructure(emit.layout, {
+        "pier": PileBentSpec(cap_design=cap,
+                             pile_xs_ft=(1.0, 11.0, 21.0, 31.0)),
+        "abutment": SeatAbutmentSpec(
+            cap_design=cap,
+            spec=AbutmentSpec(pile_xs_ft=(1.0, 11.0, 21.0, 31.0)))})
+    objs = substructure_emit(sub, rebar=None)
+    piles = [o for o in objs if o.tags.get("bim.type") == "pile"]
+    # 2 pile-bent piers + 2 abutments, 4 piles each
+    assert len(piles) == 4 * 4
+    pier_piles = [o for o in piles
+                  if o.tags["bim.id"].startswith("PIER2-PILE-")]
+    assert len(pier_piles) == 4
+    for p in pier_piles:
+        assert p.tags["pile.shape"] == "HP12X53"
+        assert p.tags["pay.item"] == "507E10000"
+    assert not [o for o in objs if o.tags.get("bim.type") == "column"]
+
+
 def test_stm_overlay_lands_in_the_cap(sub_emit):
     from civilpy.structural.rhino_bim import stm_overlay_emit
     from civilpy.structural.strut_and_tie import StrutAndTieModel

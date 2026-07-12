@@ -164,21 +164,33 @@ class WallPanel:
 
 @dataclass(frozen=True)
 class PierGeometry:
+    """One pier: a multi-column bent carries ``columns`` (+ optional
+    ``footings``); a capped-pile bent carries ``piles`` instead."""
+
     unit: SubstructureUnit
     cap: CapBeam
     seats: tuple[BeamSeat, ...]
-    columns: tuple[ColumnGeometry, ...]
+    columns: tuple[ColumnGeometry, ...] = ()
     footings: tuple[FootingGeometry, ...] = ()
+    piles: tuple[PileGeometry, ...] = ()
 
 
 @dataclass(frozen=True)
 class AbutmentGeometry:
+    """One abutment.  ``kind`` is ``"seat"`` (bearings on a stepped-seat
+    cap), ``"semi-integral"`` (seat cap plus an end diaphragm that moves
+    with the superstructure), or ``"integral"`` (a full-height end
+    diaphragm on a single pile row — no bearings, so ``seats`` is
+    empty)."""
+
     unit: SubstructureUnit
     cap: CapBeam
     seats: tuple[BeamSeat, ...]
     piles: tuple[PileGeometry, ...]
     backwall: WallPanel | None = None
     wingwalls: tuple[WallPanel, ...] = ()
+    kind: str = "seat"
+    diaphragm: WallPanel | None = None
 
 
 @dataclass(frozen=True)
@@ -283,6 +295,16 @@ def _cap_from_design(layout, station_ft: float, cap_top: float, cap_design):
                    tie_bar_size=bar_size, tie_bar_count=bar_count), s0
 
 
+def _piles_along_cap(at, z_cap_bot: float, xs, shape: str, length_ft: float,
+                     embed_in: float) -> tuple[PileGeometry, ...]:
+    """Driven piles at ``xs`` (girder-frame ft along the cap), heads
+    embedded ``embed_in`` into the cap."""
+    return tuple(
+        PileGeometry(head=at(s, z_cap_bot + embed_in / 12.0),
+                     shape=shape, length_ft=length_ft)
+        for s in xs)
+
+
 def pier_geometry(layout, unit: SubstructureUnit, cap_design, bent, *,
                   footing: FootingSpec | None = None,
                   bearing_stack_in: float = DEFAULT_BEARING_STACK_IN,
@@ -319,6 +341,32 @@ def pier_geometry(layout, unit: SubstructureUnit, cap_design, bent, *,
                         columns=tuple(columns), footings=tuple(footings))
 
 
+def pile_bent_geometry(layout, unit: SubstructureUnit, cap_design,
+                       pile_xs_ft, *, pile_shape: str = "HP12X53",
+                       pile_length_ft: float = 40.0,
+                       bearing_stack_in: float = DEFAULT_BEARING_STACK_IN,
+                       seat_min_in: float = SEAT_MIN_IN,
+                       seat_side_in: float = SEAT_SIDE_IN,
+                       pile_embed_in: float = PILE_EMBED_IN
+                       ) -> PierGeometry:
+    """Place one capped-pile pier (pile bent): the cap from ``cap_design``
+    (an :func:`optimize_pier_cap` run with the piles as supports, same as
+    the abutment cap) directly on driven piles at ``pile_xs_ft`` — the
+    CPP-1-08 pattern generalized off the continuous-slab sheet, whose
+    ``HP12X53`` default the pile shape keeps
+    (:mod:`civilpy.structural.odot.capped_pile_pier` carries the SCD's
+    own limits for the standard-drawing case)."""
+    cap_top, seats = _seat_plane(layout, unit.index,
+                                 bearing_stack_in=bearing_stack_in,
+                                 seat_min_in=seat_min_in,
+                                 seat_side_in=seat_side_in)
+    cap, s0 = _cap_from_design(layout, unit.station_ft, cap_top, cap_design)
+    at, _ = _support_frame(layout, unit.station_ft)
+    piles = _piles_along_cap(at, cap_top - cap.depth_ft, pile_xs_ft,
+                             pile_shape, pile_length_ft, pile_embed_in)
+    return PierGeometry(unit=unit, cap=cap, seats=seats, piles=piles)
+
+
 def abutment_geometry(layout, unit: SubstructureUnit, cap_design,
                       spec: AbutmentSpec, *,
                       bearing_stack_in: float = DEFAULT_BEARING_STACK_IN,
@@ -339,10 +387,9 @@ def abutment_geometry(layout, unit: SubstructureUnit, cap_design,
     at, u = _support_frame(layout, unit.station_ft)
     z_cap_bot = cap_top - cap.depth_ft
 
-    piles = tuple(
-        PileGeometry(head=at(s, z_cap_bot + pile_embed_in / 12.0),
-                     shape=spec.pile_shape, length_ft=spec.pile_length_ft)
-        for s in spec.pile_xs_ft)
+    piles = _piles_along_cap(at, z_cap_bot, spec.pile_xs_ft,
+                             spec.pile_shape, spec.pile_length_ft,
+                             pile_embed_in)
 
     # backwall on the approach side of the cap, up to the low deck edge
     # (crown-following top is a later refinement)
@@ -381,6 +428,79 @@ def abutment_geometry(layout, unit: SubstructureUnit, cap_design,
 
     return AbutmentGeometry(unit=unit, cap=cap, seats=seats, piles=piles,
                             backwall=backwall, wingwalls=tuple(wingwalls))
+
+
+# ── per-unit type specs (mix substructure types on one bridge) ────────────
+
+@dataclass(frozen=True)
+class BentPierSpec:
+    """Multi-column bent: cap from ``cap_design``, columns from ``bent``
+    (see :func:`pier_geometry`)."""
+
+    cap_design: object
+    bent: object
+    footing: FootingSpec | None = None
+
+    def build(self, layout, unit, **frame_kw) -> PierGeometry:
+        return pier_geometry(layout, unit, self.cap_design, self.bent,
+                             footing=self.footing, **frame_kw)
+
+
+@dataclass(frozen=True)
+class PileBentSpec:
+    """Capped-pile pier (see :func:`pile_bent_geometry`)."""
+
+    cap_design: object
+    pile_xs_ft: tuple[float, ...]
+    pile_shape: str = "HP12X53"        # CPP-1-08 default
+    pile_length_ft: float = 40.0
+
+    def build(self, layout, unit, **frame_kw) -> PierGeometry:
+        return pile_bent_geometry(layout, unit, self.cap_design,
+                                  self.pile_xs_ft,
+                                  pile_shape=self.pile_shape,
+                                  pile_length_ft=self.pile_length_ft,
+                                  **frame_kw)
+
+
+@dataclass(frozen=True)
+class SeatAbutmentSpec:
+    """Conventional seat abutment: the Phase-4 :class:`AbutmentSpec`
+    plus its cap design, buildable per unit."""
+
+    cap_design: object
+    spec: AbutmentSpec
+
+    def build(self, layout, unit, **frame_kw) -> AbutmentGeometry:
+        return abutment_geometry(layout, unit, self.cap_design, self.spec,
+                                 **frame_kw)
+
+
+def assemble_substructure(layout, assignments: dict, *,
+                          bearing_stack_in: float = DEFAULT_BEARING_STACK_IN,
+                          seat_min_in: float = SEAT_MIN_IN,
+                          seat_side_in: float = SEAT_SIDE_IN
+                          ) -> SubstructureLayout:
+    """Place a substructure that mixes unit types.
+
+    ``assignments`` maps a support-line index (0 at the start abutment)
+    to its typed spec (:class:`BentPierSpec`, :class:`PileBentSpec`,
+    :class:`SeatAbutmentSpec`, ...); the string keys ``"pier"`` and
+    ``"abutment"`` supply defaults for unassigned units of that role."""
+    frame_kw = dict(bearing_stack_in=bearing_stack_in,
+                    seat_min_in=seat_min_in, seat_side_in=seat_side_in)
+    abutments, piers = [], []
+    for unit in substructure_units(layout):
+        role = ("abutment" if unit.name.startswith("Abutment") else "pier")
+        spec = assignments.get(unit.index, assignments.get(role))
+        if spec is None:
+            raise ValueError(f"no spec assigned for {unit.name} "
+                             f"(index {unit.index})")
+        geom = spec.build(layout, unit, **frame_kw)
+        (abutments if isinstance(geom, AbutmentGeometry)
+         else piers).append(geom)
+    return SubstructureLayout(layout=layout, abutments=tuple(abutments),
+                              piers=tuple(piers))
 
 
 def substructure_from_layout(layout, *, pier_cap, pier_bent,

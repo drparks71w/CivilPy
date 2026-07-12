@@ -866,6 +866,9 @@ def substructure_emit(sub, *, fc_psi: float = SUB_FC_PSI,
                     volume_cy=ftg.volume_cy, length_ft=ftg.length_ft,
                     width_ft=ftg.width_ft,
                     thickness_ft=ftg.thickness_ft)))
+        for i, pile in enumerate(pier.piles, start=1):
+            objects.append(_pile_prism(_WithId(pile, f"{pid}-PILE-{i}"),
+                                       u, n))
 
     for ab in sub.abutments:
         pid = _unit_prefix(ab.unit)

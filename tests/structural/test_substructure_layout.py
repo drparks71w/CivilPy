@@ -189,6 +189,64 @@ def test_skewed_support_frame(pier_cap, bent):
         assert seat.center[1] == pytest.approx(bp.location[1])
 
 
+def test_pile_bent_pier(layout, abutment_spec):
+    from civilpy.structural.substructure_layout import (
+        PileBentSpec, SeatAbutmentSpec, assemble_substructure)
+
+    abut_cap = _cap_design(span=32.0, depth=3.5, thickness=3.0)
+    pier_cap = _cap_design(span=32.0, depth=3.0, thickness=3.0)
+    sub2 = assemble_substructure(layout, {
+        "pier": PileBentSpec(cap_design=pier_cap,
+                             pile_xs_ft=(1.0, 9.5, 18.0, 26.5)),
+        "abutment": SeatAbutmentSpec(cap_design=abut_cap,
+                                     spec=abutment_spec)})
+    assert len(sub2.piers) == 1 and len(sub2.abutments) == 2
+    pier = sub2.piers[0]
+    assert pier.columns == () and pier.footings == ()
+    assert len(pier.piles) == 4
+    assert pier.piles[0].shape == "HP12X53"          # CPP-1-08 default
+    z_cap_bot = pier.cap.origin[2] - pier.cap.depth_ft
+    for pile, s in zip(pier.piles, (1.0, 9.5, 18.0, 26.5)):
+        assert pile.head == pytest.approx((80.0, s, z_cap_bot + 1.0))
+    # the seat plane is the same regardless of what carries the cap
+    assert [s.height_in for s in pier.seats] == pytest.approx(
+        [s.height_in for s in sub2.abutments[0].seats])
+
+
+def test_assemble_mixed_types_by_index(layout, pier_cap, bent,
+                                       abutment_spec):
+    from civilpy.structural.substructure_layout import (
+        BentPierSpec, PileBentSpec, SeatAbutmentSpec, assemble_substructure)
+
+    abut = SeatAbutmentSpec(
+        cap_design=_cap_design(span=32.0, depth=3.5, thickness=3.0),
+        spec=abutment_spec)
+    three_span = layout_bridge(BridgeInput(
+        spans_ft=(60.0, 80.0, 60.0), girder_count=4, girder_spacing_ft=9.0,
+        girder_label="W36X150", overhang_ft=2.5))
+    sub3 = assemble_substructure(three_span, {
+        "abutment": abut,
+        1: BentPierSpec(cap_design=pier_cap, bent=bent),
+        2: PileBentSpec(cap_design=_cap_design(span=32.0, depth=3.0,
+                                               thickness=3.0),
+                        pile_xs_ft=(1.0, 14.0, 26.0)),
+    })
+    by_index = {p.unit.index: p for p in sub3.piers}
+    assert by_index[1].columns and not by_index[1].piles
+    assert by_index[2].piles and not by_index[2].columns
+
+
+def test_assemble_missing_spec_raises(layout, abutment_spec):
+    from civilpy.structural.substructure_layout import (
+        SeatAbutmentSpec, assemble_substructure)
+
+    with pytest.raises(ValueError, match="no spec assigned for Pier 2"):
+        assemble_substructure(layout, {
+            "abutment": SeatAbutmentSpec(
+                cap_design=_cap_design(span=32.0, depth=3.5, thickness=3.0),
+                spec=abutment_spec)})
+
+
 def test_infeasible_design_raises(layout, bent, abutment_spec):
     bad = PierCapDesign(optimal=None, candidates=[], span=32.0, thickness=4.0)
     unit = substructure_units(layout)[1]
