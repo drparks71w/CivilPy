@@ -466,11 +466,13 @@ class BboxPicker:
     picker (last expression in a cell) shows the map; a corner readout
     updates live so the chosen bbox is also visible on screen.
 
-    Navigation: **Esri satellite imagery** by default (streets available
-    from the layer toggle, top right), scroll-wheel zoom enabled, a
-    fullscreen control, and a **search box** (top left, Nominatim) that
-    flies to a typed address or place name — the quick way to land on a
-    jobsite before drawing the rectangle.
+    Navigation: **hybrid imagery** by default — Esri satellite with
+    Esri's transparent road and place-label reference tiles on top (both
+    can be unticked, and a plain streets base map selected, from the
+    layer toggle at top right) — plus scroll-wheel zoom, a fullscreen
+    control, and a **search box** (top left, Nominatim) that flies to a
+    typed address or place name — the quick way to land on a jobsite
+    before drawing the rectangle.
 
     Requires ``ipyleaflet`` (``pip install ipyleaflet``), which gives the
     two-way widget link a static ``folium`` map cannot: the drawn
@@ -482,21 +484,29 @@ class BboxPicker:
             import ipywidgets
             from ipyleaflet import (DrawControl, FullScreenControl,
                                     LayersControl, Map, Marker,
-                                    SearchControl, WidgetControl, basemaps,
-                                    basemap_to_tiles)
+                                    SearchControl, TileLayer, WidgetControl,
+                                    basemaps, basemap_to_tiles)
         except ImportError as exc:                       # pragma: no cover
             raise ImportError(
                 "the bbox picker needs 'ipyleaflet' (pip install "
                 "ipyleaflet); Terrain itself does not require it") from exc
 
         self.bbox = None
-        # satellite imagery reads jobsites; streets ride along as a toggle
+        # hybrid default: satellite imagery + Esri's transparent road and
+        # place-label reference tiles (their standard hybrid recipe);
+        # streets ride along as a base-layer toggle
         sat = basemap_to_tiles(basemaps.Esri.WorldImagery)
         sat.base, sat.name = True, "Esri satellite"
         streets = basemap_to_tiles(basemaps.OpenStreetMap.Mapnik)
         streets.base, streets.name = True, "Streets"
-        self.map = Map(layers=(streets, sat), center=center, zoom=zoom,
-                       scroll_wheel_zoom=True)
+        ref = ("https://server.arcgisonline.com/ArcGIS/rest/services/"
+               "Reference/{}/MapServer/tile/{{z}}/{{y}}/{{x}}")
+        roads = TileLayer(url=ref.format("World_Transportation"),
+                          name="Roads (hybrid)", attribution="Esri")
+        labels = TileLayer(url=ref.format("World_Boundaries_and_Places"),
+                           name="Labels (hybrid)", attribution="Esri")
+        self.map = Map(layers=(streets, sat, roads, labels), center=center,
+                       zoom=zoom, scroll_wheel_zoom=True)
         self.map.layout.height = height
         self.map.add(LayersControl(position="topright"))
         self.map.add(FullScreenControl())
