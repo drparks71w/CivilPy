@@ -466,6 +466,12 @@ class BboxPicker:
     picker (last expression in a cell) shows the map; a corner readout
     updates live so the chosen bbox is also visible on screen.
 
+    Navigation: **Esri satellite imagery** by default (streets available
+    from the layer toggle, top right), scroll-wheel zoom enabled, a
+    fullscreen control, and a **search box** (top left, Nominatim) that
+    flies to a typed address or place name — the quick way to land on a
+    jobsite before drawing the rectangle.
+
     Requires ``ipyleaflet`` (``pip install ipyleaflet``), which gives the
     two-way widget link a static ``folium`` map cannot: the drawn
     geometry lands in the Python kernel with no copy/paste.
@@ -474,15 +480,31 @@ class BboxPicker:
     def __init__(self, center=(40.004, -83.005), zoom=14, height="480px"):
         try:
             import ipywidgets
-            from ipyleaflet import DrawControl, Map, WidgetControl
+            from ipyleaflet import (DrawControl, FullScreenControl,
+                                    LayersControl, Map, Marker,
+                                    SearchControl, WidgetControl, basemaps,
+                                    basemap_to_tiles)
         except ImportError as exc:                       # pragma: no cover
             raise ImportError(
                 "the bbox picker needs 'ipyleaflet' (pip install "
                 "ipyleaflet); Terrain itself does not require it") from exc
 
         self.bbox = None
-        self.map = Map(center=center, zoom=zoom)
+        # satellite imagery reads jobsites; streets ride along as a toggle
+        sat = basemap_to_tiles(basemaps.Esri.WorldImagery)
+        sat.base, sat.name = True, "Esri satellite"
+        streets = basemap_to_tiles(basemaps.OpenStreetMap.Mapnik)
+        streets.base, streets.name = True, "Streets"
+        self.map = Map(layers=(streets, sat), center=center, zoom=zoom,
+                       scroll_wheel_zoom=True)
         self.map.layout.height = height
+        self.map.add(LayersControl(position="topright"))
+        self.map.add(FullScreenControl())
+        # fly-to-address search (Nominatim geocoder)
+        self.map.add(SearchControl(
+            position="topleft",
+            url="https://nominatim.openstreetmap.org/search?format=json&q={s}",
+            zoom=zoom, marker=Marker()))
 
         self._label = ipywidgets.HTML("draw a rectangle to set the bbox")
         self.map.add(WidgetControl(widget=self._label,
