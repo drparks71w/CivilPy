@@ -7,6 +7,8 @@ Versions follow [Semantic Versioning](https://semver.org/) (major.minor.patch).
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-07-13
+
 - **Offline `.3dm` backend (`rhino_bim.emit_to_3dm`).** Bakes a
   `BridgeEmit` into a real Rhino file with standalone `rhino3dm` — no
   Rhino session, no MCP server, no network: prisms become capped
