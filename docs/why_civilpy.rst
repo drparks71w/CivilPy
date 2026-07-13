@@ -1,5 +1,5 @@
 Why CivilPy — A Shared Toolkit for the Engineering Community
-===========================================================
+============================================================
 
 CivilPy is an open, community-owned library of civil and structural
 engineering tools. It is written for practicing engineers, but the ideas

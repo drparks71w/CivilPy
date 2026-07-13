@@ -50,11 +50,12 @@ class Terrain:
 
     Parameters
     ----------
-    points : array_like, shape (N, 3)
-        ``(x, y, z)`` ground points, feet.
-    faces : array_like, shape (M, 3), optional
-        Triangle vertex indices (a supplied TIN, e.g. from a survey with
-        breaklines).  When omitted the XY projection is Delaunay-triangulated.
+    points : array_like
+        ``(N, 3)`` array of ``(x, y, z)`` ground points, feet.
+    faces : array_like, optional
+        ``(M, 3)`` triangle vertex indices (a supplied TIN, e.g. from a
+        survey with breaklines).  When omitted the XY projection is
+        Delaunay-triangulated.
     """
 
     def __init__(self, points, faces=None):

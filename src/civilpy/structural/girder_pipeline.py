@@ -96,7 +96,7 @@ def place_splices(stations, moments, ship_max_ft, *, samples: int = 400):
     -------
     list[SpliceCandidate]
         ``n_field_splices(L, ship_max)`` candidates, ordered along the span,
-        each at the lowest-|Strength I| station within its shipping-feasible
+        each at the lowest-magnitude Strength I station within its shipping-feasible
         window (contraflexure wins, since dead + live both pass through zero
         there).
     """
