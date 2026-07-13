@@ -234,6 +234,30 @@ def test_emit_json_round_trip(emit):
     assert kinds == {"prism", "polyline", "cylinder", "point"}
 
 
+def test_emit_to_3dm_round_trip(tmp_path, emit):
+    r3 = pytest.importorskip("rhino3dm")
+    from civilpy.structural.rhino_bim import emit_to_3dm, read_bim_quantities
+
+    path = tmp_path / "baked.3dm"
+    counts = emit_to_3dm(emit, path)
+    assert sum(counts.values()) == len(emit.objects)
+
+    # every prism landed as a capped solid, not a mesh fallback
+    f = r3.File3dm.Read(str(path))
+    n_prisms = sum(1 for o in emit.objects if o.kind == "prism")
+    n_cyls = sum(1 for o in emit.objects if o.kind == "cylinder")
+    n_breps = sum(1 for o in f.Objects
+                  if isinstance(o.Geometry, (r3.Brep, r3.Extrusion)))
+    assert n_breps == n_prisms + n_cyls
+
+    # the saved file regenerates the estimate exactly
+    q_emit = pay_item_quantities(emit)
+    q_file = read_bim_quantities(path)
+    assert set(q_file) == set(q_emit)
+    for item, rec in q_emit.items():
+        assert q_file[item]["qty"] == pytest.approx(rec["qty"])
+
+
 # ── substructure emit (work-plan phase 4) ─────────────────────────────────
 
 @pytest.fixture(scope="module")

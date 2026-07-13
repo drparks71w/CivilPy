@@ -1122,3 +1122,121 @@ def emit_to_json(emit: BridgeEmit) -> str:
             "tags": o.tags, "vector": o.vector, "radius_ft": o.radius_ft,
         } for o in emit.objects],
     })
+
+
+# ── offline .3dm backend (standalone rhino3dm, no Rhino session) ──────────
+
+def _newell_normal(pts) -> tuple[float, float, float]:
+    """Unit normal of a planar loop by Newell's method (robust for any
+    simple polygon, convex or not)."""
+    nx = ny = nz = 0.0
+    for i in range(len(pts)):
+        (ax, ay, az), (bx, by, bz) = pts[i], pts[(i + 1) % len(pts)]
+        nx += (ay - by) * (az + bz)
+        ny += (az - bz) * (ax + bx)
+        nz += (ax - bx) * (ay + by)
+    length = math.sqrt(nx * nx + ny * ny + nz * nz) or 1.0
+    return (nx / length, ny / length, nz / length)
+
+
+def _prism_geometry(r3, pts, vector):
+    """Prism solid for the offline backend.  The perpendicular case (every
+    prism the emits produce today) becomes a capped ``Extrusion`` brep —
+    correct caps for the non-convex profiles (I-sections, parapets).  An
+    oblique vector falls back to a closed mesh with centroid-fan caps."""
+    n = _newell_normal(pts)
+    h = sum(v * c for v, c in zip(vector, n))
+    residual = math.sqrt(sum((v - h * c) ** 2 for v, c in zip(vector, n)))
+    v_len = math.sqrt(sum(v * v for v in vector)) or 1.0
+
+    if residual <= 1e-6 * v_len:
+        loop = r3.Polyline()
+        for p in pts:
+            loop.Add(*p)
+        loop.Add(*pts[0])
+        ext = r3.Extrusion.Create(loop.ToPolylineCurve(), h, True)
+        return ext.ToBrep(False) if ext else None
+
+    m = r3.Mesh()
+    npt = len(pts)
+    for base in (pts, [tuple(c + v for c, v in zip(p, vector)) for p in pts]):
+        for p in base:
+            m.Vertices.Add(*p)
+    cx, cy, cz = (sum(p[i] for p in pts) / npt for i in range(3))
+    c0 = m.Vertices.Add(cx, cy, cz)
+    c1 = m.Vertices.Add(cx + vector[0], cy + vector[1], cz + vector[2])
+    for i in range(npt):
+        j = (i + 1) % npt
+        m.Faces.AddFace(i, j, npt + j, npt + i)
+        m.Faces.AddFace(c0, j, i)
+        m.Faces.AddFace(c1, npt + i, npt + j)
+    m.Normals.ComputeNormals()
+    m.Compact()
+    return m
+
+
+def emit_to_3dm(emit: BridgeEmit, path, *, version: int = 7) -> dict[str, int]:
+    """Bake the emit straight into a ``.3dm`` with standalone ``rhino3dm``
+    — no Rhino session, no MCP server, no network: the notebook-only path
+    to a real Rhino file.  Prisms become capped extrusion breps, studs
+    cylinder breps, rebar/centerlines polyline curves, markers points, on
+    the same colored layer taxonomy as the live-document driver, each
+    object stamped with its full user-text tags.  The bridge-wide record
+    rides on the ``bim.type = bridge`` marker (standalone ``rhino3dm``
+    has no document string table — the G4 contract in the module
+    docstring), so :func:`read_bim_tags` / :func:`read_bim_quantities`
+    round-trip from the saved file alone.  Returns per-layer object
+    counts.
+
+    ``Notebooks/Rhino Components/draw_bim_emit.py`` remains the
+    live-document twin (same JSON payload via :func:`emit_to_json`) when
+    a running Rhino 8 should host the model instead of a file."""
+    import rhino3dm as r3
+
+    from civilpy.structural.rhino_layers import ensure_layer
+
+    f = r3.File3dm()
+    layer_idx = {name: ensure_layer(f, name)
+                 for name in sorted({o.layer for o in emit.objects})}
+
+    counts: dict[str, int] = {}
+    for o in emit.objects:
+        a = r3.ObjectAttributes()
+        a.LayerIndex = layer_idx[o.layer]
+        for k, v in o.tags.items():
+            a.SetUserString(k, str(v))
+
+        added = None
+        if o.kind == "prism":
+            geom = _prism_geometry(r3, o.points, o.vector)
+            if isinstance(geom, r3.Brep):
+                added = f.Objects.AddBrep(geom, a)
+            elif geom is not None:
+                added = f.Objects.AddMesh(geom, a)
+        elif o.kind == "polyline":
+            pl = r3.Polyline()
+            for p in o.points:
+                pl.Add(*p)
+            added = f.Objects.AddCurve(pl.ToPolylineCurve(), a)
+        elif o.kind == "cylinder":
+            (bx, by, bz), (tx, ty, tz) = o.points
+            axis = (tx - bx, ty - by, tz - bz)
+            length = math.sqrt(sum(c * c for c in axis))
+            if length > 0.0:
+                brep = r3.Cylinder(r3.Circle(o.radius_ft), length).ToBrep(
+                    True, True)
+                xf = r3.Transform.PlaneToPlane(
+                    r3.Plane(r3.Point3d(0.0, 0.0, 0.0),
+                             r3.Vector3d(0.0, 0.0, 1.0)),
+                    r3.Plane(r3.Point3d(bx, by, bz), r3.Vector3d(*axis)))
+                brep.Transform(xf)
+                added = f.Objects.AddBrep(brep, a)
+        elif o.kind == "point":
+            added = f.Objects.AddPoint(r3.Point3d(*o.points[0]), a)
+
+        if added is not None:
+            counts[o.layer] = counts.get(o.layer, 0) + 1
+
+    if not f.Write(str(path), version):
+        raise IOError(f"could not write 3dm file: {path}")
+    return counts
