@@ -138,10 +138,19 @@ def test_bbox_picker_draw_round_trip():
     ipyleaflet = pytest.importorskip("ipyleaflet")  # noqa: F841
     from civilpy.transportation.terrain import bbox_picker
 
+    rect = {"type": "Feature", "geometry": {"type": "Polygon", "coordinates": [[
+        [-83.010, 40.000], [-83.010, 40.008], [-83.000, 40.008],
+        [-83.000, 40.000], [-83.010, 40.000]]]}}
+
+    # the reliable path: the frontend syncing the DrawControl data trait
     p = bbox_picker()
     assert p.bbox is None
-    p._on_draw(None, "created", {"geometry": {"coordinates": [[
-        [-83.010, 40.000], [-83.010, 40.008], [-83.000, 40.008],
-        [-83.000, 40.000], [-83.010, 40.000]]]}})
+    p._draw.data = [rect]
     # (xmin, ymin, xmax, ymax) in lon/lat -- the from_ogrip tuple
     assert p.bbox == (-83.010, 40.000, -83.000, 40.008)
+    assert "bbox = (" in p._label.value
+
+    # the legacy path: the on_draw custom message, when the frontend sends it
+    p2 = bbox_picker()
+    p2._on_draw(None, "created", rect)
+    assert p2.bbox == (-83.010, 40.000, -83.000, 40.008)

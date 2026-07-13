@@ -526,16 +526,28 @@ class BboxPicker:
                                                        "fillOpacity": 0.08}},
                            polygon={}, polyline={}, circlemarker={},
                            marker={}, edit=False, remove=False)
+        # the drawn shapes arrive through the synced ``data`` trait; the
+        # on_draw custom message is unreliable across jupyter-leaflet
+        # frontend versions (observed: rectangle draws that never fire it)
+        draw.observe(self._on_data, names="data")
         draw.on_draw(self._on_draw)
         self.map.add(draw)
         self._draw = draw
 
-    def _on_draw(self, target, action, geo_json):
-        lons, lats = zip(*geo_json["geometry"]["coordinates"][0])
+    def _set_bbox(self, geometry):
+        lons, lats = zip(*geometry["coordinates"][0])
         self.bbox = (min(lons), min(lats), max(lons), max(lats))
         self._label.value = ("bbox = (%.4f, %.4f, %.4f, %.4f)" % self.bbox)
-        # keep only the newest rectangle on the map
-        self._draw.data = self._draw.data[-1:]
+
+    def _on_data(self, change):
+        polys = [f for f in (change["new"] or [])
+                 if (f.get("geometry") or {}).get("type") == "Polygon"]
+        if polys:
+            self._set_bbox(polys[-1]["geometry"])
+
+    def _on_draw(self, target, action, geo_json):
+        if action in ("created", "edited") and geo_json.get("geometry"):
+            self._set_bbox(geo_json["geometry"])
 
     def _ipython_display_(self):
         from IPython.display import display
