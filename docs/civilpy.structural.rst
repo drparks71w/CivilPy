@@ -2,8 +2,13 @@ civilpy.structural package
 ==========================
 
 Structural engineering — the most developed CivilPy package: member and
-section tools, AASHTO LRFD / AREMA design checks, strut-and-tie tools, and
-bridge substructure designers.
+section tools, AASHTO LRFD / AREMA design checks, strut-and-tie tools,
+bridge substructure designers, and the hub-and-spoke bridge pipeline —
+``bridge_layout`` builds the canonical model, ``midas_models`` feeds a
+live MIDAS Civil NX session, and the ``rhino_bim`` emit layer produces
+the tagged BrIM geometry (drawn live in Rhino 8 or baked headlessly to
+``.3dm`` with ``emit_to_3dm``), with per-object ODOT pay items rolling
+up into quantities.
 
 Subpackages
 -----------
@@ -36,6 +41,38 @@ civilpy.structural.beam\_bending module
    :undoc-members:
    :show-inheritance:
 
+civilpy.structural.bim module
+-----------------------------
+
+.. automodule:: civilpy.structural.bim
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+civilpy.structural.box\_beam\_pipeline module
+---------------------------------------------
+
+.. automodule:: civilpy.structural.box_beam_pipeline
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+civilpy.structural.bridge\_layout module
+----------------------------------------
+
+.. automodule:: civilpy.structural.bridge_layout
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+civilpy.structural.bridge\_type module
+--------------------------------------
+
+.. automodule:: civilpy.structural.bridge_type
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 civilpy.structural.cande module
 -------------------------------
 
@@ -52,6 +89,22 @@ civilpy.structural.concrete module
    :undoc-members:
    :show-inheritance:
 
+civilpy.structural.construction\_staging module
+-----------------------------------------------
+
+.. automodule:: civilpy.structural.construction_staging
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+civilpy.structural.continuous\_beam module
+------------------------------------------
+
+.. automodule:: civilpy.structural.continuous_beam
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 civilpy.structural.effective\_length module
 -------------------------------------------
 
@@ -64,6 +117,22 @@ civilpy.structural.flexural\_stress module
 ------------------------------------------
 
 .. automodule:: civilpy.structural.flexural_stress
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+civilpy.structural.girder\_optimizer module
+-------------------------------------------
+
+.. automodule:: civilpy.structural.girder_optimizer
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+civilpy.structural.girder\_pipeline module
+------------------------------------------
+
+.. automodule:: civilpy.structural.girder_pipeline
    :members:
    :undoc-members:
    :show-inheritance:
@@ -116,6 +185,94 @@ civilpy.structural.pier module
    :undoc-members:
    :show-inheritance:
 
+civilpy.structural.placement module
+-----------------------------------
+
+.. automodule:: civilpy.structural.placement
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+civilpy.structural.ps\_i\_beam\_pipeline module
+-----------------------------------------------
+
+.. automodule:: civilpy.structural.ps_i_beam_pipeline
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+civilpy.structural.rhino\_barrier module
+----------------------------------------
+
+.. automodule:: civilpy.structural.rhino_barrier
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+civilpy.structural.rhino\_bim module
+------------------------------------
+
+.. automodule:: civilpy.structural.rhino_bim
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+civilpy.structural.rhino\_box\_beam module
+------------------------------------------
+
+.. automodule:: civilpy.structural.rhino_box_beam
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+civilpy.structural.rhino\_box\_bim module
+-----------------------------------------
+
+.. automodule:: civilpy.structural.rhino_box_bim
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+civilpy.structural.rhino\_deck module
+-------------------------------------
+
+.. automodule:: civilpy.structural.rhino_deck
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+civilpy.structural.rhino\_gdr module
+------------------------------------
+
+.. automodule:: civilpy.structural.rhino_gdr
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+civilpy.structural.rhino\_layers module
+---------------------------------------
+
+.. automodule:: civilpy.structural.rhino_layers
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+civilpy.structural.rhino\_ps\_i\_bim module
+-------------------------------------------
+
+.. automodule:: civilpy.structural.rhino_ps_i_bim
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+civilpy.structural.rhino\_slab module
+-------------------------------------
+
+.. automodule:: civilpy.structural.rhino_slab
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 civilpy.structural.rhino\_stm module
 ------------------------------------
 
@@ -160,6 +317,22 @@ civilpy.structural.strut\_and\_tie module
 -----------------------------------------
 
 .. automodule:: civilpy.structural.strut_and_tie
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+civilpy.structural.substructure module
+--------------------------------------
+
+.. automodule:: civilpy.structural.substructure
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+civilpy.structural.substructure\_layout module
+----------------------------------------------
+
+.. automodule:: civilpy.structural.substructure_layout
    :members:
    :undoc-members:
    :show-inheritance:

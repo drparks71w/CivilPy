@@ -12,6 +12,8 @@ cross-checks them against AssetWise data for QA, including NBI material and
 design/construction-type code dictionaries.
 """
 
+from __future__ import annotations
+
 import json
 import requests
 import pandas as pd

@@ -218,6 +218,114 @@ def test_midas_payloads_element_references_section_and_material():
     elem = next(iter(p["ELEM"].values()))
     assert elem["SECT"] == 1 and elem["MATL"] == 1
     assert "1" in p["SECT"] and "1" in p["MATL"]
+    # no element carries a real gdr.shape label -- placeholder square, not
+    # a rolled shape.
+    assert p["SECT"]["1"]["SECT_BEFORE"]["SHAPE"] == "SB"
+
+
+def test_midas_payloads_uses_real_shape_per_element():
+    """A girder-line hub with real AISC labels gets a real SECT per shape
+    (SHAPE="H") -- not the generic placeholder square. Regression test for
+    the box-beam-looking generic section that shipped when midas_payloads
+    always emitted a single placeholder regardless of elem.section."""
+    from civilpy.structural.structural_model import StructuralModel
+    m = StructuralModel()
+    a = m.add_node(0, 0, 0)
+    b = m.add_node(30, 0, 0)
+    c = m.add_node(60, 0, 0)
+    m.add_element(a.id, b.id, midas_type="BEAM", section="W24X104",
+                  material="Grade 50")
+    m.add_element(b.id, c.id, midas_type="BEAM", section="W24X131",
+                  material="Grade 50")
+
+    p = mm.midas_payloads(m)
+    assert len(p["SECT"]) == 2
+    for body in p["SECT"].values():
+        assert body["SECT_BEFORE"]["SHAPE"] == "H"
+    names = {body["SECT_NAME"] for body in p["SECT"].values()}
+    assert names == {"W24X104", "W24X131"}
+    elems = list(p["ELEM"].values())
+    assert elems[0]["SECT"] != elems[1]["SECT"]
+    assert len(p["MATL"]) == 1   # both elements share "Grade 50"
+
+
+def test_midas_payloads_sect_matches_model_length_unit():
+    """SECT dimensions must be expressed in the model's own units.length --
+    MIDAS applies one DIST unit to the whole model (NODE coordinates AND
+    section dimensions). Regression test for the bug where rolled_i_section_
+    block always sent inches while a feet model's UNIT table declared FT,
+    silently scaling every section 12x into a huge, self-intersecting box
+    that swallowed the girder spacing. Only applies to the db_name=None
+    (built-up/historic, user-input dimensions) fallback -- by default
+    sections reference the AISC db directly and carry no dimensions at all."""
+    from civilpy.structural import steel
+    from civilpy.structural.structural_model import StructuralModel, Units
+
+    m = StructuralModel(units=Units(force="kips", length="ft"))
+    a = m.add_node(0, 0, 0)
+    b = m.add_node(30, 0, 0)
+    m.add_element(a.id, b.id, midas_type="BEAM", section="W24X104")
+
+    p = mm.midas_payloads(m, db_name=None)
+    sid = next(iter(p["SECT"]))
+    h_ft = p["SECT"][sid]["SECT_BEFORE"]["SECT_I"]["vSIZE"][0]
+    expected_ft = steel.W("W24X104").depth.to("ft").magnitude
+    assert h_ft == pytest.approx(expected_ft, abs=1e-6)
+    # a W24 depth in inches (~24) would be a dead giveaway of the old bug
+    assert h_ft < 5.0
+
+
+def test_midas_payloads_sect_references_aisc_db_by_default():
+    from civilpy.structural.structural_model import StructuralModel, Units
+
+    m = StructuralModel(units=Units(force="kips", length="ft"))
+    a = m.add_node(0, 0, 0)
+    b = m.add_node(30, 0, 0)
+    m.add_element(a.id, b.id, midas_type="BEAM", section="W24X104")
+
+    p = mm.midas_payloads(m)
+    sid = next(iter(p["SECT"]))
+    before = p["SECT"][sid]["SECT_BEFORE"]
+    assert before["DATATYPE"] == 1
+    assert before["SECT_I"] == {"DB_NAME": "AISC10(US)",
+                                 "SECT_NAME": "W24X104"}
+
+
+def test_hub_section_material_blocks_length_unit_override():
+    from civilpy.structural.structural_model import StructuralModel, Units
+
+    m = StructuralModel(units=Units(force="kips", length="ft"))
+    a = m.add_node(0, 0, 0)
+    b = m.add_node(30, 0, 0)
+    m.add_element(a.id, b.id, midas_type="BEAM", section="W24X104")
+
+    blocks_ft = mm.hub_section_material_blocks(m, db_name=None)
+    blocks_in = mm.hub_section_material_blocks(m, db_name=None,
+                                                length_unit="in")
+    h_ft = blocks_ft["SECT"]["1"]["SECT_BEFORE"]["SECT_I"]["vSIZE"][0]
+    h_in = blocks_in["SECT"]["1"]["SECT_BEFORE"]["SECT_I"]["vSIZE"][0]
+    assert h_in == pytest.approx(h_ft * 12.0, rel=1e-4)
+
+
+def test_midas_payloads_mixed_labeled_and_unlabeled_elements():
+    """An element with no section label still gets a valid (placeholder)
+    SECT id distinct from the real per-shape ids, rather than crashing or
+    silently sharing a real shape's section."""
+    from civilpy.structural.structural_model import StructuralModel
+    m = StructuralModel()
+    a = m.add_node(0, 0, 0)
+    b = m.add_node(30, 0, 0)
+    c = m.add_node(60, 0, 0)
+    m.add_element(a.id, b.id, midas_type="BEAM", section="W24X104")
+    m.add_element(b.id, c.id, midas_type="BEAM")   # no shape label
+
+    p = mm.midas_payloads(m)
+    assert len(p["SECT"]) == 2   # 1 real shape + 1 placeholder
+    elems = list(p["ELEM"].values())
+    labeled_sect, unlabeled_sect = elems[0]["SECT"], elems[1]["SECT"]
+    assert labeled_sect != unlabeled_sect
+    assert p["SECT"][str(labeled_sect)]["SECT_BEFORE"]["SHAPE"] == "H"
+    assert p["SECT"][str(unlabeled_sect)]["SECT_BEFORE"]["SHAPE"] == "SB"
 
 
 def test_push_midas_reports_per_table():

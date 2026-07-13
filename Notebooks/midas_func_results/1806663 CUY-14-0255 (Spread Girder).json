@@ -1,0 +1,6 @@
+{
+ "file": "1806663 CUY-14-0255 (Spread Girder).mcb",
+ "type": "Spread Girder",
+ "error_kind": "connection",
+ "error": "MIDAS POST /doc/OPEN timed out after 600s \u2014 the model may still be solving. Raise analysis_timeout for large models."
+}

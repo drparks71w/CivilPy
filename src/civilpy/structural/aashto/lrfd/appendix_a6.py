@@ -13,6 +13,8 @@ factors Rpc/Rpt.  Applicable when Fy <= 70 ksi, the web is not slender, and
 Iyc/Iyt >= 0.3.  Units: kip, inch, ksi; moments kip-in.
 """
 
+from __future__ import annotations
+
 import math
 
 from civilpy.structural.aashto.lrfd.core import CheckResult, article

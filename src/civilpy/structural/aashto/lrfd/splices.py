@@ -14,6 +14,8 @@ are then checked with the existing primitives (
 ``block_shear_resistance``).  Units: kip, inch, ksi.
 """
 
+from __future__ import annotations
+
 import math
 from dataclasses import dataclass
 
@@ -26,21 +28,52 @@ def flange_splice_design_force(
     a_g: float,
     f_y: float,
     f_u: float,
+    f_design: float | None = None,
 ) -> CheckResult:
-    """Design force for a flange splice (6.13.6.1.3b-1): Pfy = Fyf*Ae with
+    """Design force for a flange splice (6.13.6.1.3b-1): P = Fcf*Ae with
     the effective flange area Ae = (phi_u*Fu)/(phi_y*Fy)*An <= Ag
     (6.13.6.1.3b-2); phi_u = 0.80, phi_y = 0.95.
 
+    ``f_design`` is the flange design stress Fcf (6.13.6.1.3b): when omitted it
+    defaults to the full yield stress ``f_y`` (the conservative upper bound,
+    correct for a fully stressed flange).  Supply the AASHTO Fcf --
+    ``max((|fcf|/Rh + alpha*phi_f*Fyf)/2, 0.75*alpha*phi_f*Fyf)`` computed from
+    the actual factored flange stress ``fcf`` -- to design a lightly stressed
+    splice for its real demand (the ODOT BDM / NSBA workbook method).
+
     The splice plates, their bolts, and the flange itself are then checked
-    against Pfy.  ``capacity`` holds Pfy (kip)."""
+    against the returned force.  ``capacity`` holds P (kip)."""
     a_e = min(0.80 * f_u / (0.95 * f_y) * a_n, a_g)
-    p_fy = f_y * a_e
+    stress = f_y if f_design is None else f_design
+    p_fy = stress * a_e
     return CheckResult(
         article="6.13.6.1.3b",
         name="Flange Splice Design Force",
         capacity=p_fy,
-        details={"Ae": a_e, "An": a_n, "Ag": a_g},
+        details={"Ae": a_e, "An": a_n, "Ag": a_g, "Fcf": stress},
     )
+
+
+def flange_design_stress_fcf(
+    fcf: float,
+    f_yf: float,
+    r_h: float = 1.0,
+    alpha: float = 1.0,
+    phi_f: float = 1.0,
+) -> float:
+    """Flange design stress Fcf (AASHTO LRFD 6.13.6.1.3b):
+
+    ``Fcf = max( (|fcf|/Rh + alpha*phi_f*Fyf)/2 , 0.75*alpha*phi_f*Fyf )``
+
+    ``fcf`` is the maximum factored flexural stress at the mid-thickness of the
+    flange under the governing strength combination (ksi, sign ignored).  Rh is
+    the hybrid factor (1.0 non-hybrid), alpha = 1.0 (0.85 for compression
+    flanges w/ slender web), phi_f = 1.0.  The result is capped in practice by
+    Fyf and floored at 0.75*alpha*phi_f*Fyf (the minimum splice design stress
+    of C6.13.6.1.3b)."""
+    computed = (abs(fcf) / r_h + alpha * phi_f * f_yf) / 2.0
+    floor = 0.75 * alpha * phi_f * f_yf
+    return max(computed, floor)
 
 
 @dataclass

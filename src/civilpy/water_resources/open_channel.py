@@ -14,6 +14,8 @@ Examples
 True
 """
 
+from __future__ import annotations
+
 #  CivilPy
 #  Copyright (C) 2019-2026 Dane Parks
 #  SPDX-License-Identifier: MIT

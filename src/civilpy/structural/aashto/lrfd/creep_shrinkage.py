@@ -15,6 +15,8 @@ The time-development factor ktd was revised in the 2015 interim — pass
 and is not implemented.)
 """
 
+from __future__ import annotations
+
 from civilpy.structural.aashto.lrfd.core import article
 
 

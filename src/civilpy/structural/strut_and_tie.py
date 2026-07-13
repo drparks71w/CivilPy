@@ -34,6 +34,8 @@ midspan top, 4 ft deep:
 -70.71
 """
 
+from __future__ import annotations
+
 #  CivilPy
 #  Copyright (C) 2019-2026 Dane Parks
 #

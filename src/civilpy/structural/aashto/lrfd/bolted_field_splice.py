@@ -77,8 +77,31 @@ def _grade(material: str) -> tuple[float, float]:
         raise ValueError(f"unknown steel grade {material!r}")
 
 
-def _hole_dia(d_bolt: float) -> float:
+# Oversize hole diameter (in) by bolt diameter — Table 6.13.2.6.7-1.
+OVERSIZE_HOLE_DIA: dict[float, float] = {
+    0.625: 0.8125, 0.75: 0.9375, 0.875: 1.0625, 1.0: 1.25,
+    1.125: 1.375, 1.25: 1.5, 1.375: 1.625,
+}
+
+
+def _hole_dia(d_bolt: float, hole_type: str = "standard") -> float:
+    """Nominal hole diameter (Table 6.13.2.6.7-1) for bolt spacing, bearing
+    clear distance, and block-shear geometry.  Honors ``hole_type``."""
+    if hole_type == "oversize":
+        return OVERSIZE_HOLE_DIA.get(round(d_bolt, 4), d_bolt + 0.1875)
     return STANDARD_HOLE_DIA.get(round(d_bolt, 4), d_bolt + 0.0625)
+
+
+def _net_hole_dia(d_bolt: float, hole_type: str = "standard",
+                  add_638: bool = False) -> float:
+    """Hole diameter used for *net-area* deductions.  With ``add_638`` the
+    AASHTO 6.8.3 rule applies -- the nominal standard hole plus 1/16 in
+    (= bolt + 1/8 in), which the ODOT/NSBA workbook uses for W_n regardless of
+    the actual (oversize) hole.  Without it, the bare nominal hole is used (the
+    legacy ``nsba`` behavior)."""
+    if add_638:
+        return STANDARD_HOLE_DIA.get(round(d_bolt, 4), d_bolt + 0.0625) + 0.0625
+    return _hole_dia(d_bolt, hole_type)
 
 
 def _min_edge_end(d_bolt: float) -> float:
@@ -140,6 +163,35 @@ class GirderSide:
     haunch: float = 0.0
     stiffener_spacing_ft: float | None = None  # d_o
     stiffened: bool = True
+
+
+def girder_side_from_w(label: str, grade: str = "Grade 50", *,
+                       haunch: float = 0.0,
+                       stiffener_spacing_ft: float | None = None,
+                       stiffened: bool = False) -> "GirderSide":
+    """Build a :class:`GirderSide` from a rolled AISC W-shape label (G7).
+
+    Reads ``depth``, ``flange_width``, ``flange_thickness``, and
+    ``web_thickness`` from ``civilpy.structural.steel.W`` (the AISC database);
+    the web depth is the clear distance between flanges (``d - 2*tf``).  Top and
+    bottom flanges are identical for a rolled shape.  ``grade`` names the steel
+    (mapped to Fy/Fu by the splice designer's ``STEEL_GRADES``)."""
+    from civilpy.structural import steel
+    w = steel.W(label)
+
+    def _in(q):
+        return float(q.to("in").magnitude)
+
+    tf = _in(w.flange_thickness)
+    bf = _in(w.flange_width)
+    tw = _in(w.web_thickness)
+    web_depth = _in(w.depth) - 2.0 * tf
+    flange = Flange(grade, tf, bf)
+    return GirderSide(
+        top_flange=flange, bottom_flange=Flange(grade, tf, bf),
+        web_material=grade, web_thickness=tw, web_depth=web_depth,
+        haunch=haunch, stiffener_spacing_ft=stiffener_spacing_ft,
+        stiffened=stiffened)
 
 
 @dataclass(frozen=True)
@@ -224,6 +276,18 @@ class SpliceInput:
     girder_gap: float = 0.75
     entering_tightening: float = 3.0
     design_year: int = 2020
+    # --- flange design-force method (6.13.6.1.3b) ---------------------------
+    # "nsba" (default): design each flange for its full yield capacity
+    # (Fcf = Fyf) with the total force in the plates' shear planes -- the
+    # conservative method the two plate-girder validation designs use.
+    # "odot_bdm": the ODOT REF-DESIGN workbook method -- design stress
+    # Fcf from the actual factored flange stress (fcf_top/fcf_bot), the 6.8.3
+    # net-area hole (nominal + 1/16), and per-plate single-shear bolt counts.
+    method: str = "nsba"
+    fcf_top: float | None = None      # factored top-flange stress, ksi (signed)
+    fcf_bot: float | None = None      # factored bottom-flange stress, ksi
+    r_h: float = 1.0                  # hybrid factor (6.10.1.10.1)
+    alpha: float = 1.0               # 6.13.6.1.3b (0.85 for slender-web comp.)
 
 
 # --- structured results -----------------------------------------------------
@@ -262,6 +326,11 @@ class SpliceDesign:
     top_flange: ComponentDesign
     bottom_flange: ComponentDesign
     web: ComponentDesign
+    # the SpliceInput this design came from (set by design_splice), so a
+    # result self-describes: downstream writers (rhino_gdr's gdr.splice.*
+    # smart-node tags, plate/bolt display geometry) need the bolt spec and
+    # inner-plate dimensions that only the input carries.
+    spec: SpliceInput | None = None
 
     @property
     def components(self) -> list[ComponentDesign]:
@@ -318,27 +387,44 @@ def _factor_loads(loads: SpliceLoads) -> tuple[dict, dict]:
 
 # --- flange design ----------------------------------------------------------
 
-def _flange_pfy(flange: Flange, n_rows: int, hole_dia: float):
-    """Design force Pfy for one flange (6.13.6.1.3b) and its areas."""
+def _flange_pfy(flange: Flange, n_rows: int, hole_dia: float,
+                f_design: float | None = None):
+    """Design force Pfy for one flange (6.13.6.1.3b) and its areas.  ``hole_dia``
+    is the net-area hole; ``f_design`` is the flange design stress Fcf (defaults
+    to Fyf inside :func:`flange_splice_design_force`)."""
     fy, fu = _grade(flange.material)
     a_g = flange.area
     a_n = (flange.width - n_rows * hole_dia) * flange.thickness
-    res = splices.flange_splice_design_force(a_n=a_n, a_g=a_g, f_y=fy, f_u=fu)
+    res = splices.flange_splice_design_force(
+        a_n=a_n, a_g=a_g, f_y=fy, f_u=fu, f_design=f_design)
     return res.capacity, a_g, a_n, res.details["Ae"], fy, fu
 
 
 def _design_flange(inp: SpliceInput, position: str) -> ComponentDesign:
     b = inp.bolts
-    hole = _hole_dia(b.diameter)
+    odot = inp.method == "odot_bdm"
+    hole = _hole_dia(b.diameter, b.hole_type)
+    net_hole = _net_hole_dia(b.diameter, b.hole_type, add_638=odot)
     if position == "top":
         left_f, right_f = inp.left.top_flange, inp.right.top_flange
         plates, n_rows = inp.top_plates, inp.top_flange_rows
+        fcf = inp.fcf_top
     else:
         left_f, right_f = inp.left.bottom_flange, inp.right.bottom_flange
         plates, n_rows = inp.bottom_plates, inp.bottom_flange_rows
+        fcf = inp.fcf_bot
 
-    pfy_l, ag_l, an_l, ae_l, fy_l, fu_l = _flange_pfy(left_f, n_rows, hole)
-    pfy_r, *_ = _flange_pfy(right_f, n_rows, hole)
+    # ODOT/NSBA: design stress Fcf from the actual factored flange stress;
+    # otherwise the full yield stress (Fcf = Fyf) is used (nsba default).
+    f_design = None
+    if odot and fcf is not None:
+        fy_flange, _ = _grade(left_f.material)
+        f_design = splices.flange_design_stress_fcf(
+            fcf, fy_flange, r_h=inp.r_h, alpha=inp.alpha)
+
+    pfy_l, ag_l, an_l, ae_l, fy_l, fu_l = _flange_pfy(
+        left_f, n_rows, net_hole, f_design)
+    pfy_r, *_ = _flange_pfy(right_f, n_rows, net_hole, f_design)
     pfy = min(pfy_l, pfy_r)                      # weaker flange governs
     ctrl = left_f if pfy_l <= pfy_r else right_f
 
@@ -359,9 +445,23 @@ def _design_flange(inp: SpliceInput, position: str) -> ComponentDesign:
     )
     bolt_cap = bolt.factored_capacity  # phi already applied
 
-    # strength bolt count
-    strength_initial = pfy / (bolt_cap * r_fill)
-    strength_bolts = _ceil_mult(strength_initial, n_rows)
+    # strength bolt count.  nsba: the whole flange force Pfy across the plates'
+    # shear planes.  odot_bdm: the larger *apportioned* plate force
+    # (C6.13.6.1.3b) across a single shear plane -- the REF-DESIGN workbook
+    # convention, more conservative for inner+outer plate splices.
+    if odot:
+        bolt1 = steel.bolt_shear_resistance(
+            d_bolt=b.diameter, f_ub=BOLT_FU[b.bolt_type], n_planes=1,
+            threads_excluded=b.flange_threads_excluded,
+            design_year=inp.design_year)
+        sp0 = splices.splice_plate_design_force(
+            pfy, plates.outer_area, plates.inner_area)
+        count_force = max(sp0.outer, sp0.inner)
+        count_cap = bolt1.factored_capacity
+    else:
+        count_force = pfy
+        count_cap = bolt_cap
+    strength_bolts = _ceil_mult(count_force / (count_cap * r_fill), n_rows)
 
     # slip capacity per bolt (Service II, phi = 1.0)
     slip = steel.bolt_slip_resistance(
@@ -402,8 +502,8 @@ def _design_flange(inp: SpliceInput, position: str) -> ComponentDesign:
     joint_len = (cols - 1) * inp.bolt_spacing
     long_joint = joint_len >= 38.0
     if long_joint:
-        lj_cap = bolt_cap * 0.83
-        lj_bolts = _ceil_mult(pfy / (lj_cap * r_fill), n_rows)
+        lj_cap = count_cap * 0.83
+        lj_bolts = _ceil_mult(count_force / (lj_cap * r_fill), n_rows)
         controlling = max(controlling, lj_bolts)
         cols = controlling // n_rows
 
@@ -446,7 +546,9 @@ def _design_flange(inp: SpliceInput, position: str) -> ComponentDesign:
     comp.checks.append(CheckResult(
         article="6.13.2.8", name=f"{position} flange Service II slip",
         capacity=controlling * pt_per, demand=slip_force))
-    _flange_checks(inp, comp, plates, ctrl, pfy, fy_l, fu_l, hole, n_rows)
+    # Net-area / block-shear deductions use the 6.8.3 hole (odot_bdm); nsba
+    # keeps the bare nominal hole for continuity with the legacy designs.
+    _flange_checks(inp, comp, plates, ctrl, pfy, fy_l, fu_l, net_hole, n_rows)
     return comp
 
 
@@ -747,4 +849,5 @@ def design_splice(inp: SpliceInput) -> SpliceDesign:
         bottom.checks.append(sc)
 
     return SpliceDesign(factored_moments=m, factored_shears=v,
-                        top_flange=top, bottom_flange=bottom, web=web)
+                        top_flange=top, bottom_flange=bottom, web=web,
+                        spec=inp)

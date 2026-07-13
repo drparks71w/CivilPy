@@ -1,0 +1,15 @@
+{
+ "file": "1805371 CUY-71-1791R (Deck Girder).mcb",
+ "type": "Deck Girder",
+ "elems": 10213,
+ "elem_types": {
+  "PLATE": 3409,
+  "BEAM": 3106,
+  "TRUSS": 3698
+ },
+ "can_analyze": true,
+ "can_rate_ll": true,
+ "note": "rateable: supports + static + moving load present",
+ "error_kind": "timeout",
+ "error": "MIDAS POST /doc/ANAL timed out after 600s \u2014 the model may still be solving. Raise analysis_timeout for large models."
+}

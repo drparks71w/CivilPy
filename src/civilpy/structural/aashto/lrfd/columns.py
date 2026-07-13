@@ -11,6 +11,8 @@ P-M interaction (uniaxial and Bresler biaxial), and the approximate
 moment-magnification treatment of slenderness.  Units: kip, inch, ksi.
 """
 
+from __future__ import annotations
+
 import math
 from dataclasses import dataclass
 

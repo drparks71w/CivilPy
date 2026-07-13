@@ -18,6 +18,11 @@ from civilpy.structural.odot import (
     rocker_bolster,
     smallest_for_load,
 )
+from civilpy.structural.odot.rocker_bolster import (
+    layout_rocker_bolster,
+    top_bearing_plate_radius_in,
+    top_bearing_web_radius_in,
+)
 
 
 class TestRockerBolster:
@@ -72,6 +77,37 @@ class TestRockerBolster:
 
     def test_movement_limit(self):
         assert MAX_MOVEMENT == 2.0
+
+    def test_top_bearing_detail_formulas(self):
+        assert top_bearing_web_radius_in(3.0) == pytest.approx(1.5 + 1 / 16.0)
+        assert top_bearing_plate_radius_in(3.0) == pytest.approx(1.5 + 3 / 32.0)
+
+    def test_layout_base_plate_matches_dims(self):
+        rb = rocker_bolster(150)
+        lay = layout_rocker_bolster(rb)
+        assert lay.base_outline[0] == (-6.0, -11.0, 0.0)
+        assert lay.base_outline[2] == (6.0, 11.0, 0.0)
+        assert lay.base_thickness_in == rb.dims["T"]
+
+    def test_layout_bolster_top_narrower_than_base(self):
+        rb = rocker_bolster(150)
+        lay = layout_rocker_bolster(rb)
+        base_width = lay.base_outline[1][0] - lay.base_outline[0][0]
+        top_width = lay.bolster_top[1][0] - lay.bolster_top[0][0]
+        assert top_width < base_width
+        assert top_width == pytest.approx(rb.dims["A"])
+
+    def test_layout_rocker_radius_from_a(self):
+        rb = rocker_bolster(150)
+        lay = layout_rocker_bolster(rb)
+        assert lay.rocker_top_radius_in == pytest.approx(
+            top_bearing_plate_radius_in(rb.dims["A"]))
+
+    def test_layout_r75_has_no_bolster_but_still_lays_out(self):
+        rb = rocker_bolster(75)
+        lay = layout_rocker_bolster(rb)
+        assert "no bolster" in lay.notes[0]
+        assert lay.rocker_height_in > 0
 
 
 class TestHeadwall:

@@ -7,6 +7,166 @@ Versions follow [Semantic Versioning](https://semver.org/) (major.minor.patch).
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-07-13
+
+- **Offline `.3dm` backend (`rhino_bim.emit_to_3dm`).** Bakes a
+  `BridgeEmit` into a real Rhino file with standalone `rhino3dm` — no
+  Rhino session, no MCP server, no network: prisms become capped
+  extrusion breps (correct caps for the non-convex I-girder and parapet
+  profiles, closed-mesh fallback for oblique vectors), studs cylinder
+  breps, rebar polyline curves, on the shared colored layer taxonomy
+  with every `bim.*` / `pay.*` / `mat.*` tag intact. The bridge-wide
+  record rides the `bim.type = bridge` marker, so
+  `read_bim_quantities` regenerates the pay-item estimate from the
+  saved file exactly (round-trip covered in `test_rhino_bim`). The MCP
+  server the prototypes used was only a transport; this is the
+  agent-free equivalent for locked-down networks.
+
+- **Substructure Gallery notebook.** One 3-span bridge carrying one of
+  each substructure type — semi-integral abutment, hammerhead pier,
+  capped-pile bent, integral abutment (bearing stack correctly
+  omitted) — every cap a real `optimize_pier_cap` STM design fed by
+  native `ContinuousBeam` Strength I reactions, executed end to end
+  (~30 s) and baked to `substructure_gallery.3dm` (4,468 tagged
+  objects) plus the JSON payload for the live `draw_bim_emit.py` path.
+
+- **OGRIP LiDAR fetch actually works.** The tile-index URLs shipped in
+  `state.ohio.ogrip` had been guessed and 404'd on every call. Now
+  live-verified: the `OGRIP/3DepTiles` index on `maps.ohio.gov`
+  (queries pass `inSR=4326`; the layer's native SR is EPSG:6549),
+  download URLs built from `Year`/`County`/`TileName` against the
+  `gis1.oit.ohio.gov` ZIP archives mirroring the portal's year switch,
+  ZIP-to-LAS extraction, and newest-collection-year dedup where OSIP
+  and 3DEP flights overlap. `Terrain.from_ogrip` caches tiles in
+  `temp_las/` and skips both re-download and re-extraction on reruns.
+
+- **Map-drawn bbox picker (`transportation.terrain.bbox_picker`).**
+  ipyleaflet widget: draw a rectangle in the notebook and
+  `picker.bbox` holds the WGS84 `(xmin, ymin, xmax, ymax)` tuple
+  `from_ogrip` takes — no copy/paste. Hybrid basemap by default (Esri
+  WorldImagery + their transparent road/place-label reference tiles,
+  individually toggleable, streets as an alternate base), scroll-wheel
+  zoom, fullscreen control, and a Nominatim search box that flies to a
+  typed address or jobsite.
+
+- **Steel girder walkthrough cleanup.** The Rhino emit cell's
+  SyntaxError (literal newline inside an f-string) is fixed and the
+  cell now writes `bim_emit.json`; the synthetic-valley terrain
+  fallback is removed (real data only — fallbacks belong in tests),
+  the LiDAR fetch sits behind `fetch_terrain = False` so the notebook
+  runs terrain-free, terrain stats read the TIN's own state-plane
+  bounds instead of bridge-frame points (`elevation_at` returns `None`
+  outside the hull — the old cell's crash), and the alignment takes
+  designed endpoint elevations. Tying the bridge frame to the terrain
+  frame is the flagged follow-up.
+
+- **API reference caught up.** 45 modules were missing from the sphinx
+  tree — the whole bridge-pipeline buildout (`bridge_layout`,
+  `bridge_type`, `continuous_beam`, `girder_pipeline` /
+  `girder_optimizer`, `construction_staging`, `substructure` +
+  `substructure_layout`, `placement`, `bim`, the box-beam and PS
+  I-beam pipelines, all nine `rhino_*` backends), `alignment` +
+  `terrain`, the `ogrip` package, and 21 ODOT SCD component modules —
+  plus refreshed package blurbs and the handful of real build
+  complaints fixed. Deployed to Pages via the `docs` tag.
+
+## [0.4.0] - 2026-07-12
+
+The BrIM "source of truth" release: the Rhino model now carries faithful
+geometry **and** a complete per-object BIM attribute record (pay items,
+SCD keys, materials) for three full bridge types — steel girder,
+adjacent box beam, and prestressed I-beam — plus the substructure, all
+regenerable into MIDAS models and quantity estimates. See
+`docs/BrIM_Work_Plan.md` for the phase-by-phase record.
+
+- **BrIM emit architecture (`structural.bim` + `structural.rhino_bim`).**
+  Typed per-component tag builders (`bim.*` / `pay.*` / `mat.*`), a
+  seeded ODOT pay-item catalog, and the transport-neutral
+  `girder_bridge_emit` → `EmitObject` record drawn by the pure-Rhino
+  `draw_bim_emit.py` driver. Deck as a crowned closed solid with BDM
+  Figure 309-4 overhangs, vertical-sided haunches (BDM 309.3.5), girder
+  k-fillets, shear studs, crown-following deck rebar mats, and the
+  SBR-1-20 parapet with its true bar cage. `read_bim_tags` /
+  `read_bim_quantities` / `pay_item_quantities` round-trip every tagged
+  object back into a pay-item rollup.
+
+- **Substructure (work-plan Phase 4/4v).** `substructure_layout` places
+  skew-aligned units under the layout with stepped beam seats that land
+  the bearing pads exactly; emit dimensions come from the executed
+  design objects (`PierCapDesign` STM ties drive the cap steel). Five
+  substructure types, mixable per support line via typed specs:
+  multi-column bent, capped-pile bent, hammerhead (tapered cap,
+  top-chord tie steel), seat / semi-integral / integral abutments (the
+  integral type skips the bearing stack entirely). Cap STM results
+  overlay in place; all concrete/pile/reinforcing quantities roll into
+  the 511/507/509 items.
+
+- **Adjacent box beams (Phase 5).** `box_beam_pipeline` re-derives the
+  PSBDD-1-25 standard designs' governing checks (adjacent-box LLDF,
+  elastic shortening + lump-sum losses, transfer/service stresses,
+  Strength I flexure) and builds the MIDAS line-beam hub with tie
+  elements; `rhino_box_bim` emits hollow members, strand rows, tie
+  rods, diaphragms, pads, and the composite topping. Walkthrough
+  notebook: design line → checks → tagged emit → MIDAS model.
+
+- **Prestressed I-beams (Phase 6, PSID-1-13).** The catalog now carries
+  all 13 sections — the seven WF36-49..WF72-49 wide-flange sections
+  were added, and the Modified AASHTO Type 4 top-flange widths were
+  **corrected** from Type 4's 20 in to the sheet's wide thin flanges
+  (36 in for the 60/66 in beams, 48 in for the 72 in) — plus the
+  permissible strand grids (vector-extracted from the drawing; row
+  totals reconcile with the stated 26/40/52/62 counts), draped-required
+  and shipping-strand locations, true tapered outlines, and the sheet
+  10 design constants. With no PSIDD companion sheet, the new
+  `ps_i_beam_pipeline` *designs* the strand pattern: smallest even
+  straight count passing Service III + Strength I on the composite
+  section, with end debonding designed in pairs (5.9.4.3.3, 45 % cap)
+  when transfer overstresses the beam end. MIDAS spoke breaks lines at
+  the sheet 5 diaphragm stations; `rhino_ps_i_bim` emits the slice with
+  the designed strand rows (and debond counts) in the tags.
+
+- **Railing program (SCD Waves 8-9).** RM-4.6 concrete barrier end
+  sections (Type B/B1/D lofting stations down to the 32 in
+  terminal-ready end), RM-4.4 single-slope barrier transitions
+  (plan-width tapers at sign supports and pier protection), RM-5.2
+  bikeway railing (new treated-wood post-and-rail module), RM-4.7
+  thrie-beam transitions between 32 in PCB families (three connection
+  pairs; the J-J Hook NJ shape correctly refuses). MGS bridge terminal
+  assemblies Type 1 / Type 2 / TST-2 as post-by-post layouts joining
+  guardrail runs to the bridge railings, plus `layout_mgs_run` and
+  registry-note coverage of the remaining MGS sheets.
+
+- **Roadway alignment + terrain.** New `transportation` alignment
+  module (horizontal/vertical geometry) with terrain support and a
+  point-cloud processing notebook — the first leg of the native
+  Alignment/Terrain roadmap.
+
+- **SCD review pass.** Every previously-built SCD component
+  (A-1-20 through VPF-1-24) re-verified against its drawing; findings
+  folded into the modules and `Validation TODOs.md`. The
+  `tests/functional_tests/ODOT SCD Components Verification.ipynb`
+  notebook now exercises all 33 component families end to end,
+  including the three BrIM emits, the substructure type gallery, and
+  every barrier shape family generated to a tagged `.3dm`.
+
+### Breaking
+
+- `odot.ps_i_beam`: the Modified AASHTO Type 4 sections'
+  `top_flange_width_in` changed from the incorrect `20.0` to the
+  drawing's `36.0` / `36.0` / `48.0`; anything consuming those values
+  (haunch widths, emit geometry) gets different — now correct —
+  dimensions.
+
+## [0.3.9] - 2026-07-07
+
+- **Python 3.9 support (Rhino compatibility).** Lowered `requires-python` to
+  `>=3.9` so civilpy installs into Rhino's bundled Python 3.9 (`rhinoinside` /
+  Rhino 8 CPython). Added `from __future__ import annotations` to the ~40
+  modules that used PEP 604 `X | Y` union type hints, which only evaluate
+  natively on 3.10+; deferred evaluation makes the same annotations safe on
+  3.9 without changing any typing. `tox.ini` now runs the suite under `py39`
+  in addition to `py311`.
+
 - **Bolted field splice — plate sizing tools.** Added
   `size_flange_splice_plates` (C6.13.6.1.3b) and `size_web_splice_plate`
   (6.13.6.1.3c / seal spacing 6.13.2.6.2) to `aashto.lrfd.splices`, so the

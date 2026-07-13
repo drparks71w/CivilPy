@@ -18,8 +18,8 @@ below absorbs that."""
 import pytest
 
 from civilpy.structural.aashto.lrfd import (
-    design_splice, SpliceInput, Flange, GirderSide, SpliceLoads, BoltSpec,
-    PlatePair, WebPlate,
+    design_splice, SpliceInput, Flange, GirderSide, girder_side_from_w,
+    SpliceLoads, BoltSpec, PlatePair, WebPlate,
 )
 
 
@@ -230,3 +230,138 @@ class TestDesignTwo:
             "top flange Service II slip"]
         assert slip.ok is False
         assert not self.d.ok
+
+
+# ---------------------------------------------------------------------------
+# Worked design 3 — ROLLED-BEAM composite splice, ODOT/NSBA workbook method.
+# REF-DESIGN (location redacted) Field Splice #1: W24x131 -> W24x104,
+# Gr. 50, 7/8" A325 oversize / Class C.  Reproduced from the workbook's
+# recorded MDX demands with method="odot_bdm": the flange is designed for the
+# actual flange stress Fcf (6.13.6.1.3b), the 6.8.3 net-area hole, and the
+# per-plate single-shear bolt count on the pre-2017 (0.38) shear coefficient
+# the workbook uses.  Numeric targets are the workbook's own results; no
+# copyrighted content is reproduced.
+#
+# Flange reproduces exactly (design force 332.53 k, 10 bolts/flange, all
+# checks OK).  The web differs by design intent: the workbook fills the plate
+# with 4x7 = 28 bolts at a traditional ~2.6" pitch, while civilpy places the
+# minimum count that satisfies the maximum bolt spacing (4x4 = 16) -- a
+# legitimately lighter detail and exactly the kind of saving the optimization
+# goal (B5) exists to find, so it is documented here, not forced to 28.
+# ---------------------------------------------------------------------------
+
+def _design_sum_21_0107_splice_1():
+    larger = GirderSide(   # W24x131
+        top_flange=Flange("Grade 50", 0.960, 12.900),
+        bottom_flange=Flange("Grade 50", 0.960, 12.900),
+        web_material="Grade 50", web_thickness=0.605, web_depth=22.580,
+        haunch=2.0, stiffener_spacing_ft=None, stiffened=False,
+    )
+    smaller = GirderSide(  # W24x104 (governs)
+        top_flange=Flange("Grade 50", 0.750, 12.800),
+        bottom_flange=Flange("Grade 50", 0.750, 12.800),
+        web_material="Grade 50", web_thickness=0.500, web_depth=22.600,
+        haunch=2.0, stiffener_spacing_ft=None, stiffened=False,
+    )
+    loads = SpliceLoads(
+        dc1_m=10.90, dc1_v=-10.00, dc2_m=3.00, dc2_v=-2.60,
+        dw_m=4.70, dw_v=-4.00, ll_pos_m=337.10, ll_pos_v=0.0,
+        ll_neg_m=-212.80, ll_neg_v=-36.60, deck_cast_m=0.0, deck_cast_v=0.0,
+    )
+    bolts = BoltSpec(bolt_type="A325", diameter=0.875,
+                     flange_threads_excluded=False, web_threads_excluded=False,
+                     surface_class="C", hole_type="oversize")
+    plates = PlatePair("Grade 50", inner_thickness=0.375, inner_width=5.5,
+                       outer_thickness=0.375, outer_width=12.75, shear_planes=2)
+    inp = SpliceInput(
+        left=larger, right=smaller, loads=loads, bolts=bolts,
+        top_plates=plates, bottom_plates=plates,
+        web_plate=WebPlate("Grade 50", 0.4375, 2),
+        deck_composite=True, deck_thickness=7.5, deck_eff_width=84.0, fc=4.0,
+        top_flange_rows=2, bottom_flange_rows=2, web_rows=4,
+        bolt_spacing=3.0, flange_edge=1.5, flange_end=1.5,
+        web_edge=1.5, web_end=1.5, web_weld_size=0.3125, web_weld_clearance=0.375,
+        girder_gap=0.75, entering_tightening=3.0, design_year=2016,
+        method="odot_bdm", fcf_top=7.92, fcf_bot=18.65, r_h=1.0, alpha=1.0,
+    )
+    return design_splice(inp)
+
+
+class TestSpliceSum210107:
+    def setup_method(self):
+        self.d = _design_sum_21_0107_splice_1()
+
+    def test_flange_design_force(self):
+        # Fcf = 0.75*alpha*phi_f*Fyf = 37.5 ksi (the low-stress floor governs);
+        # P = Fcf*Ae = 37.5*8.867 = 332.53 kip for both flanges.
+        assert self.d.top_flange.design_force == pytest.approx(332.53, rel=1e-3)
+        assert self.d.bottom_flange.design_force == pytest.approx(
+            332.53, rel=1e-3)
+
+    def test_flange_bolt_counts(self):
+        # 10 bolts per flange per side (2 rows x 5 columns), strength-governed.
+        assert self.d.top_flange.total_bolts == 10
+        assert self.d.top_flange.strength_bolts == 10
+        assert self.d.bottom_flange.total_bolts == 10
+        assert self.d.bottom_flange.strength_bolts == 10
+
+    def test_no_filler_reduction(self):
+        # Filler is 0.96 - 0.75 = 0.21 in < 1/4 in -> no development penalty.
+        assert self.d.top_flange.extra["filler_R"] == pytest.approx(1.0)
+        assert self.d.bottom_flange.extra["filler_R"] == pytest.approx(1.0)
+
+    def test_all_flange_checks_pass(self):
+        for flange in (self.d.top_flange, self.d.bottom_flange):
+            failed = [c.name for c in flange.checks if not c.ok]
+            assert failed == [], f"{flange.name}: {failed}"
+
+    def test_overall_ok(self):
+        assert self.d.ok
+
+    def test_web_is_the_lighter_optimized_detail(self):
+        # civilpy: minimum bolts for max spacing (4 cols x 4 rows = 16);
+        # the workbook's traditional full-fill detail is 4 x 7 = 28.  The
+        # web design shear is the full web capacity phi*Vn = 327.70 kip.
+        assert self.d.web.total_bolts == 16
+        assert self.d.web.design_force == pytest.approx(327.70, rel=1e-3)
+
+
+class TestGirderSideFromW:
+    """G7 rolled-shape front end: a GirderSide built from an AISC label must
+    reproduce the hand-entered REF-DESIGN Splice #1 design (the workbook's
+    section dimensions are the AISC database values)."""
+
+    def test_from_label_matches_aisc(self):
+        gs = girder_side_from_w("W24X104", "Grade 50")
+        assert gs.top_flange.width == pytest.approx(12.8)
+        assert gs.top_flange.thickness == pytest.approx(0.75)
+        assert gs.web_thickness == pytest.approx(0.5)
+        assert gs.web_depth == pytest.approx(22.6)      # d - 2*tf = 24.1 - 1.5
+
+    def test_design_from_labels_reproduces_splice_1(self):
+        loads = SpliceLoads(
+            dc1_m=10.90, dc1_v=-10.00, dc2_m=3.00, dc2_v=-2.60,
+            dw_m=4.70, dw_v=-4.00, ll_pos_m=337.10, ll_pos_v=0.0,
+            ll_neg_m=-212.80, ll_neg_v=-36.60,
+        )
+        bolts = BoltSpec(bolt_type="A325", diameter=0.875,
+                         flange_threads_excluded=False,
+                         web_threads_excluded=False,
+                         surface_class="C", hole_type="oversize")
+        plates = PlatePair("Grade 50", 0.375, 5.5, 0.375, 12.75, 2)
+        inp = SpliceInput(
+            left=girder_side_from_w("W24X131", "Grade 50"),
+            right=girder_side_from_w("W24X104", "Grade 50"),
+            loads=loads, bolts=bolts, top_plates=plates, bottom_plates=plates,
+            web_plate=WebPlate("Grade 50", 0.4375, 2),
+            deck_composite=True, deck_thickness=7.5, deck_eff_width=84.0,
+            top_flange_rows=2, bottom_flange_rows=2, web_rows=4,
+            bolt_spacing=3.0, flange_edge=1.5, flange_end=1.5,
+            web_edge=1.5, web_end=1.5, design_year=2016,
+            method="odot_bdm", fcf_top=7.92, fcf_bot=18.65,
+        )
+        d = design_splice(inp)
+        assert d.top_flange.design_force == pytest.approx(332.53, rel=2e-3)
+        assert d.top_flange.total_bolts == 10
+        assert d.bottom_flange.total_bolts == 10
+        assert d.ok

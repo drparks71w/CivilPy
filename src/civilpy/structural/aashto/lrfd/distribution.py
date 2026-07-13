@@ -16,6 +16,8 @@ Kg in in^4.  Results carry the table's range-of-applicability flags in
 the lever rule, it does not extrapolate.
 """
 
+from __future__ import annotations
+
 import math
 from dataclasses import dataclass, field
 

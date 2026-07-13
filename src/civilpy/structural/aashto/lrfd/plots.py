@@ -11,6 +11,8 @@ calculation path); these helpers render their outputs following the
 package-wide convention (optional ``ax``, figure returned).
 """
 
+from __future__ import annotations
+
 import matplotlib.pyplot as plt
 
 

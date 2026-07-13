@@ -43,6 +43,8 @@ f'c = 7 ksi (f'ci = 5 ksi), Grade 60 reinforcing, 0.5 in 270 ksi
 low-relaxation strand (0.167 sq in).
 """
 
+from __future__ import annotations
+
 import csv
 import os
 from dataclasses import dataclass, field
@@ -192,6 +194,25 @@ def box_beam_design(box: str, span: int) -> BoxBeamDesign:
 def designs_for_box(box: str) -> list[BoxBeamDesign]:
     """All span designs for one box designation, shortest span first."""
     return [d for d in BOX_BEAM_DESIGNS if d.box == box]
+
+
+#: Strand row heights above the soffit, inches (PSBDD-1-25 sheets 1 & 3).
+STRAND_ROW_HEIGHTS_IN: tuple[float, float, float] = (2.0, 4.0, 6.0)
+
+
+def strand_group_height_in(design: BoxBeamDesign) -> float:
+    """Height of the strand-group centroid above the soffit (in), the
+    strand-count-weighted average of the 2/4/6 in row heights. A schematic
+    single-height tendon path uses this; it is consistent with (Yb of the
+    matching :class:`~civilpy.structural.odot.box_beam.BoxSectionProperties`)
+    minus ``design.e_beam`` to within drawing rounding.
+    """
+    n2, n4, n6 = design.strands_2in, design.strands_4in, design.strands_6in
+    total = n2 + n4 + n6
+    if total == 0:
+        raise ValueError(f"{design.box} span {design.span} ft has no strands")
+    h2, h4, h6 = STRAND_ROW_HEIGHTS_IN
+    return (n2 * h2 + n4 * h4 + n6 * h6) / total
 
 
 def box_beam_rating(box: str, span: int, width_ft: int) -> BoxBeamRating:

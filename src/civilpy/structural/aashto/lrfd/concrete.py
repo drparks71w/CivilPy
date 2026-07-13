@@ -10,6 +10,8 @@ Article numbers follow the 8th Edition reorganization (5.6.3.2 flexure,
 5.6.3.3 minimum reinforcement, 5.7.3.3 shear).  Units: kip, inch, ksi.
 """
 
+from __future__ import annotations
+
 import math
 from dataclasses import dataclass
 

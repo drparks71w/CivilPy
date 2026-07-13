@@ -81,7 +81,7 @@ class TestRestraint:
 class TestElement:
     def test_member_type_default_is_auto(self):
         assert Element("a", "b").member_type == "auto"
-        assert set(MEMBER_TYPES) == {"auto", "tie", "strut"}
+        assert set(MEMBER_TYPES) == {"auto", "tie", "strut", "beam"}
 
     def test_invalid_member_type_raises(self):
         with pytest.raises(ValueError):

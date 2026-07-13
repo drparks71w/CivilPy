@@ -140,10 +140,17 @@ from civilpy.structural.aashto.lrfd.bolted_field_splice import (
     ComponentDesign,
     Flange,
     GirderSide,
+    girder_side_from_w,
     SpliceLoads,
     BoltSpec,
     PlatePair,
     WebPlate,
+)
+from civilpy.structural.aashto.lrfd.composite import (
+    CompositeGirder,
+    SectionProps,
+    modular_ratio,
+    design_rolled_splice,
 )
 from civilpy.structural.aashto.lrfd.stm import (
     stm_tie_resistance,
@@ -205,6 +212,15 @@ from civilpy.structural.aashto.lrfd.creep_shrinkage import (
     creep_coefficient,
     shrinkage_strain,
     factor_time_development,
+)
+from civilpy.structural.aashto.lrfd.deck import (
+    A4_NEGATIVE_OFFSETS,
+    A4_SPANS,
+    deck_dead_load_moment,
+    deck_equivalent_strip,
+    deck_ll_negative_moment,
+    deck_ll_positive_moment,
+    deck_strip_checks,
 )
 
 __all__ = [
@@ -307,6 +323,11 @@ __all__ = [
     "ComponentDesign",
     "Flange",
     "GirderSide",
+    "girder_side_from_w",
+    "CompositeGirder",
+    "SectionProps",
+    "modular_ratio",
+    "design_rolled_splice",
     "SpliceLoads",
     "BoltSpec",
     "PlatePair",
@@ -353,4 +374,11 @@ __all__ = [
     "creep_coefficient",
     "shrinkage_strain",
     "factor_time_development",
+    "A4_NEGATIVE_OFFSETS",
+    "A4_SPANS",
+    "deck_dead_load_moment",
+    "deck_equivalent_strip",
+    "deck_ll_negative_moment",
+    "deck_ll_positive_moment",
+    "deck_strip_checks",
 ]

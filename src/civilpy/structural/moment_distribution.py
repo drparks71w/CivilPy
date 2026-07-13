@@ -18,6 +18,8 @@ Two equal 20-ft spans, 2 klf everywhere, pinned ends:
 100.0
 """
 
+from __future__ import annotations
+
 #  CivilPy
 #  Copyright (C) 2019-2026 Dane Parks
 #  SPDX-License-Identifier: MIT

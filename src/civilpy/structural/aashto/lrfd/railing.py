@@ -23,6 +23,8 @@ MASH-era); the 10th Edition adds the minimum rail height H row carried
 here as ``h_min``.
 """
 
+from __future__ import annotations
+
 import math
 from dataclasses import dataclass
 

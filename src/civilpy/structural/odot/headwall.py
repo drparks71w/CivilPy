@@ -26,7 +26,7 @@ against the drawings in the test suite.
 
 import csv
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 _RES_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "res")
 _CSV_PATH = os.path.join(_RES_DIR, "hw_2_1_circular.csv")
@@ -145,3 +145,122 @@ def elliptical_headwall_for_rise(rise: float) -> EllipticalHeadwall:
         if h.rise == rise:
             return h
     raise KeyError(f"no HW-2.2 elliptical headwall for rise {rise} in")
+
+
+# ── geometry / layout (circular pipe, end treatment "A") ─────────────────
+#
+# The drawable subset is the rectangular cast-in-place headwall of the
+# circular tables (HW-2.1 corrugated-metal/plastic, HW-2.2 concrete): a
+# wall of tabulated width W and height H, front face vertical, back face
+# battered from HEADWALL_TOP_THICKNESS_IN at the top to the tabulated T at
+# the base, pierced by the circular pipe opening (flow line at the base
+# datum, so the pipe centre sits D/2 above it).  The concrete cover over
+# the pipe crown is therefore H - D; on the drawing this reaches its 6 in
+# minimum exactly at D = 48 in, which is the end-treatment A/B boundary.
+# Sizes with less than 6 in cover use end treatment "B" (the top is bevel-
+# cut by 2:1 slopes tangent to the pipe) and the pipe-arch / elliptical
+# tables are not drawn here -- both raise (see SCD_BUILD_QUESTIONS.md).
+
+Point = tuple[float, float, float]  # (x, y, z) feet
+
+SCD = "HW-2.1"
+REVISION = "07-15-2022"
+
+HEADWALL_TOP_THICKNESS_IN = 12.0  # wall thickness at the top (profile view)
+MIN_COVER_IN = 6.0                # min concrete over the pipe crown (note)
+EMBANKMENT_SLOPE = 2.0            # 2:1 fill / channel slope
+
+
+@dataclass(frozen=True)
+class HeadwallInput:
+    """Inputs for a circular-pipe headwall solid.
+
+    ``diameter_in`` is a tabulated pipe inside diameter D; ``concrete``
+    selects the HW-2.2 concrete-pipe table instead of the HW-2.1
+    corrugated-metal/plastic table."""
+
+    diameter_in: float
+    concrete: bool = False
+
+
+@dataclass(frozen=True)
+class HeadwallLayout:
+    """The generated headwall.  ``front_outline`` is the vertical front
+    face (counterclockwise in the X-Z plane at y = 0); ``side_profile`` is
+    the battered wall cross-section in the Y-Z plane at x = -W/2 (front
+    vertical, back battered 12 in -> T); the solid is ``side_profile``
+    swept the full width W in +X with the circular ``pipe`` opening
+    (centre ``pipe_center``, diameter ``pipe_diameter_ft``) cut through
+    it along Y.  Origin: x = 0 on the wall centreline, y = 0 at the front
+    face (wall behind, -y), z = 0 at the flow line / wall base."""
+
+    inputs: HeadwallInput
+    table: Headwall
+    front_outline: tuple[Point, Point, Point, Point]
+    side_profile: tuple[Point, Point, Point, Point]
+    pipe_center: Point
+    pipe_diameter_ft: float
+    width_ft: float
+    height_ft: float
+    base_thickness_ft: float
+    top_thickness_ft: float
+    cover_in: float
+    concrete_cy: float
+    notes: tuple[str, ...] = field(default_factory=tuple)
+
+
+def layout_headwall(inp: HeadwallInput) -> HeadwallLayout:
+    """Generate the rectangular circular-pipe headwall solid (end
+    treatment "A").
+
+    Raises ``KeyError`` for a pipe diameter that is not a tabulated size
+    and ``ValueError`` for a size whose cover over the pipe crown drops
+    below the 6 in minimum (end treatment "B", not modeled here)."""
+    hw = headwall_for_diameter(inp.diameter_in, concrete=inp.concrete)
+    cover_in = hw.height - inp.diameter_in
+    if cover_in < MIN_COVER_IN - 1e-9:
+        raise ValueError(
+            f"pipe diameter {inp.diameter_in:g} in leaves {cover_in:g} in "
+            f"cover (< {MIN_COVER_IN:g} in): this is HW end treatment 'B' "
+            "(top bevel-cut 2:1 tangent to the pipe), which is not modeled "
+            "here -- see HW-2.1 sheets 1-4 and SCD_BUILD_QUESTIONS.md")
+
+    W = hw.width / 12.0
+    H = hw.height / 12.0
+    T = hw.thickness / 12.0
+    Tt = HEADWALL_TOP_THICKNESS_IN / 12.0
+    D = inp.diameter_in / 12.0
+
+    front_outline = ((-W / 2.0, 0.0, 0.0), (W / 2.0, 0.0, 0.0),
+                     (W / 2.0, 0.0, H), (-W / 2.0, 0.0, H))
+    # front face vertical at y = 0; back face battered Tt (top) -> T (base)
+    side_profile = ((-W / 2.0, 0.0, 0.0), (-W / 2.0, 0.0, H),
+                    (-W / 2.0, -Tt, H), (-W / 2.0, -T, 0.0))
+    pipe_center = (0.0, -T / 2.0, D / 2.0)
+
+    notes = (
+        f"HW-2.1 circular headwall for {inp.diameter_in:g} in "
+        f"{'concrete' if inp.concrete else 'CMP/plastic'} pipe: "
+        f"W {hw.width:g} x H {hw.height:g} x T {hw.thickness:g} in, "
+        f"{hw.concrete_cy:g} CY",
+        f"Cover over pipe crown: {cover_in:g} in (6 in min at D = 48 in).",
+        "Not modeled: end treatment 'B' (top 2:1 bevel tangent to pipe, "
+        "cover < 6 in), the pipe-arch and elliptical tables, the anchor "
+        "bolt/cable/eyebolt options, and the 6 in inlet headwall extension.",
+    )
+
+    return HeadwallLayout(
+        inputs=inp,
+        table=hw,
+        front_outline=front_outline,
+        side_profile=side_profile,
+        pipe_center=pipe_center,
+        pipe_diameter_ft=D,
+        width_ft=W,
+        height_ft=H,
+        base_thickness_ft=T,
+        top_thickness_ft=Tt,
+        cover_in=cover_in,
+        concrete_cy=hw.concrete_cy,
+        notes=notes,
+    )

@@ -10,6 +10,8 @@ Articles follow the 9th/10th Edition numbering (unchanged since the 5th
 Edition for these checks).  Units: kip, inch, ksi.
 """
 
+from __future__ import annotations
+
 import math
 
 from civilpy.structural.aashto.lrfd.core import CheckResult, article

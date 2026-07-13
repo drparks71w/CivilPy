@@ -29,6 +29,8 @@ Results are per foot of culvert length: moments in kip-in/ft, thrust and
 shear in kip/ft, enveloped over all construction increments.
 """
 
+from __future__ import annotations
+
 #  CivilPy
 #  Copyright (C) 2019-2026 Dane Parks
 #

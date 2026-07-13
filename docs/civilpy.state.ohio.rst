@@ -20,6 +20,14 @@ civilpy.state.ohio.db\_tables module
    :undoc-members:
    :show-inheritance:
 
+civilpy.state.ohio.ogrip module
+-------------------------------
+
+.. automodule:: civilpy.state.ohio.ogrip
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 civilpy.state.ohio.search\_tools module
 ----------------------------------------
 

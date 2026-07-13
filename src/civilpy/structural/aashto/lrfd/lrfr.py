@@ -19,6 +19,8 @@ agencies routinely customize them.
 Consistent force/moment units in = same units out; RF is dimensionless.
 """
 
+from __future__ import annotations
+
 from civilpy.structural.aashto.lrfd.core import CheckResult, article
 
 # Condition factor phi_c (Table 6A.4.2.3-1), keyed by member condition

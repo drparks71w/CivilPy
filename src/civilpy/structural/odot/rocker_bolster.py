@@ -20,7 +20,9 @@ Dimensions in inches, weights in pounds, load in pounds.  Spot-checked
 against the drawing in the test suite.
 """
 
-from dataclasses import dataclass
+from __future__ import annotations
+
+from dataclasses import dataclass, field
 
 #: Dimension letters in RB-1-55 table column order.
 DIM_LETTERS: tuple[str, ...] = (
@@ -29,6 +31,16 @@ DIM_LETTERS: tuple[str, ...] = (
 
 #: Maximum anticipated movement this bearing design allows, inches.
 MAX_MOVEMENT = 2.0
+
+# ── TOP BEARING DETAIL formulas (rocker's curved bearing surface) ────────
+#: r1 (the web -- the tighter curve nearest the rocker body), inches.
+def top_bearing_web_radius_in(a_in: float) -> float:
+    return a_in / 2.0 + 1.0 / 16.0
+
+
+#: r2 (the top plate -- the curve the fixed masonry side rides against), in.
+def top_bearing_plate_radius_in(a_in: float) -> float:
+    return a_in / 2.0 + 3.0 / 32.0
 
 
 @dataclass(frozen=True)
@@ -111,3 +123,69 @@ def smallest_for_load(load_lb: float) -> RockerBolster:
         if r.max_load_lb >= load_lb:
             return r
     raise ValueError(f"load {load_lb} lb exceeds the largest RB-1-55 line")
+
+
+# ── layout (drawable subset) ──────────────────────────────────────────────
+#
+# A simplified but proportioned solid: a base (masonry) plate B (span
+# direction) x L (transverse) x T thick, topped by a frustum tapering from
+# the base footprint to width A at the underside of the bearing (height C
+# above the base plate). The bolster's top is flat; the rocker's top is
+# capped by the curved bearing surface (TOP BEARING DETAIL, radius r2 =
+# A/2 + 3/32"). The flange plate, welds, anchor bolts, dowels, and
+# reinforcing are cataloged (the dims/notes above) but not drawn.
+
+Point = tuple[float, float, float]  # (x, y, z) inches; x = span, y = transverse
+
+
+@dataclass(frozen=True)
+class RockerBolsterLayout:
+    """The generated bolster + rocker pair for one capacity line, sharing
+    the base-plate footprint origin at plan center, z = 0 at the bottom of
+    the base plate."""
+
+    rb: RockerBolster
+    base_outline: tuple[Point, Point, Point, Point]
+    base_thickness_in: float
+    bolster_top: tuple[Point, Point, Point, Point]
+    bolster_height_in: float
+    rocker_top_radius_in: float
+    rocker_height_in: float
+    notes: tuple[str, ...] = field(default_factory=tuple)
+
+
+def layout_rocker_bolster(rb: RockerBolster) -> RockerBolsterLayout:
+    """Generate the drawable subset of one RB-1-55 capacity line: the
+    shared base-plate footprint, the bolster's tapered+flat-top body, and
+    the rocker's tapered+curved-top body."""
+    d = rb.dims
+    B, L, T, A, C = d["B"], d["L"], d["T"], d["A"], d["C"]
+    half_b, half_l = B / 2.0, L / 2.0
+
+    base_outline = ((-half_b, -half_l, 0.0), (half_b, -half_l, 0.0),
+                    (half_b, half_l, 0.0), (-half_b, half_l, 0.0))
+    bolster_top = ((-A / 2.0, -half_l, 0.0), (A / 2.0, -half_l, 0.0),
+                  (A / 2.0, half_l, 0.0), (-A / 2.0, half_l, 0.0))
+
+    r2 = top_bearing_plate_radius_in(A)
+
+    notes = (
+        f"RB-1-55 {rb.bolster_no or '(no bolster)'} / {rb.rocker_no}: "
+        f"rated {rb.capacity_kips} kips ({rb.max_load_lb:,.0f} lb max), "
+        f"base {B:g} x {L:g} in, overall height {d['H']:g} in",
+        f"Limitation: anticipated movement <= {MAX_MOVEMENT:g} in.",
+        "Not modeled: flange plate + weld, anchor bolts, dowels, bearing "
+        "seat reinforcing, preformed bearing pad. Only A/B/C/L/T are used "
+        "for the drawn solids; D/F/G/K/M/R/Y are cataloged, not drawn.",
+    )
+
+    return RockerBolsterLayout(
+        rb=rb,
+        base_outline=base_outline,
+        base_thickness_in=T,
+        bolster_top=bolster_top,
+        bolster_height_in=T + C,
+        rocker_top_radius_in=r2,
+        rocker_height_in=T + C,
+        notes=notes,
+    )

@@ -15,6 +15,8 @@ use, Cd deck factor) are inputs rather than functions — take them from the
 design tables for the material at hand.
 """
 
+from __future__ import annotations
+
 # //TODO - Implement timber_shear_resistance function to complete fundamental member checks
 
 # //TODO - Add AASHTO LRFD interaction equations for combined axial and bending loading

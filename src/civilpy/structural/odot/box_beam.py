@@ -34,8 +34,96 @@ DESIGN_DATA_SHEET = "PSBDD-1-25"
 #: Standard box-beam depths, inches (PSBD-1-25 sheet 4/6).
 BOX_BEAM_DEPTHS: tuple[int, ...] = (17, 21, 27, 33, 42)
 
+#: Standard (and only current) box-beam width, inches. Earlier editions of
+#: this drawing (PSBD-2-07) also cataloged a 36 in wide beam; PSBD-1-25
+#: carries 48 in wide adjacent box beams only.
+BOX_WIDTH_IN = 48.0
+
 #: Maximum structure skew this standard applies to, degrees.
 MAX_SKEW_DEG = 30.0
+
+# ---------------------------------------------------------- cross section
+# Void / flange geometry (PSBD-1-25 sheet 3/6, "36 in" and "48 in wide
+# beams" section views). The top flange, bottom flange, and both webs share
+# one wall thickness across every depth and width; the void corners carry a
+# uniform fillet. Both values are confirmed self-consistent against the
+# drawing's own callouts: void width = width - 2*wall (48 - 11 = 37 in;
+# checked against the drawn "37"" void width) and void height = depth -
+# 2*wall (e.g. 27 - 11 = 16 in, matching the drawn "16"" void height).
+
+#: Top/bottom flange and web wall thickness, inches (uniform across every
+#: standard depth and width).
+BOX_WALL_THICKNESS_IN = 5.5
+#: Void corner fillet, inches (square, e.g. "3 x 3").
+BOX_VOID_FILLET_IN = 3.0
+
+#: Composite (CIP) topping: structural thickness carried in the composite
+#: section properties, plus a non-structural monolithic wearing surface on
+#: top of it (PSBD-1-25 sheet 4/6 section-properties note).
+COMPOSITE_SLAB_STRUCTURAL_THICKNESS_IN = 5.0
+COMPOSITE_SLAB_WEARING_SURFACE_IN = 1.0
+#: E_slab / E_beam used to compute the tabulated composite section
+#: properties (PSBD-1-25 sheet 4/6 note).
+COMPOSITE_MODULAR_RATIO = 0.90
+
+
+def box_void_dimensions(depth_in: float, width_in: float = BOX_WIDTH_IN
+                         ) -> tuple[float, float]:
+    """Void ``(width, height)`` in inches for a box beam of ``depth_in`` /
+    ``width_in``, uniform-wall (:data:`BOX_WALL_THICKNESS_IN` each side)."""
+    return (width_in - 2.0 * BOX_WALL_THICKNESS_IN,
+            depth_in - 2.0 * BOX_WALL_THICKNESS_IN)
+
+
+@dataclass(frozen=True)
+class BoxSectionProperties:
+    """Non-composite ("beam only") and composite section properties for one
+    standard box-beam depth (PSBD-1-25 sheet 4/6 tables). Lengths in inches;
+    ``area`` in in^2, ``i``/``ic`` in in^4, ``zt``/``zb``/``ztc``/``zbc`` in
+    in^3. The composite values assume the standard
+    :data:`COMPOSITE_SLAB_STRUCTURAL_THICKNESS_IN` topping at
+    :data:`COMPOSITE_MODULAR_RATIO`; they apply to any beam of this depth
+    when a CIP composite slab is cast, independent of which design table
+    (composite vs. non-composite strand pattern) governs the beam itself.
+    """
+
+    depth: int              # in
+    width: float = BOX_WIDTH_IN   # in
+    area: float = 0.0        # Ab, in^2 (beam only)
+    i: float = 0.0            # Ib, in^4 (beam only)
+    yb: float = 0.0           # in, beam-only centroid above soffit
+    zt: float = 0.0           # in^3
+    zb: float = 0.0           # in^3
+    ic: float = 0.0           # in^4 (composite)
+    ybc: float = 0.0          # in, composite centroid above soffit
+    ztc: float = 0.0          # in^3 (composite)
+    zbc: float = 0.0          # in^3 (composite)
+
+
+#: 48 in wide box-beam section properties by depth (PSBD-1-25 sheet 4/6).
+BOX_SECTION_PROPERTIES: dict[int, BoxSectionProperties] = {
+    17: BoxSectionProperties(17, area=590.3, i=18819, yb=8.44, zt=2198, zb=2230,
+                              ic=38620, ybc=11.40, ztc=6898, zbc=3387),
+    21: BoxSectionProperties(21, area=647.8, i=33884, yb=10.42, zt=3202, zb=3253,
+                              ic=62057, ybc=13.69, ztc=8489, zbc=4533),
+    27: BoxSectionProperties(27, area=713.8, i=66222, yb=13.39, zt=4866, zb=4945,
+                              ic=109704, ybc=17.13, ztc=11119, zbc=6403),
+    33: BoxSectionProperties(33, area=774.5, i=111342, yb=16.33, zt=6681, zb=6816,
+                              ic=173831, ybc=20.51, ztc=13922, zbc=8474),
+    42: BoxSectionProperties(42, area=873.5, i=205459, yb=20.78, zt=9684, zb=9886,
+                              ic=303315, ybc=25.49, ztc=18367, zbc=11901),
+}
+
+
+def box_section_properties(depth_in: int) -> BoxSectionProperties:
+    """Look up the 48 in wide box-beam section properties for a standard
+    depth (17/21/27/33/42 in)."""
+    try:
+        return BOX_SECTION_PROPERTIES[int(depth_in)]
+    except KeyError:
+        raise ValueError(
+            f"non-standard beam depth {depth_in} in; choose one of "
+            f"{BOX_BEAM_DEPTHS}")
 
 
 @dataclass(frozen=True)
@@ -141,6 +229,22 @@ def diaphragm_end_offset(beam_depth: int) -> float:
     return 24.0 if beam_depth <= 21 else 30.0
 
 
+def diaphragm_stations_ft(span_ft: float, beam_depth: int) -> tuple[float, ...]:
+    """Longitudinal station (ft, from the beam start) of each intermediate
+    diaphragm: :func:`diaphragm_count` of them, evenly spaced between the
+    :func:`diaphragm_end_offset` inset from each end (a single diaphragm sits
+    at midspan). The drawing (sheet 4/6) states the count and the end offset
+    but not an explicit multi-diaphragm spacing rule; even spacing between
+    the end-offset points is the standard detailing assumption.
+    """
+    n = diaphragm_count(span_ft)
+    offset_ft = diaphragm_end_offset(beam_depth) / 12.0
+    if n == 1:
+        return (span_ft / 2.0,)
+    lo, hi = offset_ft, span_ft - offset_ft
+    return tuple(lo + (hi - lo) * k / (n - 1) for k in range(n))
+
+
 @dataclass(frozen=True)
 class BearingPad:
     """A standard steel-reinforced elastomeric bearing pad (PSBD-1-25 sheet
@@ -237,4 +341,59 @@ def load_plate_bevel(
     return (
         longitudinal_grade * math.sin(theta),
         longitudinal_grade * math.cos(theta),
+    )
+
+
+PointXYZ = tuple[float, float, float]  # (x, y, z) inches
+
+
+@dataclass(frozen=True)
+class LoadPlateLayout:
+    """The generated BD-1-11 beveled load plate, sized to a bearing pad's
+    plan footprint (``bearing_pad(name).length`` x ``.width``).
+
+    ``top_face`` carries the bevel: each corner's Z is offset by its (x, y)
+    distance from plate center times the transverse/longitudinal bevel
+    slope, so the plate top is a single tilted plane (not warped)."""
+
+    bevel_plate: BeveledLoadPlate
+    bottom_face: tuple[PointXYZ, PointXYZ, PointXYZ, PointXYZ]
+    top_face: tuple[PointXYZ, PointXYZ, PointXYZ, PointXYZ]
+    notes: tuple[str, ...] = ()
+
+
+def layout_load_plate(
+    bearing_pad_name: str, longitudinal_grade: float = 0.0,
+    skew_deg: float = 0.0, plate: BeveledLoadPlate = BEVELED_LOAD_PLATE,
+) -> "LoadPlateLayout":
+    """Generate the BD-1-11 beveled load plate sized to ``bearing_pad_name``
+    (``"B1"`` or ``"B2"``, :func:`bearing_pad`), tilted per
+    :func:`load_plate_bevel`. Origin at plate-bottom center, z = 0 at the
+    bottom face; x = bearing length (beam axis), y = bearing width."""
+    pad = bearing_pad(bearing_pad_name)
+    half_l, half_w = pad.length / 2.0, pad.width / 2.0
+    trans_bevel, long_bevel = load_plate_bevel(longitudinal_grade, skew_deg)
+    t = plate.min_thickness
+
+    bottom_face = ((-half_l, -half_w, 0.0), (half_l, -half_w, 0.0),
+                   (half_l, half_w, 0.0), (-half_l, half_w, 0.0))
+
+    def top_z(x: float, y: float) -> float:
+        return t + x * long_bevel + y * trans_bevel
+
+    top_face = tuple((x, y, top_z(x, y)) for (x, y, _) in bottom_face)
+
+    notes = (
+        f"BD-1-11 beveled load plate on a {bearing_pad_name} bearing pad "
+        f"({pad.length:g} x {pad.width:g} in), grade {longitudinal_grade:.3f}, "
+        f"skew {skew_deg:g} deg: transverse bevel {trans_bevel:.4f}, "
+        f"longitudinal bevel {long_bevel:.4f}",
+        "Not modeled: anchor rods/recesses, plate washers, preformed "
+        "bearing pad, bearing markings, box-beam anchor hole spacing "
+        "(varies by 36 in vs 48 in box width -- not tabulated here).",
+    )
+
+    return LoadPlateLayout(
+        bevel_plate=plate, bottom_face=bottom_face, top_face=top_face,
+        notes=notes,
     )
