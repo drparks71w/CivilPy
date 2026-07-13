@@ -7,6 +7,67 @@ Versions follow [Semantic Versioning](https://semver.org/) (major.minor.patch).
 
 ## [Unreleased]
 
+- **Offline `.3dm` backend (`rhino_bim.emit_to_3dm`).** Bakes a
+  `BridgeEmit` into a real Rhino file with standalone `rhino3dm` — no
+  Rhino session, no MCP server, no network: prisms become capped
+  extrusion breps (correct caps for the non-convex I-girder and parapet
+  profiles, closed-mesh fallback for oblique vectors), studs cylinder
+  breps, rebar polyline curves, on the shared colored layer taxonomy
+  with every `bim.*` / `pay.*` / `mat.*` tag intact. The bridge-wide
+  record rides the `bim.type = bridge` marker, so
+  `read_bim_quantities` regenerates the pay-item estimate from the
+  saved file exactly (round-trip covered in `test_rhino_bim`). The MCP
+  server the prototypes used was only a transport; this is the
+  agent-free equivalent for locked-down networks.
+
+- **Substructure Gallery notebook.** One 3-span bridge carrying one of
+  each substructure type — semi-integral abutment, hammerhead pier,
+  capped-pile bent, integral abutment (bearing stack correctly
+  omitted) — every cap a real `optimize_pier_cap` STM design fed by
+  native `ContinuousBeam` Strength I reactions, executed end to end
+  (~30 s) and baked to `substructure_gallery.3dm` (4,468 tagged
+  objects) plus the JSON payload for the live `draw_bim_emit.py` path.
+
+- **OGRIP LiDAR fetch actually works.** The tile-index URLs shipped in
+  `state.ohio.ogrip` had been guessed and 404'd on every call. Now
+  live-verified: the `OGRIP/3DepTiles` index on `maps.ohio.gov`
+  (queries pass `inSR=4326`; the layer's native SR is EPSG:6549),
+  download URLs built from `Year`/`County`/`TileName` against the
+  `gis1.oit.ohio.gov` ZIP archives mirroring the portal's year switch,
+  ZIP-to-LAS extraction, and newest-collection-year dedup where OSIP
+  and 3DEP flights overlap. `Terrain.from_ogrip` caches tiles in
+  `temp_las/` and skips both re-download and re-extraction on reruns.
+
+- **Map-drawn bbox picker (`transportation.terrain.bbox_picker`).**
+  ipyleaflet widget: draw a rectangle in the notebook and
+  `picker.bbox` holds the WGS84 `(xmin, ymin, xmax, ymax)` tuple
+  `from_ogrip` takes — no copy/paste. Hybrid basemap by default (Esri
+  WorldImagery + their transparent road/place-label reference tiles,
+  individually toggleable, streets as an alternate base), scroll-wheel
+  zoom, fullscreen control, and a Nominatim search box that flies to a
+  typed address or jobsite.
+
+- **Steel girder walkthrough cleanup.** The Rhino emit cell's
+  SyntaxError (literal newline inside an f-string) is fixed and the
+  cell now writes `bim_emit.json`; the synthetic-valley terrain
+  fallback is removed (real data only — fallbacks belong in tests),
+  the LiDAR fetch sits behind `fetch_terrain = False` so the notebook
+  runs terrain-free, terrain stats read the TIN's own state-plane
+  bounds instead of bridge-frame points (`elevation_at` returns `None`
+  outside the hull — the old cell's crash), and the alignment takes
+  designed endpoint elevations. Tying the bridge frame to the terrain
+  frame is the flagged follow-up.
+
+- **API reference caught up.** 45 modules were missing from the sphinx
+  tree — the whole bridge-pipeline buildout (`bridge_layout`,
+  `bridge_type`, `continuous_beam`, `girder_pipeline` /
+  `girder_optimizer`, `construction_staging`, `substructure` +
+  `substructure_layout`, `placement`, `bim`, the box-beam and PS
+  I-beam pipelines, all nine `rhino_*` backends), `alignment` +
+  `terrain`, the `ogrip` package, and 21 ODOT SCD component modules —
+  plus refreshed package blurbs and the handful of real build
+  complaints fixed. Deployed to Pages via the `docs` tag.
+
 ## [0.4.0] - 2026-07-12
 
 The BrIM "source of truth" release: the Rhino model now carries faithful
