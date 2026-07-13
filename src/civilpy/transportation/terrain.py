@@ -306,24 +306,30 @@ class Terrain:
 
     @classmethod
     def from_ogrip(cls, bbox_wgs84, out_dir="temp_las", **kwargs) -> "Terrain":
-        """Fetch OGRIP LiDAR tiles for a WGS84 bbox and build a Terrain.
+        """Fetch OGRIP/3DEP LiDAR tiles for a WGS84 bbox and build a Terrain.
 
-        Requires ``requests``.  Tiles are downloaded to ``out_dir``.
-        Remaining ``kwargs`` are passed to :meth:`from_las`.
+        Requires ``requests``.  Tiles are ZIP archives (~50-120 MB each,
+        holding one LAS) downloaded to ``out_dir`` and extracted there;
+        both survive for reuse on the next call.  When flights overlap
+        (OSIP and 3DEP cover the same ground) only the newest collection
+        year is used.  Remaining ``kwargs`` are passed to :meth:`from_las`.
         """
         from civilpy.state.ohio.ogrip import find_las_tiles, download_las_tile
         import os
+        import zipfile
 
         tiles = find_las_tiles(bbox_wgs84)
         if not tiles:
             raise ValueError(f"no OGRIP tiles found for bbox {bbox_wgs84}")
 
+        # overlapping flights: keep only the newest collection year
+        newest = max(str(t.get("Year", "")) for t in tiles)
+        tiles = [t for t in tiles if str(t.get("Year", "")) == newest]
+
         las_paths = []
         os.makedirs(out_dir, exist_ok=True)
 
         for tile in tiles:
-            # We'll assume the URL field name is 'LAS_URL' for now; 
-            # this may need adjustment once live-tested against OGRIP.
             url = tile.get("LAS_URL") or tile.get("LIDAR_URL")
             if not url:
                 continue
@@ -331,13 +337,26 @@ class Terrain:
             dest = os.path.join(out_dir, name)
             if not os.path.exists(dest):
                 download_las_tile(url, dest)
-            las_paths.append(dest)
+            if zipfile.is_zipfile(dest):
+                with zipfile.ZipFile(dest) as zf:
+                    members = [m for m in zf.namelist()
+                               if m.lower().endswith((".las", ".laz"))]
+                    for m in members:
+                        extracted = os.path.join(out_dir, os.path.basename(m))
+                        if not os.path.exists(extracted):
+                            with zf.open(m) as src, open(extracted, "wb") as out:
+                                while True:
+                                    chunk = src.read(1 << 20)
+                                    if not chunk:
+                                        break
+                                    out.write(chunk)
+                        las_paths.append(extracted)
+            else:
+                las_paths.append(dest)
 
         if not las_paths:
             raise ValueError("found tiles but none had download URLs")
 
-        # Merge multiple LAS files if necessary
-        # For the demo/A2, we'll just use the first one or build from all points
         all_pts = []
         for p in las_paths:
             t = cls.from_las(p, **kwargs)
