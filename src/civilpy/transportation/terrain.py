@@ -454,3 +454,62 @@ class Terrain:
         x0, y0, x1, y1 = self.bounds
         return (f"Terrain({self.n_points} pts, {self.n_triangles} tris, "
                 f"bounds=({x0:.1f}, {y0:.1f})-({x1:.1f}, {y1:.1f}))")
+
+
+class BboxPicker:
+    """Interactive notebook map for picking a WGS84 bounding box.
+
+    Draw a rectangle on the map and ``.bbox`` holds ``(xmin, ymin, xmax,
+    ymax)`` in decimal degrees (lon, lat) — the tuple
+    :meth:`Terrain.from_ogrip` and :meth:`Terrain.from_ohio_dem` take.
+    Drawing a new rectangle replaces the previous pick.  Displaying the
+    picker (last expression in a cell) shows the map; a corner readout
+    updates live so the chosen bbox is also visible on screen.
+
+    Requires ``ipyleaflet`` (``pip install ipyleaflet``), which gives the
+    two-way widget link a static ``folium`` map cannot: the drawn
+    geometry lands in the Python kernel with no copy/paste.
+    """
+
+    def __init__(self, center=(40.004, -83.005), zoom=14, height="480px"):
+        try:
+            import ipywidgets
+            from ipyleaflet import DrawControl, Map, WidgetControl
+        except ImportError as exc:                       # pragma: no cover
+            raise ImportError(
+                "the bbox picker needs 'ipyleaflet' (pip install "
+                "ipyleaflet); Terrain itself does not require it") from exc
+
+        self.bbox = None
+        self.map = Map(center=center, zoom=zoom)
+        self.map.layout.height = height
+
+        self._label = ipywidgets.HTML("draw a rectangle to set the bbox")
+        self.map.add(WidgetControl(widget=self._label,
+                                   position="bottomleft"))
+
+        draw = DrawControl(rectangle={"shapeOptions": {"color": "#c00",
+                                                       "weight": 2,
+                                                       "fillOpacity": 0.08}},
+                           polygon={}, polyline={}, circlemarker={},
+                           marker={}, edit=False, remove=False)
+        draw.on_draw(self._on_draw)
+        self.map.add(draw)
+        self._draw = draw
+
+    def _on_draw(self, target, action, geo_json):
+        lons, lats = zip(*geo_json["geometry"]["coordinates"][0])
+        self.bbox = (min(lons), min(lats), max(lons), max(lats))
+        self._label.value = ("bbox = (%.4f, %.4f, %.4f, %.4f)" % self.bbox)
+        # keep only the newest rectangle on the map
+        self._draw.data = self._draw.data[-1:]
+
+    def _ipython_display_(self):
+        from IPython.display import display
+        display(self.map)
+
+
+def bbox_picker(center=(40.004, -83.005), zoom=14) -> BboxPicker:
+    """A :class:`BboxPicker` centered on ``center`` (lat, lon) — display
+    it, draw a rectangle, then read ``picker.bbox``."""
+    return BboxPicker(center=center, zoom=zoom)

@@ -132,3 +132,16 @@ def test_from_las_lazy_import():
     except ImportError:
         with pytest.raises(ImportError):
             Terrain.from_las("nonexistent.las")
+
+
+def test_bbox_picker_draw_round_trip():
+    ipyleaflet = pytest.importorskip("ipyleaflet")  # noqa: F841
+    from civilpy.transportation.terrain import bbox_picker
+
+    p = bbox_picker()
+    assert p.bbox is None
+    p._on_draw(None, "created", {"geometry": {"coordinates": [[
+        [-83.010, 40.000], [-83.010, 40.008], [-83.000, 40.008],
+        [-83.000, 40.000], [-83.010, 40.000]]]}})
+    # (xmin, ymin, xmax, ymax) in lon/lat -- the from_ogrip tuple
+    assert p.bbox == (-83.010, 40.000, -83.000, 40.008)
