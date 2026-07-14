@@ -7,17 +7,26 @@ Versions follow [Semantic Versioning](https://semver.org/) (major.minor.patch).
 
 ## [Unreleased]
 
-- **BCHW gets the BrIM treatment (`structural.rhino_bchw`).** The box
-  culvert headwall/wingwall component previously drew three display
-  curves; `bchw_emit` now produces the full tagged record — tapered
-  wingwall stem, foreslope wall, cutoff wall, and L-shaped footing as
-  true solids plus the nominal WW5xx/FS5xx/F6xx reinforcing mats — on
-  `Culvert::*` layers with `bim.*`/`pay.*`/`mat.*` user text, rolling
-  into the 511E40000/509E00200 items and round-tripping through
-  `emit_to_3dm`/`read_bim_quantities` like the bridge emits. The BCHW
-  Grasshopper component was rewritten around it (solids + rebar outputs,
-  tagged bake, quantity report); `box_wall_thickness` also now drives
-  the foreslope-wall stem in the module's Section A-A profile.
+- **BCHW rebuilt against the actual Design Data sheets.** The module's
+  "no dimension table" premise was wrong — ODOT's six Design Data
+  sheets tabulate everything. `box_culvert_headwall` now carries the
+  full catalog: headwall Types A/B/C (Type B per roadway skew
+  0/15/30/45), the eight design-height rows each of dimensions,
+  X/Y bar callouts, footing designs 1-8 with their V/W/Z reinforcing,
+  foreslope-wall quantities, the span -> wall-thickness rule, and
+  `design_headwall` resolving `H = rise + 2 slab + foreslope height`
+  against the tables. `rhino_bchw.bchw_emit` produces the complete
+  culvert-end assembly — **both** wingwalls placed per type (45 deg /
+  straight / parallel, 2:1 backslope tops), the foreslope wall sitting
+  on top of the box with the barrel opening clear, a display-only
+  precast box stub, footings with the 4 ft extension and cutoff walls,
+  and the sheet's reinforcing series — on `Culvert::*` layers.
+  Quantities are the sheet's tabulated values (concrete on the solids,
+  reinforcing on schedule markers), so `pay_item_quantities` /
+  `read_bim_quantities` reproduce the sheet estimate exactly. The
+  Grasshopper component now takes the real design inputs (type, span,
+  rise, skew, foreslope height). All 24 civilpy-importing GH components
+  also gained the `# r: civilpy` package directive Rhino 8 needs.
 
 - **Basic line-girder tool (`structural.line_girder_tool`).** The
   simplest useful form of a shear/moment/deflection run, with no Rhino

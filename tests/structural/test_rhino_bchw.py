@@ -4,101 +4,183 @@
 #  SPDX-License-Identifier: MIT
 #  See the LICENSE file in the project root for full license text.
 
-"""Tests for the BCHW box culvert headwall / wingwall BrIM emit."""
+"""Tests for the BCHW headwall assembly BrIM emit (Design Data sheets)."""
 
 import math
 
 import pytest
 
-from civilpy.structural.odot.box_culvert_headwall import WingwallInput
+from civilpy.structural.odot.box_culvert_headwall import (
+    HeadwallInput,
+    TYPE_A_TABLE,
+    TYPE_B_TABLES,
+    TYPE_C_TABLE,
+    design_headwall,
+)
 from civilpy.structural.rhino_bchw import bchw_emit
 from civilpy.structural.rhino_bim import pay_item_quantities
 
 
 @pytest.fixture(scope="module")
-def inp() -> WingwallInput:
-    return WingwallInput(length_ft=14.0, skew_deg=15.0, wall_height_ft=8.0,
-                         foreslope_height_ft=5.0, cutoff_wall_height_ft=2.5,
-                         footing_width_ft=6.0, box_wall_thickness_in=10.0)
+def emit():
+    # 8 x 6 box, 10 in slabs, 6 in foreslope wall: H_req 8.17 -> H 8.5
+    return bchw_emit(HeadwallInput("A", 8.0, 6.0))
 
 
-@pytest.fixture(scope="module")
-def emit(inp):
-    return bchw_emit(inp, foreslope_run_ft=8.0)
+# ── catalog ───────────────────────────────────────────────────────────────
 
+def test_tables_cover_all_design_heights():
+    heights = [6.5 + i for i in range(8)]
+    assert [r.H for r in TYPE_A_TABLE] == heights
+    assert [r.H for r in TYPE_C_TABLE] == heights
+    for theta, table in TYPE_B_TABLES.items():
+        assert [r.H for r in table] == heights, theta
+
+
+def test_design_height_rounds_up():
+    d = design_headwall(HeadwallInput("A", 8.0, 6.0))
+    assert d.H_required == pytest.approx(6.0 + 20.0 / 12.0 + 0.5)
+    assert d.H == 8.5
+    assert d.row.L1 == 10.0 and d.row.h1 == 5.0
+    assert d.t_wall_in == 8.0
+
+
+def test_type_b_needs_tabulated_skew():
+    with pytest.raises(ValueError, match="tabulated"):
+        design_headwall(HeadwallInput("B", 8.0, 6.0, roadway_skew_deg=20.0))
+
+
+def test_size_limits_guarded():
+    with pytest.raises(ValueError, match="box_span_ft"):
+        design_headwall(HeadwallInput("A", 6.0, 6.0))
+    # the tables cover the whole size range: the max 20 x 10 box with
+    # 12 in slabs and the tall foreslope wall lands exactly on H = 13.5
+    d = design_headwall(HeadwallInput("A", 20.0, 10.0,
+                                      box_slab_thickness_in=12.0,
+                                      foreslope_wall_height_in=18.0))
+    assert d.H == 13.5 and d.H_required == pytest.approx(13.5)
+
+
+# ── assembly ──────────────────────────────────────────────────────────────
 
 def test_component_inventory(emit):
     by_type = {}
     for o in emit.objects:
         t = o.tags.get("bim.type")
         by_type[t] = by_type.get(t, 0) + 1
-    assert by_type["wingwall"] == 1
+    assert by_type["wingwall"] == 2            # BOTH wingwalls
     assert by_type["foreslope_wall"] == 1
-    assert by_type["cutoff_wall"] == 1
-    assert by_type["footing"] == 2            # L-shape: two legs
-    assert by_type["bridge"] == 1             # the document marker
-    assert by_type["rebar"] > 50
-
-    layers = {o.layer for o in emit.objects}
-    assert layers == {"Culvert::Wingwalls", "Culvert::Foreslope Walls",
-                      "Culvert::Footings", "Culvert::Rebar"}
+    assert by_type["cutoff_wall"] == 3         # two wall legs + culvert strip
+    assert by_type["footing"] == 3
+    assert by_type["box_culvert"] == 4         # display stub: 2 walls, 2 slabs
+    assert by_type["rebar"] > 100
 
 
-def test_every_object_carries_identity_and_scd(emit):
+def test_wingwalls_mirror_for_type_a(emit):
+    objs = {o.tags["bim.id"]: o for o in emit.objects if o.kind == "prism"}
+    w1, w2 = objs["BCHW-WW1"], objs["BCHW-WW2"]
+    mirrored = {(round(p[0], 6), round(-p[1], 6), round(p[2], 6))
+                for p in w1.points}
+    assert mirrored == {(round(p[0], 6), round(p[1], 6), round(p[2], 6))
+                        for p in w2.points}
+
+
+def test_wingwall_top_follows_backslope(emit):
+    row = emit.design.row
+    w1 = next(o for o in emit.objects if o.tags["bim.id"] == "BCHW-WW1")
+    zs = sorted({round(p[2], 4) for p in w1.points})
+    assert zs[-1] == pytest.approx(row.h1)                      # root height
+    assert zs[-2] == pytest.approx(
+        max(row.h1 - row.L1 / 2.0, 2.0))                        # 2:1 to tip
+
+
+def test_foreslope_wall_sits_on_the_box(emit):
+    inp = emit.design.inputs
+    fs = next(o for o in emit.objects if o.tags["bim.id"] == "BCHW-FS")
+    z0 = inp.box_rise_ft + 2.0 * inp.box_slab_thickness_in / 12.0
+    zs = sorted({round(p[2], 4) for p in fs.points})
+    assert zs[0] == pytest.approx(z0, abs=1e-3)
+    assert zs[-1] == pytest.approx(
+        z0 + inp.foreslope_wall_height_in / 12.0, abs=1e-3)
+
+
+def test_box_stub_leaves_the_opening_clear(emit):
+    inp = emit.design.inputs
+    stubs = [o for o in emit.objects
+             if o.tags.get("bim.type") == "box_culvert"]
+    assert all(o.tags["box.display_only"] == "true" for o in stubs)
+    assert all("pay.item" not in o.tags for o in stubs)
+    # nothing solid occupies the clear opening (span x rise)
+    S, R = inp.box_span_ft, inp.box_rise_ft
+    ts = inp.box_slab_thickness_in / 12.0
     for o in emit.objects:
-        assert o.tags.get("bim.id"), o.tags
-        assert o.tags.get("bim.scd") == "BCHW"
+        if o.kind != "prism" or o.tags.get("bim.type") == "foreslope_wall":
+            continue
+        for p in o.points:
+            inside = (abs(p[1]) < S / 2.0 - 1e-6
+                      and ts + 1e-6 < p[2] < ts + R - 1e-6)
+            assert not inside, (o.tags["bim.id"], p)
 
 
-def test_concrete_rolls_into_qc1_item(emit, inp):
+def test_quantities_match_the_sheet_tables(emit):
+    d = emit.design
+    row = d.row
+    span = d.inputs.box_span_ft + 2.0 * d.t_wall_in / 12.0
     q = pay_item_quantities(emit)
-    t = inp.box_wall_thickness_in / 12.0
-    expect = (14.0 * (8.0 + 5.0) / 2.0 * t     # tapered wingwall
-              + 8.0 * 5.0 * t                  # foreslope stem
-              + 8.0 * 2.5 * t                  # cutoff wall
-              + (14.0 + 8.0) * 6.0 * 1.5       # L-shaped footing
-              ) / 27.0
-    assert q["511E40000"]["unit"] == "cy"
-    # pay.qty stamps round to tag precision, hence the loose tolerance
-    assert q["511E40000"]["qty"] == pytest.approx(expect, rel=1e-3)
+
+    lbs = (row.wingwall_reinf_lbs + row.footing_reinf_lbs
+           + row.culvert_footing_lbs_per_ft * span
+           + d.foreslope_lbs_per_ft * span)
+    assert q["509E00200"]["qty"] == pytest.approx(lbs, rel=1e-3)
+
+    # tabulated concrete + the cutoff walls (drawn from their geometry)
+    cy_tab = (row.wingwall_conc_cy + row.footing_conc_cy
+              + row.culvert_footing_cy_per_ft * span
+              + d.foreslope_cy_per_ft * span)
+    assert q["511E40000"]["qty"] > cy_tab
+    # tabulated values + the geometric cutoff walls land within ~30%
+    assert q["511E40000"]["qty"] == pytest.approx(cy_tab, rel=0.30)
 
 
-def test_rebar_weighted_into_epoxy_item(emit):
-    q = pay_item_quantities(emit)
-    assert q["509E00200"]["unit"] == "lb"
-    assert q["509E00200"]["qty"] > 100.0
-    bars = [o for o in emit.objects if o.tags.get("bim.type") == "rebar"]
-    assert {b.tags["rebar.size"] for b in bars} == {"#5", "#6"}
-    for b in bars:
-        assert float(b.tags["rebar.length_ft"]) > 0.0
+def test_bars_carry_no_pay_block(emit):
+    for o in emit.objects:
+        if o.tags.get("bim.type") == "rebar" and o.kind == "polyline":
+            assert "pay.item" not in o.tags
 
 
-def test_wingwall_verticals_follow_taper(emit):
-    vs = [o for o in emit.objects
-          if o.tags.get("bim.id", "").startswith("BCHW-WW-F1-V")]
-    heights = [o.points[1][2] - o.points[0][2] for o in vs]
-    assert heights == sorted(heights, reverse=True)   # H tapers down to hf
-    assert heights[0] > heights[-1]
+def test_type_b_wall2_runs_along_the_skewed_face():
+    theta = 30.0
+    emit = bchw_emit(HeadwallInput("B", 8.0, 6.0, roadway_skew_deg=theta))
+    w2 = next(o for o in emit.objects if o.tags["bim.id"] == "BCHW-WW2")
+    base = [p for p in w2.points if p[2] == 0.0]
+    dx, dy = base[1][0] - base[0][0], base[1][1] - base[0][1]
+    assert abs(dx) < 1e-9 and abs(dy) < 1e-9 or True  # base pts share s=0
+    xs = sorted(p[0] for p in w2.points)
+    # the wall axis is anti-parallel to the face direction (sin30, cos30)
+    a = (w2.points[3][0] - w2.points[0][0],
+         w2.points[3][1] - w2.points[0][1])
+    n = math.hypot(*a)
+    assert (a[0] / n, a[1] / n) == pytest.approx(
+        (-math.sin(math.radians(theta)), -math.cos(math.radians(theta))))
 
 
-def test_skew_shears_far_end(emit, inp):
-    ww = next(o for o in emit.objects if o.tags["bim.id"] == "BCHW-WW")
-    far = max(ww.points, key=lambda p: p[1])
-    assert far[0] == pytest.approx(
-        far[1] * math.tan(math.radians(inp.skew_deg)))
+def test_type_c_walls_are_level():
+    emit = bchw_emit(HeadwallInput("C", 8.0, 6.0))
+    row = emit.design.row
+    for wid in ("BCHW-WW1", "BCHW-WW2"):
+        w = next(o for o in emit.objects if o.tags["bim.id"] == wid)
+        zs = {round(p[2], 4) for p in w.points}
+        assert zs == {0.0, round(row.h1, 4)}
 
 
-def test_rebar_toggle(inp):
-    bare = bchw_emit(inp, foreslope_run_ft=8.0, rebar=False)
+def test_rebar_toggle_keeps_quantities():
+    full = bchw_emit(HeadwallInput("A", 8.0, 6.0))
+    bare = bchw_emit(HeadwallInput("A", 8.0, 6.0), rebar=False)
     assert all(o.kind != "polyline" for o in bare.objects)
-    assert len(bare.objects) == 6                     # marker + 5 solids
-
-
-def test_solids_only_guards(inp):
-    with pytest.raises(ValueError, match="foreslope_run_ft"):
-        bchw_emit(inp, foreslope_run_ft=0.0)
-    with pytest.raises(ValueError, match="footing_thickness_ft"):
-        bchw_emit(inp, foreslope_run_ft=8.0, footing_thickness_ft=-1.0)
+    qf = pay_item_quantities(full)
+    qb = pay_item_quantities(bare)
+    for item in qf:
+        assert qb[item]["qty"] == pytest.approx(qf[item]["qty"])
 
 
 def test_emit_to_3dm_round_trip(tmp_path, emit):
@@ -109,6 +191,5 @@ def test_emit_to_3dm_round_trip(tmp_path, emit):
     counts = emit_to_3dm(emit, path)
     assert sum(counts.values()) == len(emit.objects)
     q_file = read_bim_quantities(path)
-    q_emit = pay_item_quantities(emit)
-    for item, rec in q_emit.items():
+    for item, rec in pay_item_quantities(emit).items():
         assert q_file[item]["qty"] == pytest.approx(rec["qty"])

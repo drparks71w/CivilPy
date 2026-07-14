@@ -61,6 +61,7 @@ LAYER_CULVERT = "Culvert"
 LAYER_SITE = "Site"
 
 #: PROPOSED leaves for the BCHW headwall/wingwall emit (rhino_bchw).
+LAYER_CULVERT_BOX = "Culvert::Box"
 LAYER_CULVERT_WINGWALLS = "Culvert::Wingwalls"
 LAYER_CULVERT_WALLS = "Culvert::Foreslope Walls"
 LAYER_CULVERT_FOOTINGS = "Culvert::Footings"
@@ -111,6 +112,7 @@ DEFAULT_COLORS: dict[str, tuple[int, int, int, int]] = {
     LAYER_TIE_RODS: (180, 60, 60, 255),
     LAYER_SUBSTRUCTURE: (120, 90, 70, 255),
     LAYER_CULVERT: (130, 150, 150, 255),
+    LAYER_CULVERT_BOX: (170, 170, 175, 255),
     LAYER_CULVERT_WINGWALLS: (145, 135, 120, 255),
     LAYER_CULVERT_WALLS: (150, 150, 155, 255),
     LAYER_CULVERT_FOOTINGS: (110, 110, 115, 255),
