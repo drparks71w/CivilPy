@@ -70,8 +70,8 @@ def test_component_inventory(emit):
         by_type[t] = by_type.get(t, 0) + 1
     assert by_type["wingwall"] == 2            # BOTH wingwalls
     assert by_type["foreslope_wall"] == 1
-    assert by_type["cutoff_wall"] == 3         # two wall legs + culvert strip
-    assert by_type["footing"] == 3
+    assert by_type["cutoff_wall"] == 1         # one continuous ribbon
+    assert by_type["footing"] == 1             # one mitered polygon
     assert by_type["box_culvert"] == 8         # stub: 2 walls, 2 slabs, 4 haunches
     assert by_type["rebar"] > 100
 
@@ -194,29 +194,6 @@ def test_emit_to_3dm_round_trip(tmp_path, emit):
         assert q_file[item]["qty"] == pytest.approx(rec["qty"])
 
 
-def test_culvert_footing_clear_of_wall_footings(emit):
-    from civilpy.structural.rhino_bchw import _walls
-
-    d = emit.design
-    row = d.row
-    w1, w2, f, half = _walls(d)
-    strip = next(o for o in emit.objects
-                 if o.tags["bim.id"] == "BCHW-CULV-FTG")
-    for p in strip.points:
-        for w in (w1, w2):
-            rx, ry = p[0] - w.root[0], p[1] - w.root[1]
-            s = rx * w.axis[0] + ry * w.axis[1]
-            ns = (-w.n_fill[0], -w.n_fill[1])
-            dd = rx * ns[0] + ry * ns[1]
-            side = 1.0 if (w.root[0] * f[0] + w.root[1] * f[1]) > 0 else -1.0
-            beyond_joint = (p[0] * f[0] + p[1] * f[1]) * side > half + 1e-6
-            inside = (beyond_joint
-                      and 1e-6 < s < w.length + 4.0 - 1e-6
-                      and -(row.footing_w - row.a - 1.5) + 1e-6 < dd
-                      < row.a + 1.5 - 1e-6)
-            assert not inside, (w.name, p)
-
-
 def test_wall_bars_stay_under_the_sloped_top(emit):
     from civilpy.structural.rhino_bchw import _walls
 
@@ -255,19 +232,6 @@ def test_box_stub_has_chamfer_haunches(emit):
         assert h.tags["box.display_only"] == "true"
 
 
-def test_footings_meet_flush_no_gap_no_overlap(emit):
-    """The wall footings are clipped to the strip end plane |p.f| = half:
-    they have vertices ON that plane, and none across it."""
-    from civilpy.structural.rhino_bchw import _walls
-
-    w1, w2, f, half = _walls(emit.design)
-    for wid, side in (("BCHW-WW1-FTG", 1.0), ("BCHW-WW2-FTG", -1.0)):
-        ftg = next(o for o in emit.objects if o.tags["bim.id"] == wid)
-        projs = [side * (p[0] * f[0] + p[1] * f[1]) for p in ftg.points]
-        assert min(projs) == pytest.approx(half, abs=1e-6)   # flush contact
-        assert all(pr >= half - 1e-6 for pr in projs)        # no overlap
-
-
 def test_z_bars_run_full_width_across_the_culvert(emit):
     from civilpy.structural.rhino_bchw import _walls
 
@@ -292,3 +256,49 @@ def test_box_stub_end_face_on_the_skewed_headwall_plane():
     for o in stubs:
         for p in o.points:
             assert p[0] == pytest.approx(p[1] * tan_th, abs=1e-6)
+
+
+def _pnpoly(x, y, poly):
+    inside = False
+    j = len(poly) - 1
+    for i in range(len(poly)):
+        xi, yi = poly[i][0], poly[i][1]
+        xj, yj = poly[j][0], poly[j][1]
+        if (yi > y) != (yj > y) and \
+                x < (xj - xi) * (y - yi) / (yj - yi) + xi:
+            inside = not inside
+        j = i
+    return inside
+
+
+def test_footing_is_one_mitered_polygon_with_corner_fill(emit):
+    ftg = next(o for o in emit.objects if o.tags["bim.type"] == "footing")
+    assert len(ftg.points) == 8
+    # Type A: the mitered toe corners reach FORWARD of the face joint
+    # planes -- the region that used to be a void
+    from civilpy.structural.rhino_bchw import _walls
+    _, _, f, half = _walls(emit.design)
+    projs = sorted(p[0] * f[0] + p[1] * f[1] for p in ftg.points)
+    assert projs[0] < -half and projs[-1] > half
+
+
+def test_every_footing_bar_inside_the_footing_polygon(emit):
+    """The apron/cutoff continuity fix: no footing or cutoff bar may
+    poke outside the continuous footing outline in plan."""
+    ftg = next(o for o in emit.objects if o.tags["bim.type"] == "footing")
+    poly = [(p[0], p[1]) for p in ftg.points]
+    for o in emit.objects:
+        if o.kind != "polyline":
+            continue
+        if o.tags.get("rebar.mat") not in ("footing", "cutoff_wall"):
+            continue
+        for p in o.points:
+            assert _pnpoly(p[0], p[1], poly), (o.tags["bim.id"], p)
+
+
+def test_cutoff_ribbon_continuous_through_the_corners(emit):
+    cw = next(o for o in emit.objects if o.tags["bim.type"] == "cutoff_wall")
+    assert cw.tags["bim.id"] == "BCHW-CW"
+    assert len(cw.points) == 8                      # 4 outer + 4 mitered inner
+    zs = {round(p[2], 4) for p in cw.points}
+    assert zs == {round(-emit.design.row.footing_t, 4)}

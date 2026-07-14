@@ -201,45 +201,100 @@ def _wingwall_solid(w: _Wall, t: float, conc_cy: float) -> EmitObject:
         tags=_conc_tags("wingwall", f"BCHW-{w.name}", conc_cy))
 
 
-def _wall_footing(w: _Wall, design: HeadwallDesign, conc_cy: float,
-                  f: Point, half: float) -> list[EmitObject]:
-    """Wingwall footing (toe ``a`` + cutoff ahead of the stem, running
-    the wall length + the 4 ft extension) and its cutoff wall, both
-    clipped flush against the culvert footing strip's end plane."""
+def _line_x(p1, d1, p2, d2):
+    """2D intersection of lines p1 + s d1 and p2 + u d2 (None when
+    parallel -- a straight wall whose toe line continues the strip's)."""
+    cross = d1[0] * d2[1] - d1[1] * d2[0]
+    if abs(cross) < 1e-9:
+        return None
+    s = ((p2[0] - p1[0]) * d2[1] - (p2[1] - p1[1]) * d2[0]) / cross
+    return (p1[0] + s * d1[0], p1[1] + s * d1[1])
+
+
+def _footing_frames(design, w1, w2, f):
+    """Toe/heel corner points of the continuous footing: for each wall,
+    the tip corners and the mitered intersections of its toe/heel lines
+    with the culvert strip's front/back lines."""
     row = design.row
-    ax, nf = w.axis, w.n_fill
-    ns = (-nf[0], -nf[1], 0.0)                     # stream side
-    length = w.length + FOOTING_EXTENSION_FT
     d_toe = row.a + CUTOFF_WALL_WIDTH_FT
     d_heel = row.footing_w - d_toe
-    x0, y0, _ = w.root
-    # which side of the strip this wall lives on: clip to |p.f| >= half
-    side = 1.0 if (x0 * f[0] + y0 * f[1]) > 0.0 else -1.0
-    n_clip = (side * f[0], side * f[1])
+    ns_f = (-f[1], f[0])                     # stream (-x) side of the face
+    front_p, front_d = (d_toe * ns_f[0], d_toe * ns_f[1]), (f[0], f[1])
+    back_p = (-d_heel * ns_f[0], -d_heel * ns_f[1])
 
-    def at(s: float, d: float, z: float) -> Point:
-        return (x0 + s * ax[0] + d * ns[0],
-                y0 + s * ax[1] + d * ns[1], z)
+    out = []
+    for w in (w1, w2):
+        ax = (w.axis[0], w.axis[1])
+        ns = (-w.n_fill[0], -w.n_fill[1])
+        length = w.length + FOOTING_EXTENSION_FT
+        root = (w.root[0], w.root[1])
+        toe_p = (root[0] + d_toe * ns[0], root[1] + d_toe * ns[1])
+        heel_p = (root[0] - d_heel * ns[0], root[1] - d_heel * ns[1])
+        c_toe = _line_x(front_p, front_d, toe_p, ax) or toe_p
+        c_heel = _line_x(back_p, front_d, heel_p, ax) or heel_p
+        out.append({
+            "tip_toe": (toe_p[0] + length * ax[0], toe_p[1] + length * ax[1]),
+            "tip_heel": (heel_p[0] + length * ax[0],
+                         heel_p[1] + length * ax[1]),
+            "c_toe": c_toe, "c_heel": c_heel,
+            "toe_dir": ax, "ns": ns,
+        })
+    return out
 
-    loop = _clip_halfplane(
-        (at(0.0, d_toe, 0.0), at(0.0, -d_heel, 0.0),
-         at(length, -d_heel, 0.0), at(length, d_toe, 0.0)),
-        n_clip, half)
+
+def _footing_union(design: HeadwallDesign, w1: _Wall, w2: _Wall, f: Point,
+                   span: float) -> list[EmitObject]:
+    """The footing as it is cast: ONE continuous polygon -- both wingwall
+    legs and the culvert strip with mitered front/back corners (no joint
+    gaps for rebar to escape through) -- and the matching continuous
+    cutoff-wall ribbon following the toe edge."""
+    row = design.row
+    fr = _footing_frames(design, w1, w2, f)
+
+    def z0(p):
+        return (p[0], p[1], 0.0)
+
+    outline = (fr[0]["tip_toe"], fr[0]["c_toe"], fr[1]["c_toe"],
+               fr[1]["tip_toe"], fr[1]["tip_heel"], fr[1]["c_heel"],
+               fr[0]["c_heel"], fr[0]["tip_heel"])
     footing = EmitObject(
-        kind="prism", layer=LAYER_CULVERT_FOOTINGS, points=loop,
+        kind="prism", layer=LAYER_CULVERT_FOOTINGS,
+        points=tuple(z0(p) for p in outline),
         vector=(0.0, 0.0, -row.footing_t),
-        tags=_conc_tags("footing", f"BCHW-{w.name}-FTG", conc_cy))
-    cw = _clip_halfplane(
-        (at(0.0, d_toe, -row.footing_t),
-         at(0.0, d_toe - CUTOFF_WALL_WIDTH_FT, -row.footing_t),
-         at(length, d_toe - CUTOFF_WALL_WIDTH_FT, -row.footing_t),
-         at(length, d_toe, -row.footing_t)),
-        n_clip, half)
+        tags=_conc_tags(
+            "footing", "BCHW-FTG",
+            row.footing_conc_cy
+            + row.culvert_footing_cy_per_ft * span))
+
+    # cutoff ribbon: the toe polyline offset CUTOFF_WALL_WIDTH_FT toward
+    # the heel, mitered at the same corners
+    cw = CUTOFF_WALL_WIDTH_FT
+    ns_f = (-f[1], f[0])
+    outer = [fr[0]["tip_toe"], fr[0]["c_toe"], fr[1]["c_toe"],
+             fr[1]["tip_toe"]]
+    off = [(-cw * fr[0]["ns"][0], -cw * fr[0]["ns"][1]),
+           (-cw * ns_f[0], -cw * ns_f[1]),
+           (-cw * fr[1]["ns"][0], -cw * fr[1]["ns"][1])]
+    i0 = (outer[0][0] + off[0][0], outer[0][1] + off[0][1])
+    i3 = (outer[3][0] + off[2][0], outer[3][1] + off[2][1])
+    i1 = _line_x(i0, fr[0]["toe_dir"],
+                 (outer[1][0] + off[1][0], outer[1][1] + off[1][1]),
+                 (f[0], f[1])) or (outer[1][0] + off[1][0],
+                                   outer[1][1] + off[1][1])
+    i2 = _line_x(i3, fr[1]["toe_dir"],
+                 (outer[2][0] + off[1][0], outer[2][1] + off[1][1]),
+                 (f[0], f[1])) or (outer[2][0] + off[1][0],
+                                   outer[2][1] + off[1][1])
+    ribbon = tuple(outer + [i3, i2, i1, i0])
+    area = abs(sum(p[0] * q[1] - q[0] * p[1]
+                   for p, q in zip(ribbon, ribbon[1:] + ribbon[:1]))) / 2.0
+    zc = -row.footing_t
     cutoff = EmitObject(
-        kind="prism", layer=LAYER_CULVERT_WALLS, points=cw,
+        kind="prism", layer=LAYER_CULVERT_WALLS,
+        points=tuple((p[0], p[1], zc) for p in ribbon),
         vector=(0.0, 0.0, -row.hcw),
-        tags=_conc_tags("cutoff_wall", f"BCHW-{w.name}-CW",
-                        CUTOFF_WALL_WIDTH_FT * row.hcw * length / CY))
+        tags=_conc_tags("cutoff_wall", "BCHW-CW",
+                        area * row.hcw / CY))
     return [footing, cutoff]
 
 
@@ -266,61 +321,6 @@ def _foreslope_wall(design: HeadwallDesign, f: Point,
         vector=(f[0] * 2.0 * half, f[1] * 2.0 * half, 0.0),
         tags=_conc_tags("foreslope_wall", "BCHW-FS",
                         design.foreslope_cy_per_ft * span))
-
-
-def _clip_halfplane(loop, n, c):
-    """Sutherland-Hodgman clip of a planar xy loop against the
-    half-plane ``p . n >= c`` -- how a wall footing butts flush against
-    the culvert footing strip instead of overlapping it (or leaving a
-    wedge gap)."""
-    out = []
-    for i, p in enumerate(loop):
-        q = loop[(i + 1) % len(loop)]
-        dp = p[0] * n[0] + p[1] * n[1] - c
-        dq = q[0] * n[0] + q[1] * n[1] - c
-        if dp >= -1e-9:
-            out.append(p)
-        if (dp > 1e-9) != (dq > 1e-9) and abs(dp - dq) > 1e-12:
-            t = dp / (dp - dq)
-            out.append((p[0] + t * (q[0] - p[0]),
-                        p[1] + t * (q[1] - p[1]), p[2]))
-    return tuple(out)
-
-
-def _culvert_footing(design: HeadwallDesign, f: Point, half: float,
-                     s_lo: float, s_hi: float) -> list[EmitObject]:
-    """The footing strip across the opening (quantities per lineal foot
-    x (span + 2 t) per the sheets — the *tabulated* basis; the drawn
-    solid stops where the wingwall footings begin) and its cutoff
-    wall."""
-    inp = design.inputs
-    row = design.row
-    span = inp.box_span_ft + 2.0 * design.t_wall_in / 12.0
-    ns = (-f[1], f[0], 0.0)                       # stream (-x) side
-    d_toe = row.a + CUTOFF_WALL_WIDTH_FT
-    d_heel = row.footing_w - d_toe
-
-    def at(s: float, d: float, z: float) -> Point:
-        return (s * f[0] + d * ns[0], s * f[1] + d * ns[1], z)
-
-    loop = (at(s_lo, d_toe, 0.0), at(s_lo, -d_heel, 0.0),
-            at(s_hi, -d_heel, 0.0), at(s_hi, d_toe, 0.0))
-    footing = EmitObject(
-        kind="prism", layer=LAYER_CULVERT_FOOTINGS, points=loop,
-        vector=(0.0, 0.0, -row.footing_t),
-        tags=_conc_tags("footing", "BCHW-CULV-FTG",
-                        design.row.culvert_footing_cy_per_ft * span))
-    cw = (at(s_lo, d_toe, -row.footing_t),
-          at(s_lo, d_toe - CUTOFF_WALL_WIDTH_FT, -row.footing_t),
-          at(s_hi, d_toe - CUTOFF_WALL_WIDTH_FT, -row.footing_t),
-          at(s_hi, d_toe, -row.footing_t))
-    cutoff = EmitObject(
-        kind="prism", layer=LAYER_CULVERT_WALLS, points=cw,
-        vector=(0.0, 0.0, -row.hcw),
-        tags=_conc_tags("cutoff_wall", "BCHW-CULV-CW",
-                        CUTOFF_WALL_WIDTH_FT * row.hcw
-                        * (s_hi - s_lo) / CY))
-    return [footing, cutoff]
 
 
 def _box_stub(design: HeadwallDesign, stub_ft: float) -> list[EmitObject]:
@@ -607,9 +607,6 @@ def bchw_emit(inp: HeadwallInput, *, box_stub_ft: float = 4.0,
 
     a1, a2 = _wall_area(w1), _wall_area(w2)
     share1 = a1 / (a1 + a2)
-    len1 = w1.length + FOOTING_EXTENSION_FT
-    len2 = w2.length + FOOTING_EXTENSION_FT
-    fshare1 = len1 / (len1 + len2)
 
     objects: list[EmitObject] = [EmitObject(
         kind="point", layer=LAYER_CULVERT_WINGWALLS,
@@ -626,13 +623,8 @@ def bchw_emit(inp: HeadwallInput, *, box_stub_ft: float = 4.0,
     objects.append(_wingwall_solid(w1, t, row.wingwall_conc_cy * share1))
     objects.append(_wingwall_solid(w2, t, row.wingwall_conc_cy
                                    * (1.0 - share1)))
-    objects += _wall_footing(w1, design, row.footing_conc_cy * fshare1,
-                             f, half)
-    objects += _wall_footing(w2, design,
-                             row.footing_conc_cy * (1.0 - fshare1),
-                             f, half)
+    objects += _footing_union(design, w1, w2, f, span)
     objects.append(_foreslope_wall(design, f, half))
-    objects += _culvert_footing(design, f, half, -half, half)
     if rebar:
         objects += _culvert_footing_bars(design, f, half)
     if box_stub_ft > 0.0:
