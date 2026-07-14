@@ -223,7 +223,7 @@ def haunch_tags(bid: str, *, depth_in: float, width_in: float,
 #: Substructure concrete component types (one Rhino layer each).
 SUBSTRUCTURE_CONCRETE_TYPES = (
     "pier_cap", "abutment_cap", "beam_seat", "column", "footing",
-    "backwall", "wingwall")
+    "backwall", "wingwall", "foreslope_wall", "cutoff_wall")
 
 
 def substructure_concrete_tags(btype: str, bid: str, *,

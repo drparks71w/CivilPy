@@ -7,6 +7,18 @@ Versions follow [Semantic Versioning](https://semver.org/) (major.minor.patch).
 
 ## [Unreleased]
 
+- **BCHW gets the BrIM treatment (`structural.rhino_bchw`).** The box
+  culvert headwall/wingwall component previously drew three display
+  curves; `bchw_emit` now produces the full tagged record — tapered
+  wingwall stem, foreslope wall, cutoff wall, and L-shaped footing as
+  true solids plus the nominal WW5xx/FS5xx/F6xx reinforcing mats — on
+  `Culvert::*` layers with `bim.*`/`pay.*`/`mat.*` user text, rolling
+  into the 511E40000/509E00200 items and round-tripping through
+  `emit_to_3dm`/`read_bim_quantities` like the bridge emits. The BCHW
+  Grasshopper component was rewritten around it (solids + rebar outputs,
+  tagged bake, quantity report); `box_wall_thickness` also now drives
+  the foreslope-wall stem in the module's Section A-A profile.
+
 - **Basic line-girder tool (`structural.line_girder_tool`).** The
   simplest useful form of a shear/moment/deflection run, with no Rhino
   or MIDAS dependence: a `BridgeConfig` of dropdown-able settings

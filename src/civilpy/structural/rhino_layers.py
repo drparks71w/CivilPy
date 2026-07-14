@@ -60,6 +60,12 @@ LAYER_SUBSTRUCTURE = "Substructure"
 LAYER_CULVERT = "Culvert"
 LAYER_SITE = "Site"
 
+#: PROPOSED leaves for the BCHW headwall/wingwall emit (rhino_bchw).
+LAYER_CULVERT_WINGWALLS = "Culvert::Wingwalls"
+LAYER_CULVERT_WALLS = "Culvert::Foreslope Walls"
+LAYER_CULVERT_FOOTINGS = "Culvert::Footings"
+LAYER_CULVERT_REBAR = "Culvert::Rebar"
+
 #: PROPOSED leaves for the BrIM source-of-truth model (rhino_bim): concrete
 #: haunches, welded shear studs, and bearing load plates get their own layers
 #: under Superstructure so the composite-connection and bearing hardware can
@@ -105,6 +111,10 @@ DEFAULT_COLORS: dict[str, tuple[int, int, int, int]] = {
     LAYER_TIE_RODS: (180, 60, 60, 255),
     LAYER_SUBSTRUCTURE: (120, 90, 70, 255),
     LAYER_CULVERT: (130, 150, 150, 255),
+    LAYER_CULVERT_WINGWALLS: (145, 135, 120, 255),
+    LAYER_CULVERT_WALLS: (150, 150, 155, 255),
+    LAYER_CULVERT_FOOTINGS: (110, 110, 115, 255),
+    LAYER_CULVERT_REBAR: (60, 120, 200, 255),
     LAYER_SITE: (150, 140, 120, 255),
     LAYER_HAUNCHES: (200, 200, 190, 255),
     LAYER_SHEAR_STUDS: (200, 120, 40, 255),
