@@ -47,6 +47,7 @@ import warnings
 
 import matplotlib.pyplot as plt
 import numpy as np
+from typing import Literal
 
 
 class StrutAndTieModel:
@@ -264,7 +265,8 @@ class StrutAndTieModel:
         negative = a mechanism (unstable)."""
         return len(self.members) + len(self._reaction_cols()) - 2 * len(self.nodes)
 
-    def solve(self, method: str = "auto") -> dict[tuple[str, str], float]:
+    def solve(self, method: Literal["auto", "joints", "stiffness"]
+              = "auto") -> dict[tuple[str, str], float]:
         """Solve member forces and reactions.
 
         ``method="auto"`` uses the method of joints when the model is

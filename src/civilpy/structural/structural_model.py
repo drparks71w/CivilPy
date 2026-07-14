@@ -61,6 +61,7 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass, field, replace
+from typing import Literal
 
 # ── DOF / restraint conventions ───────────────────────────────────────────────
 
@@ -227,7 +228,8 @@ class BeamLoad:
     w_start: float  # kip/ft
     w_end: float | None = None  # if None, uniform
     case: str = "default"
-    direction: str = "GZ"  # Global Z
+    #: MIDAS load direction: ``"GX"``, ``"GY"``, or ``"GZ"``.
+    direction: Literal["GX", "GY", "GZ"] = "GZ"
     id: str = field(default_factory=_new_id)
 
 
@@ -394,7 +396,8 @@ class StructuralModel:
 
     def add_beam_load(self, element_id: str, w_start: float,
                       w_end: float | None = None, *,
-                      case: str = "default", direction: str = "GZ",
+                      case: str = "default",
+                      direction: Literal["GX", "GY", "GZ"] = "GZ",
                       id: str | None = None) -> BeamLoad:
         if element_id not in self.elements:
             raise KeyError(f"beam load references unknown element id {element_id!r}")

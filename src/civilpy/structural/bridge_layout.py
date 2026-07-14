@@ -51,6 +51,7 @@ from civilpy.structural.odot.deck_design import (
     structural_design_thickness,
 )
 from civilpy.structural.steel import Rebar
+from typing import Literal
 
 Point = tuple[float, float, float]  # (x, y, z) feet
 
@@ -72,9 +73,15 @@ class BridgeInput:
     spans_ft: tuple[float, ...]
     girder_count: int
     girder_spacing_ft: float
-    girder_label: str            # AISC W label, e.g. "W36X150"
+    #: AISC W-shape label as cataloged in :mod:`civilpy.structural.steel`,
+    #: e.g. ``"W36X150"``.
+    girder_label: str
     overhang_ft: float
+    #: ODOT SCD railing designation, resolved through
+    #: :func:`railing_by_scd` (e.g. ``"SBR-1-20"``, ``"BR-1-13"``).
     railing: str = "SBR-1-20"
+    #: Structural steel grade label (AASHTO M270): ``"Grade 36"``,
+    #: ``"Grade 50"``, ``"Grade 50W"``, or ``"Grade HPS70W"``.
     grade: str = "Grade 50"
     skew_deg: float = 0.0
     design_haunch_in: float = 2.0
@@ -126,7 +133,8 @@ class BearingPoint:
     line_no: int
     station_index: int
     location: Point
-    fixity: str
+    #: ``"fixed"`` or ``"expansion"`` (see :func:`default_fixity`).
+    fixity: Literal["fixed", "expansion"]
     tags: dict[str, str]
 
 
@@ -174,8 +182,9 @@ class RebarSet:
 
 @dataclass(frozen=True)
 class BarrierRun:
+    #: ODOT railing designation (see :func:`railing_by_scd`).
     designation: str
-    edge: str            # "left" (+Y) or "right" (-Y)
+    edge: Literal["left", "right"]      # "left" = +Y, "right" = -Y
     line: tuple[Point, Point]  # along the deck edge at deck-top level
     height_in: float | None
     base_width_in: float | None
@@ -315,7 +324,8 @@ def effective_span_ft(spacing_ft: float, section: GirderSection) -> float:
     return s
 
 
-def default_fixity(station_index: int, station_count: int) -> str:
+def default_fixity(station_index: int,
+                   station_count: int) -> Literal["fixed", "expansion"]:
     """Bearing-fixity starting point, mirroring the C# plugin's rule: a
     single span is fixed at its first bearing; a continuous unit at the
     interior support nearest mid-length; everything else expansion."""

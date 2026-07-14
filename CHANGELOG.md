@@ -7,6 +7,20 @@ Versions follow [Semantic Versioning](https://semver.org/) (major.minor.patch).
 
 ## [Unreleased]
 
+- **Constrained inputs documented at the type level.** Enum-like string
+  parameters across the library now carry `typing.Literal` annotations
+  and `#:` field docs naming their allowed values — they render in the
+  Sphinx signatures, autocomplete in IDEs, and type-check statically
+  instead of failing at the runtime guard. Swept: slab-bridge
+  `edge_condition`, alignment curve `direction`, pier column `fixity`,
+  retaining-wall `method`, STM `solve` method, anchor `shear_direction`
+  / `anchor_type`, bearing `fixity` + `default_fixity`, barrier-run
+  `edge`, abutment `kind`, load `direction`, MGS bridge-terminal
+  designations and post `spacing`, and BCHW `headwall_type`.
+  Catalog-keyed strings (AISC girder/pile labels, ODOT railing and PSBD
+  box designations, line-girder `barrier`/`vehicle` choices) instead
+  gained field docs pointing at the owning catalog.
+
 - **Ratio matrices and governing-case identification
   (`structural.rating_ratios`).** The core of the ORIL 2026 load-factor
   assignment method (ODOT PID 123396): known rating factors scale to

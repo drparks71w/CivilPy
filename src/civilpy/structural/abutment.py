@@ -36,6 +36,7 @@ from civilpy.structural.aashto.lrfd.concrete import (
     rc_shear_resistance,
 )
 from civilpy.structural.aashto.lrfd.core import CheckResult
+from typing import Literal
 
 
 @dataclass
@@ -119,7 +120,8 @@ class RetainingWall:
     embedment: float = 0.0
     include_passive: bool = False
     include_toe_soil: bool = True
-    method: str = "rankine"
+    #: Lateral earth-pressure theory: ``"rankine"`` or ``"coulomb"``.
+    method: Literal["rankine", "coulomb"] = "rankine"
     wall_friction_deg: float = 0.0
 
     @property

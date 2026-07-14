@@ -31,11 +31,17 @@ condition/system factors, and any live-load factor applied uniformly
 across vehicles cancel; ``im`` exists for the one loading whose parts it
 does not scale uniformly (HL-93's unfactored lane).
 
+When positive moment governs, a known vehicle only transfers its RF
+cleanly if its maximum-moment section falls where the target's does; the
+report keeps a known vehicle in the average only when the peak-station
+offset is within +/-5% of the span (its Figure 6 shows every pairing
+converging inside that band above ~50-60 ft, with short spans the risky
+zone).  Shear and negative moment peak at the supports for every
+vehicle, so the check applies to positive moment alone.
+
 Reference: Sung, Khoury, Malloy & Pfingsten, *Methodology for Assigning
 Load Factors for AASHTO Rating Vehicle*, ODOT/ORITE draft report,
-PID 123396 (2026).  The positive-moment critical-section alignment check
-recommended there for spans under ~50 ft is not yet implemented; envelope
-peak stations are carried on :class:`DemandBasis` for it.
+PID 123396 (2026).
 """
 
 from __future__ import annotations
@@ -58,6 +64,10 @@ NEW_LEGAL_TRUCKS = ("Type 3", "Type 3S2", "Type 3-3")
 #: The ten already-rated configurations in the Ohio inventory.
 OHIO_KNOWN_VEHICLES = ("HL-93", "HS20", "2F1", "3F1", "4F1", "5C1",
                        "SU4", "SU5", "SU6", "SU7")
+
+#: Maximum M+ peak-station offset, as a fraction of the span, for a known
+#: vehicle's RF to transfer to a target (the report's +/-5% band).
+ALIGNMENT_TOL = 0.05
 
 
 @dataclass(frozen=True)
@@ -84,6 +94,13 @@ class DemandBasis:
             return values
         idx = [self.vehicles.index(name) for name in vehicles]
         return values[idx]
+
+    def peak_stations(self, vehicles=None) -> np.ndarray:
+        """M+ peak stations, optionally reordered to ``vehicles``."""
+        if vehicles is None:
+            return self.positive_moment_station
+        idx = [self.vehicles.index(name) for name in vehicles]
+        return self.positive_moment_station[idx]
 
 
 def _vehicle_demands(unit: UnitResponses, vehicle, im: float):
@@ -167,17 +184,35 @@ def residual_norm(rfs, effects) -> float:
 @dataclass(frozen=True)
 class RFPrediction:
     """A predicted rating factor: the average over the known vehicles'
-    individually scaled predictions, kept alongside for spread checks."""
+    individually scaled predictions, kept alongside for spread checks.
+
+    When positive moment governs, ``misalignment`` holds each known
+    vehicle's M+ peak-station offset from the target as a fraction of the
+    span, and only knowns inside the tolerance (``aligned``) enter the
+    average.  If none align — the short-span regime the report flags —
+    every known is averaged anyway and ``alignment_ok`` is ``False`` so
+    callers can route the bridge to a full analysis instead.  Both fields
+    are ``None`` for shear/negative-moment cases, where the critical
+    section is at a support for every vehicle."""
 
     vehicle: str
     rf: float
     per_known: dict
+    misalignment: dict | None = None
+    aligned: tuple | None = None
 
     @property
     def spread(self) -> float:
-        """Max minus min of the per-known-vehicle predictions."""
-        values = list(self.per_known.values())
+        """Max minus min of the predictions that entered the average."""
+        values = [self.per_known[name] for name in self.aligned] \
+            if self.aligned else list(self.per_known.values())
         return max(values) - min(values)
+
+    @property
+    def alignment_ok(self) -> bool:
+        """``False`` only when the check ran and no known vehicle's
+        critical section aligned with the target's."""
+        return self.misalignment is None or bool(self.aligned)
 
 
 @dataclass(frozen=True)
@@ -199,18 +234,35 @@ class GoverningCase:
 
 
 def predict_rating_factors(known_rfs: Mapping, basis: DemandBasis,
-                           action: str, targets=NEW_LEGAL_TRUCKS) -> dict:
+                           action: str, targets=NEW_LEGAL_TRUCKS, *,
+                           alignment_tol: float | None = ALIGNMENT_TOL) -> dict:
     """Scale each known RF to each target vehicle through the ``action``
-    demand ratio and average: ``RF_t = mean_i(RF_i * E_i / E_t)``."""
+    demand ratio and average: ``RF_t = mean_i(RF_i * E_i / E_t)``.
+
+    For positive moment the average keeps only known vehicles whose M+
+    peak station is within ``alignment_tol`` of the target's (as a
+    fraction of the span); pass ``alignment_tol=None`` to average all.
+    """
     known = tuple(known_rfs)
     e_known = basis.effects(action, known)
+    check = alignment_tol is not None and action == "positive_moment"
+    x_known = basis.peak_stations(known) if check else None
     predictions = {}
     for target in targets:
         e_t = basis.effects(action, (target,))[0]
         per = {name: float(rf * e / e_t)
                for name, rf, e in zip(known, known_rfs.values(), e_known)}
-        predictions[target] = RFPrediction(
-            target, float(np.mean(list(per.values()))), per)
+        mis = aligned = None
+        values = list(per.values())
+        if check:
+            x_t = basis.peak_stations((target,))[0]
+            mis = {name: float(abs(x - x_t) / basis.span)
+                   for name, x in zip(known, x_known)}
+            aligned = tuple(n for n in known if mis[n] <= alignment_tol)
+            if aligned:
+                values = [per[name] for name in aligned]
+        predictions[target] = RFPrediction(target, float(np.mean(values)),
+                                           per, mis, aligned)
     return predictions
 
 
@@ -229,7 +281,9 @@ def _clean_known(known_rfs: Mapping) -> dict:
 def identify_governing_case(known_rfs: Mapping, max_span: float, *,
                             continuous: bool = False, span_ratios=None,
                             targets=NEW_LEGAL_TRUCKS, step: float | None = None,
-                            im: float = 0.0) -> GoverningCase:
+                            im: float = 0.0,
+                            alignment_tol: float | None = ALIGNMENT_TOL,
+                            ) -> GoverningCase:
     """Identify the hidden governing action — and, for continuous
     bridges, the adjacent-span ratio — behind a bridge's known rating
     factors, then predict the target-vehicle RFs from it.

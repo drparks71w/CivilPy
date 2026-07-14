@@ -42,6 +42,7 @@ from civilpy.structural.aashto.lrfd.concrete import (
     rc_shear_resistance,
 )
 from civilpy.structural.aashto.lrfd.core import CheckResult
+from typing import Literal
 
 
 @dataclass
@@ -253,7 +254,9 @@ class PierColumn:
     h: float | None = None
     diameter: float | None = None
     spiral: bool = False
-    fixity: str = "fixed-fixed"
+    #: End restraint for slenderness: ``"fixed-fixed"`` (cap restrains
+    #: rotation) or ``"fixed-free"`` (cantilever).
+    fixity: Literal["fixed-fixed", "fixed-free"] = "fixed-fixed"
 
     def __post_init__(self):
         if self.diameter is None and (self.b is None or self.h is None):

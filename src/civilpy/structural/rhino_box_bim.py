@@ -76,6 +76,9 @@ class BoxBridgeInput:
     cataloged spans.  Beams sit edge to edge (adjacent), beam 1 at
     ``y = 0``."""
 
+    #: PSBDD-1-25 box designation: ``"CB27-48"`` composite /
+    #: ``"B27-48"`` non-composite -- a key of the PSBD span tables in
+    #: :mod:`civilpy.structural.odot.box_beam_design`.
     box: str
     span_ft: float
     n_beams: int

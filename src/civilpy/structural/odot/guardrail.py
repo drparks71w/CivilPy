@@ -33,6 +33,7 @@ Sources (SCD number — latest cited revision):
 """
 
 from dataclasses import dataclass
+from typing import Literal
 
 
 @dataclass(frozen=True)
@@ -382,7 +383,9 @@ BRIDGE_TERMINALS: dict[str, BridgeTerminalAssembly] = {
 }
 
 
-def bridge_terminal(designation: str) -> BridgeTerminalAssembly:
+def bridge_terminal(designation: Literal["Type 1", "Type 2",
+                                         "Type TST-2"]
+                    ) -> BridgeTerminalAssembly:
     """Look up a bridge terminal assembly (``"Type 1"``, ``"Type 2"``,
     ``"Type TST-2"``)."""
     try:
@@ -404,7 +407,9 @@ class BridgeTerminalLayout:
     notes: tuple[str, ...] = ()
 
 
-def layout_bridge_terminal(designation: str) -> BridgeTerminalLayout:
+def layout_bridge_terminal(designation: Literal["Type 1", "Type 2",
+                                                "Type TST-2"]
+                           ) -> BridgeTerminalLayout:
     """Expand a :data:`BRIDGE_TERMINALS` entry into per-post members."""
     t = bridge_terminal(designation)
     stations = t.post_stations_in()
@@ -444,7 +449,9 @@ class MGSRunLayout:
     notes: tuple[str, ...] = ()
 
 
-def layout_mgs_run(length_ft: float, *, spacing: str = "standard",
+def layout_mgs_run(length_ft: float, *,
+                   spacing: Literal["standard", "half",
+                                    "quarter"] = "standard",
                    panel_length_ft: float = 25.0) -> MGSRunLayout:
     """Lay out a straight MGS-2.1 guardrail run: posts at the chosen
     spacing (``"standard"`` / ``"half"`` / ``"quarter"``) and W-beam

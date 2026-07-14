@@ -33,6 +33,7 @@ line, y = 0 at one slab edge, z = 0 at the top of slab.
 from __future__ import annotations
 import math
 from dataclasses import dataclass, field
+from typing import Literal
 
 Point = tuple[float, float, float]  # (x, y, z) feet
 
@@ -231,7 +232,9 @@ class SlabBridgeInput:
     span_ft: int
     width_ft: float
     skew_deg: float = 0.0
-    edge_condition: str = "over_the_side"
+    #: Edge-beam schedule: ``"over_the_side"`` (drainage over the
+    #: fascia) or ``"parapet"`` (shallower edge beam under a parapet).
+    edge_condition: Literal["over_the_side", "parapet"] = "over_the_side"
 
 
 class SlabBridgeComponent:

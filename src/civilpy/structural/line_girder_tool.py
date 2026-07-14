@@ -112,13 +112,18 @@ class BridgeConfig:
 
     n_spans: int = 3
     span_ft: float = 50.0            # equal spans
-    girder: str = "W24X104"          # AISC shape designation
+    #: AISC W-shape label from :mod:`civilpy.structural.steel`.
+    girder: str = "W24X104"
     n_girders: int = 5
     spacing_ft: float = 7.0
     overhang_ft: float = 2.5         # deck edge beyond the exterior girder
     deck_t_in: float = 8.5
     haunch_in: float = 1.0           # top of girder to bottom of deck (for Kg)
+    #: A key of :data:`BARRIER_CHOICES` (catalog railings with a
+    #: computable dead weight).
     barrier: str = "SBR-1 (42 in)"
+    #: A key of :data:`VEHICLES` (HL-93 truck / tandem / governing,
+    #: HS-20 and the Ohio legal trucks).
     vehicle: str = "HL-93 (governing of truck/tandem + lane)"
     fws_ksf: float = 0.060           # future wearing surface
     e_ksi: float = 29000.0
