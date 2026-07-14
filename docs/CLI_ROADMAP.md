@@ -9,7 +9,14 @@ The preferred workflow is **files in, tables out**: DIGGS XML, `.csv`,
 `.xlsx`, `.las`/`.laz`, `.3dm`, LPILE data files, TIFF plan sets in;
 `.csv` / `.xlsx` (and terminal tables) out.
 
-Status: **draft for review** — refine this document before Phase 0 starts.
+Status: **approved; first build landed 2026-07-14.**  `src/civilpy/cli/`
+now carries Phase 0 (registry, themed UI, ResultTable writers, lazy
+imports), the Phase 2 interactive shell (completion, toolbar docs, slash
+commands, /log), a Phase 4 seed (session `load` + `--boring` object
+references), and eight commands: `boring parse|batch`, `odot slab`,
+`hydro channel|scour-pier`, `road vcurve|hcurve`.  Next up: the remaining
+Phase 1 batch commands (snbi validate, photos, report notebook, odot
+bridge/tiff).
 
 ---
 

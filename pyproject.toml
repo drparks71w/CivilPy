@@ -40,6 +40,7 @@ dependencies = [
     "termcolor>=1.1",
     "natsort>=8.2",
     "rich>=13.0",
+    "prompt_toolkit>=3.0",
     "typing_extensions>=4.0",
     "ezdxf>=1.1",
 ]
@@ -103,7 +104,7 @@ Documentation = "https://dane.daneparks.com/civilpy"
 Repository = "https://daneparks.com/Dane/civilpy"
 
 [project.scripts]
-civilpy = "civilpy.CLI:civilpy_cli"
+civilpy = "civilpy.cli:civilpy_cli"
 
 [tool.setuptools.packages.find]
 where = ["src"]
