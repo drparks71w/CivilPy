@@ -72,7 +72,7 @@ def test_component_inventory(emit):
     assert by_type["foreslope_wall"] == 1
     assert by_type["cutoff_wall"] == 3         # two wall legs + culvert strip
     assert by_type["footing"] == 3
-    assert by_type["box_culvert"] == 4         # display stub: 2 walls, 2 slabs
+    assert by_type["box_culvert"] == 8         # stub: 2 walls, 2 slabs, 4 haunches
     assert by_type["rebar"] > 100
 
 
@@ -193,3 +193,61 @@ def test_emit_to_3dm_round_trip(tmp_path, emit):
     q_file = read_bim_quantities(path)
     for item, rec in pay_item_quantities(emit).items():
         assert q_file[item]["qty"] == pytest.approx(rec["qty"])
+
+
+def test_culvert_footing_clear_of_wall_footings(emit):
+    from civilpy.structural.rhino_bchw import _walls
+
+    d = emit.design
+    row = d.row
+    w1, w2, f, half = _walls(d)
+    strip = next(o for o in emit.objects
+                 if o.tags["bim.id"] == "BCHW-CULV-FTG")
+    for p in strip.points:
+        for w in (w1, w2):
+            rx, ry = p[0] - w.root[0], p[1] - w.root[1]
+            s = rx * w.axis[0] + ry * w.axis[1]
+            ns = (-w.n_fill[0], -w.n_fill[1])
+            dd = rx * ns[0] + ry * ns[1]
+            inside = (1e-6 < s < w.length + 4.0 - 1e-6
+                      and -(row.footing_w - row.a - 1.5) + 1e-6 < dd
+                      < row.a + 1.5 - 1e-6)
+            assert not inside, (w.name, p)
+
+
+def test_wall_bars_stay_under_the_sloped_top(emit):
+    from civilpy.structural.rhino_bchw import _walls
+
+    w1, w2, _, _ = _walls(emit.design)
+    for o in emit.objects:
+        if o.kind != "polyline":
+            continue
+        for w in (w1, w2):
+            if not o.tags["bim.id"].startswith("BCHW-" + w.name + "-"):
+                continue
+            for p in o.points:
+                rx, ry = p[0] - w.root[0], p[1] - w.root[1]
+                s = rx * w.axis[0] + ry * w.axis[1]
+                if -0.01 <= s <= w.length + 0.01 and p[2] > 0.05:
+                    top = (w.h_root + (w.tip_height() - w.h_root)
+                           * min(max(s, 0.0), w.length) / w.length)
+                    assert p[2] <= top - 0.2, (o.tags["bim.id"], p)
+
+
+def test_foreslope_dowels_stay_inside_the_top_slab(emit):
+    inp = emit.design.inputs
+    ts = inp.box_slab_thickness_in / 12.0
+    slab_bottom = inp.box_rise_ft + ts
+    lows = [min(p[2] for p in o.points) for o in emit.objects
+            if o.kind == "polyline"
+            and o.tags["bim.id"].startswith("BCHW-FS-D")]
+    assert lows and min(lows) >= slab_bottom
+
+
+def test_box_stub_has_chamfer_haunches(emit):
+    haunches = [o for o in emit.objects
+                if "HAUNCH" in o.tags.get("bim.id", "")]
+    assert len(haunches) == 4
+    for h in haunches:
+        assert len(h.points) == 3                    # 45 deg corner fillet
+        assert h.tags["box.display_only"] == "true"

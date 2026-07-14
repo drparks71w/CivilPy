@@ -260,10 +260,39 @@ def _foreslope_wall(design: HeadwallDesign, f: Point,
                         design.foreslope_cy_per_ft * span))
 
 
-def _culvert_footing(design: HeadwallDesign, f: Point,
-                     half: float) -> list[EmitObject]:
+def _footing_span(design: HeadwallDesign, walls, f: Point,
+                  half: float) -> "tuple[float, float]":
+    """Where the culvert footing strip may run along the face without
+    clashing into the wingwall footings: pull each end back to the
+    inboard-most corner of the adjacent wall footing (projected onto
+    the face axis)."""
+    row = design.row
+    d_toe = row.a + CUTOFF_WALL_WIDTH_FT
+    d_heel = row.footing_w - d_toe
+    ends = [half, -half]
+    for i, w in enumerate(walls):
+        ax, nf = w.axis, w.n_fill
+        ns = (-nf[0], -nf[1], 0.0)
+        length = w.length + FOOTING_EXTENSION_FT
+        projs = []
+        for s in (0.0, length):
+            for d in (d_toe, -d_heel):
+                px = w.root[0] + s * ax[0] + d * ns[0]
+                py = w.root[1] + s * ax[1] + d * ns[1]
+                projs.append(px * f[0] + py * f[1])
+        if i == 0:
+            ends[0] = min(half, min(projs))
+        else:
+            ends[1] = max(-half, max(projs))
+    return ends[1], ends[0]
+
+
+def _culvert_footing(design: HeadwallDesign, f: Point, half: float,
+                     s_lo: float, s_hi: float) -> list[EmitObject]:
     """The footing strip across the opening (quantities per lineal foot
-    x (span + 2 t) per the sheets) and its cutoff wall."""
+    x (span + 2 t) per the sheets — the *tabulated* basis; the drawn
+    solid stops where the wingwall footings begin) and its cutoff
+    wall."""
     inp = design.inputs
     row = design.row
     span = inp.box_span_ft + 2.0 * design.t_wall_in / 12.0
@@ -274,22 +303,23 @@ def _culvert_footing(design: HeadwallDesign, f: Point,
     def at(s: float, d: float, z: float) -> Point:
         return (s * f[0] + d * ns[0], s * f[1] + d * ns[1], z)
 
-    loop = (at(-half, d_toe, 0.0), at(-half, -d_heel, 0.0),
-            at(half, -d_heel, 0.0), at(half, d_toe, 0.0))
+    loop = (at(s_lo, d_toe, 0.0), at(s_lo, -d_heel, 0.0),
+            at(s_hi, -d_heel, 0.0), at(s_hi, d_toe, 0.0))
     footing = EmitObject(
         kind="prism", layer=LAYER_CULVERT_FOOTINGS, points=loop,
         vector=(0.0, 0.0, -row.footing_t),
         tags=_conc_tags("footing", "BCHW-CULV-FTG",
                         design.row.culvert_footing_cy_per_ft * span))
-    cw = (at(-half, d_toe, -row.footing_t),
-          at(-half, d_toe - CUTOFF_WALL_WIDTH_FT, -row.footing_t),
-          at(half, d_toe - CUTOFF_WALL_WIDTH_FT, -row.footing_t),
-          at(half, d_toe, -row.footing_t))
+    cw = (at(s_lo, d_toe, -row.footing_t),
+          at(s_lo, d_toe - CUTOFF_WALL_WIDTH_FT, -row.footing_t),
+          at(s_hi, d_toe - CUTOFF_WALL_WIDTH_FT, -row.footing_t),
+          at(s_hi, d_toe, -row.footing_t))
     cutoff = EmitObject(
         kind="prism", layer=LAYER_CULVERT_WALLS, points=cw,
         vector=(0.0, 0.0, -row.hcw),
         tags=_conc_tags("cutoff_wall", "BCHW-CULV-CW",
-                        CUTOFF_WALL_WIDTH_FT * row.hcw * 2.0 * half / CY))
+                        CUTOFF_WALL_WIDTH_FT * row.hcw
+                        * (s_hi - s_lo) / CY))
     return [footing, cutoff]
 
 
@@ -316,7 +346,7 @@ def _box_stub(design: HeadwallDesign, stub_ft: float) -> list[EmitObject]:
                           tags=tags(part))
 
     walls_z = (0.0, R + 2.0 * ts)
-    return [
+    out = [
         prism(((-S / 2.0 - t, walls_z[0]), (-S / 2.0, walls_z[0]),
                (-S / 2.0, walls_z[1]), (-S / 2.0 - t, walls_z[1])), "W1"),
         prism(((S / 2.0, walls_z[0]), (S / 2.0 + t, walls_z[0]),
@@ -327,6 +357,15 @@ def _box_stub(design: HeadwallDesign, stub_ft: float) -> list[EmitObject]:
                (S / 2.0, R + 2.0 * ts), (-S / 2.0, R + 2.0 * ts)),
               "SLAB-TOP"),
     ]
+    # haunched (chamfered) inside corners, leg = wall thickness
+    ch = t
+    corners = ((-S / 2.0, ts, 1.0, 1.0), (S / 2.0, ts, -1.0, 1.0),
+               (-S / 2.0, R + ts, 1.0, -1.0),
+               (S / 2.0, R + ts, -1.0, -1.0))
+    for k, (cy, cz, sy, sz) in enumerate(corners):
+        out.append(prism(((cy, cz), (cy + sy * ch, cz),
+                          (cy, cz + sz * ch)), f"HAUNCH-{k + 1}"))
+    return out
 
 
 # ── reinforcing (visual; the schedule markers carry the tabulated lbs) ────
@@ -363,12 +402,13 @@ def _wall_bars(w: _Wall, design: HeadwallDesign) -> list[EmitObject]:
     k, s = 0, row.y_spa_in / 24.0
     while s <= w.length - c:
         k += 1
+        z_top = min(row.c, top_at(s) - c)
         out.append(EmitObject(
             kind="polyline", layer=LAYER_CULVERT_REBAR,
             points=(p(s, t - c, -row.footing_t + c),
-                    p(s, t - c, row.c),),
+                    p(s, t - c, z_top),),
             tags=_bar_tags(f"BCHW-{w.name}-Y{k}", size=row.y_bar,
-                           mat="wingwall", length_ft=row.footing_t + row.c,
+                           mat="wingwall", length_ft=row.footing_t + z_top,
                            bend="dowel")))
         s += row.y_spa_in / 12.0
     # near-face verticals and both-face horizontals, #5 @ 18 max
@@ -387,8 +427,8 @@ def _wall_bars(w: _Wall, design: HeadwallDesign) -> list[EmitObject]:
         while z <= max(w.h_root, w.tip_height()) - c:
             k += 1
             s_end = w.length - c
-            if not w.level and z > w.tip_height():
-                s_end = min(s_end, (z - w.h_root) * w.length
+            if not w.level and z + c > w.tip_height():
+                s_end = min(s_end, (z + c - w.h_root) * w.length
                             / (w.tip_height() - w.h_root))
             if s_end > 1.0:
                 out.append(EmitObject(
@@ -476,15 +516,17 @@ def _foreslope_bars(design: HeadwallDesign, f: Point,
                 tags=_bar_tags(f"BCHW-FS-{face}-H{j + 1}", size=5,
                                mat="foreslope_wall",
                                length_ft=2.0 * half - 2.0 * c)))
+    ts = inp.box_slab_thickness_in / 12.0
+    embed = max(ts - c, 0.25)          # into the top slab, with cover
     k, s = 0, -half + 0.5
     while s <= half - 0.5:
         k += 1
         out.append(EmitObject(
             kind="polyline", layer=LAYER_CULVERT_REBAR,
-            points=(p(s, row.b / 2.0, z0 - 1.0),
+            points=(p(s, row.b / 2.0, z0 - embed),
                     p(s, row.b / 2.0, z0 + fs - c)),
             tags=_bar_tags(f"BCHW-FS-D{k}", size=5, mat="foreslope_wall",
-                           length_ft=fs + 1.0 - c, bend="dowel")))
+                           length_ft=fs + embed - c, bend="dowel")))
         s += 1.0
     return out
 
@@ -530,7 +572,8 @@ def bchw_emit(inp: HeadwallInput, *, box_stub_ft: float = 4.0,
     objects += _wall_footing(w2, design,
                              row.footing_conc_cy * (1.0 - fshare1))
     objects.append(_foreslope_wall(design, f, half))
-    objects += _culvert_footing(design, f, half)
+    s_lo, s_hi = _footing_span(design, (w1, w2), f, half)
+    objects += _culvert_footing(design, f, half, s_lo, s_hi)
     if box_stub_ft > 0.0:
         objects += _box_stub(design, box_stub_ft)
 
