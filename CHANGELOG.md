@@ -7,6 +7,29 @@ Versions follow [Semantic Versioning](https://semver.org/) (major.minor.patch).
 
 ## [Unreleased]
 
+- **Ratio matrices and governing-case identification
+  (`structural.rating_ratios`).** The core of the ORIL 2026 load-factor
+  assignment method (ODOT PID 123396): known rating factors scale to
+  unknown vehicles through 1D live-load-effect ratios because capacity
+  cancels, but the inventory hides *which* action governed — so
+  `identify_governing_case` matches the empirical relative-RF matrix
+  (`RF_i/RF_j`) against theoretical demand-ratio matrices (`E_j/E_i`)
+  per action and picks the minimum Frobenius-norm residual. Simple
+  spans compare M+ vs V on the longest span; `continuous=True` adds M-
+  and sweeps the paper's `r*L | L | r*L` three-span sub-model across
+  candidate span ratios (default 1.00-1.80 by 0.01) for the global
+  minimum, returning the best-fit ratio and the full sweep curves.
+  Demand bases (`simple_span_demands` / `three_span_demands`, cached
+  per configuration) ride the new `UnitResponses` fast path in
+  `continuous_beam` — unit-load matrices solved once per beam and
+  shared across all vehicles — and carry M+ peak stations for the
+  future critical-section alignment check. `predict_rating_factors`
+  finishes the flowchart: each known RF scaled through the governing
+  ratio, averaged, with per-known-vehicle spread kept for QC.
+  Synthetic-recovery tests confirm exact identification of action and
+  span ratio (zero residual, ground-truth RFs reproduced) and
+  robustness to ±3 % RF noise.
+
 - **Rating-vehicle catalog and moving-load envelopes** (groundwork for
   the ORIL 2026 load-factor assignment methodology, ODOT PID 123396).
   `aashto.vehicles` gains a frozen `RatingVehicle` axle-train dataclass

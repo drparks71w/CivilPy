@@ -399,6 +399,85 @@ def unit_response_matrices(beam: ContinuousBeam, xs):
     return v, m
 
 
+@dataclass
+class UnitResponses:
+    """The unit-load response matrices of one beam configuration on one
+    grid, reusable across every vehicle: build once with
+    :meth:`from_beam`, then :meth:`envelope` each truck against it (the
+    per-configuration solve dominates; each envelope afterwards is a
+    cheap gather-and-sum)."""
+
+    xs: np.ndarray
+    shear: np.ndarray    # (n_positions, n_stations)
+    moment: np.ndarray
+
+    @classmethod
+    def from_beam(cls, beam: ContinuousBeam, step: float = 0.5):
+        """Solve the unit-load responses of ``beam`` on a grid of spacing
+        ``step`` (ft, snapped so the supports land on grid points)."""
+        length = beam.length
+        x0 = beam.supports[0]
+        n = max(2, int(round(length / step)))
+        xs = np.linspace(x0, x0 + length, n + 1)
+        return cls(xs, *unit_response_matrices(beam, xs))
+
+    def envelope(self, loads, positions, *, both_directions: bool = True,
+                 lane_klf: float = 0.0) -> MovingLoadEnvelope:
+        """Envelope one axle train (see :func:`moving_load_envelope` for
+        the parameter semantics; placements step at the grid spacing)."""
+        xs = self.xs
+        x0, x1 = float(xs[0]), float(xs[-1])
+        h = float(xs[1] - xs[0])
+        loads = np.asarray(loads, dtype=float)
+        offsets = np.asarray(positions, dtype=float)
+        trains = [(loads, offsets)]
+        if both_directions and len(loads) > 1:
+            trains.append((loads[::-1], offsets.max() - offsets[::-1]))
+
+        v_max = np.zeros(xs.size)
+        v_min = np.zeros(xs.size)
+        m_max = np.zeros(xs.size)
+        m_min = np.zeros(xs.size)
+        starts = np.arange(x0 - offsets.max(), x1 + h / 2, h)
+        for ld, offs in trains:
+            # (n_starts, n_stations) response accumulated one axle at a
+            # time: each axle's global positions pick (interpolated)
+            # unit-load rows.
+            v_eff = np.zeros((starts.size, xs.size))
+            m_eff = np.zeros((starts.size, xs.size))
+            for p_axle, off in zip(ld, offs):
+                pos = starts + off
+                inside = (pos >= x0) & (pos <= x1)
+                if not inside.any():
+                    continue
+                f = (pos[inside] - x0) / h
+                i0 = np.minimum(f.astype(int), xs.size - 2)
+                w = (f - i0)[:, None]
+                v_eff[inside] += p_axle * ((1.0 - w) * self.shear[i0]
+                                           + w * self.shear[i0 + 1])
+                m_eff[inside] += p_axle * ((1.0 - w) * self.moment[i0]
+                                           + w * self.moment[i0 + 1])
+            v_max = np.maximum(v_max, v_eff.max(axis=0))
+            v_min = np.minimum(v_min, v_eff.min(axis=0))
+            m_max = np.maximum(m_max, m_eff.max(axis=0))
+            m_min = np.minimum(m_min, m_eff.min(axis=0))
+
+        if lane_klf:
+            # Pattern placement per station: integrate the favorable-sign
+            # part of that station's influence line (a column of the unit
+            # matrices).
+            v_max += lane_klf * np.trapezoid(np.clip(self.shear, 0.0, None),
+                                             xs, axis=0)
+            v_min += lane_klf * np.trapezoid(np.clip(self.shear, None, 0.0),
+                                             xs, axis=0)
+            m_max += lane_klf * np.trapezoid(np.clip(self.moment, 0.0, None),
+                                             xs, axis=0)
+            m_min += lane_klf * np.trapezoid(np.clip(self.moment, None, 0.0),
+                                             xs, axis=0)
+
+        return MovingLoadEnvelope(xs, m_max, m_min, v_max, v_min)
+
+
 def moving_load_envelope(beam: ContinuousBeam, loads, positions, *,
                          step: float = 0.5, both_directions: bool = True,
                          lane_klf: float = 0.0) -> MovingLoadEnvelope:
@@ -420,64 +499,17 @@ def moving_load_envelope(beam: ContinuousBeam, loads, positions, *,
     responses.  Impact and distribution factors are deliberately not
     applied here.
 
+    Enveloping several vehicles on the same beam?  Build a
+    :class:`UnitResponses` once and call its :meth:`~UnitResponses.envelope`
+    per truck — this function rebuilds the unit-load matrices every call.
+
     >>> b = ContinuousBeam([0.0, 100.0])
     >>> env = moving_load_envelope(b, [8.0, 32.0, 32.0], [0.0, 14.0, 28.0])
     >>> round(env.max_positive_moment().value, 1)   # HS20, 100-ft span
     1523.9
     """
-    length = beam.length
-    x0 = beam.supports[0]
-    n = max(2, int(round(length / step)))
-    xs = np.linspace(x0, x0 + length, n + 1)
-    h = length / n
-    v_unit, m_unit = unit_response_matrices(beam, xs)
-
-    loads = np.asarray(loads, dtype=float)
-    offsets = np.asarray(positions, dtype=float)
-    trains = [(loads, offsets)]
-    if both_directions and len(loads) > 1:
-        trains.append((loads[::-1], offsets.max() - offsets[::-1]))
-
-    v_max = np.zeros(xs.size)
-    v_min = np.zeros(xs.size)
-    m_max = np.zeros(xs.size)
-    m_min = np.zeros(xs.size)
-    starts = np.arange(x0 - offsets.max(), x0 + length + step / 2, step)
-    for ld, offs in trains:
-        # (n_starts, n_stations) response accumulated one axle at a time:
-        # each axle's global positions pick (interpolated) unit-load rows.
-        v_eff = np.zeros((starts.size, xs.size))
-        m_eff = np.zeros((starts.size, xs.size))
-        for p_axle, off in zip(ld, offs):
-            pos = starts + off
-            inside = (pos >= x0) & (pos <= x0 + length)
-            if not inside.any():
-                continue
-            f = (pos[inside] - x0) / h
-            i0 = np.minimum(f.astype(int), xs.size - 2)
-            w = (f - i0)[:, None]
-            v_eff[inside] += p_axle * ((1.0 - w) * v_unit[i0]
-                                       + w * v_unit[i0 + 1])
-            m_eff[inside] += p_axle * ((1.0 - w) * m_unit[i0]
-                                       + w * m_unit[i0 + 1])
-        v_max = np.maximum(v_max, v_eff.max(axis=0))
-        v_min = np.minimum(v_min, v_eff.min(axis=0))
-        m_max = np.maximum(m_max, m_eff.max(axis=0))
-        m_min = np.minimum(m_min, m_eff.min(axis=0))
-
-    if lane_klf:
-        # Pattern placement per station: integrate the favorable-sign part
-        # of that station's influence line (a column of the unit matrices).
-        v_max += lane_klf * np.trapezoid(np.clip(v_unit, 0.0, None), xs,
-                                         axis=0)
-        v_min += lane_klf * np.trapezoid(np.clip(v_unit, None, 0.0), xs,
-                                         axis=0)
-        m_max += lane_klf * np.trapezoid(np.clip(m_unit, 0.0, None), xs,
-                                         axis=0)
-        m_min += lane_klf * np.trapezoid(np.clip(m_unit, None, 0.0), xs,
-                                         axis=0)
-
-    return MovingLoadEnvelope(xs, m_max, m_min, v_max, v_min)
+    return UnitResponses.from_beam(beam, step=step).envelope(
+        loads, positions, both_directions=both_directions, lane_klf=lane_klf)
 
 
 def _cumtrapz(y, x):
