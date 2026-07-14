@@ -111,11 +111,22 @@ class ContinuousBeam:
                         fab, fba = self._point_fem(xc - a, span, ld.w * dx)
                         m_ab += fab
                         m_ba += fba
-            elif isinstance(ld, _Point) and a - 1e-9 <= ld.x <= b + 1e-9:
+            elif isinstance(ld, _Point) and self._in_span(ld.x, a, b):
                 fab, fba = self._point_fem(ld.x - a, span, ld.p)
                 m_ab += fab
                 m_ba += fba
         return m_ab, m_ba
+
+    def _in_span(self, x: float, a: float, b: float) -> bool:
+        """Half-open span membership ``[a, b)`` so a point load exactly at an
+        interior support is counted once (in the span to its right, where it
+        feeds straight into that support's reaction); the last span includes
+        its right end."""
+        if x < a - 1e-9:
+            return False
+        if b >= self.supports[-1] - 1e-9:
+            return x <= b + 1e-9
+        return x < b - 1e-9
 
     @staticmethod
     def _point_fem(dist: float, span: float, p: float) -> tuple[float, float]:
@@ -180,8 +191,7 @@ class ContinuousBeam:
             r[e + 1] += v_b
         return r
 
-    @staticmethod
-    def _span_load_resultant(a, b, loads):
+    def _span_load_resultant(self, a, b, loads):
         """Total downward load on span ``[a,b]`` and its moment about ``a``."""
         w_tot = 0.0
         m_a = 0.0
@@ -194,7 +204,7 @@ class ContinuousBeam:
                 xc = 0.5 * (lo + hi)
                 w_tot += w
                 m_a += w * (xc - a)
-            elif isinstance(ld, _Point) and a - 1e-9 <= ld.x <= b + 1e-9:
+            elif isinstance(ld, _Point) and self._in_span(ld.x, a, b):
                 w_tot += ld.p
                 m_a += ld.p * (ld.x - a)
         return w_tot, m_a
@@ -219,10 +229,79 @@ class ContinuousBeam:
                 m -= ld.p * (x - ld.x)
         return m
 
+    def shear_at(self, x: float, loads=None) -> float:
+        """Shear (kip, left-limit) at station ``x`` by statics: reactions minus
+        applied loads to the left of ``x``."""
+        loads = self._loads if loads is None else loads
+        r = self.reactions(loads)
+        v = 0.0
+        for xi, ri in zip(self.supports, r):
+            if xi < x - 1e-12:
+                v += ri
+        for ld in loads:
+            if isinstance(ld, _UDL):
+                lo, hi = ld.x0, min(ld.x1, x)
+                if hi > lo:
+                    v -= ld.w * (hi - lo)
+            elif isinstance(ld, _Point) and ld.x < x - 1e-12:
+                v -= ld.p
+        return v
+
+    def diagrams(self, xs=None, n: int = 201, loads=None):
+        """``(stations, shears, moments)`` at ``xs`` (or ``n`` even stations).
+
+        One reactions solve, then vectorized statics — the fast path for
+        diagram sampling and moving-load envelopes.  Shear and moment take
+        their left-limit value at a support or point-load station."""
+        loads = self._loads if loads is None else loads
+        if xs is None:
+            xs = np.linspace(self.supports[0], self.supports[-1], n)
+        x = np.asarray(xs, dtype=float)
+        v = np.zeros_like(x)
+        m = np.zeros_like(x)
+        for xi, ri in zip(self.supports, self.reactions(loads)):
+            left = x > xi + 1e-12
+            v += np.where(left, ri, 0.0)
+            m += np.where(left, ri * (x - xi), 0.0)
+        for ld in loads:
+            if isinstance(ld, _UDL):
+                c = np.clip(np.minimum(x, ld.x1) - ld.x0, 0.0, None)
+                v -= ld.w * c
+                m -= ld.w * c * (x - ld.x0 - 0.5 * c)
+            elif isinstance(ld, _Point):
+                past = x > ld.x + 1e-12
+                v -= np.where(past, ld.p, 0.0)
+                m -= np.where(past, ld.p * (x - ld.x), 0.0)
+        return list(x), v, m
+
     def moment_diagram(self, n: int = 201, loads=None):
         """``(stations, moments)`` sampled ``n`` points along the beam."""
-        xs = list(np.linspace(self.supports[0], self.supports[-1], n))
-        return xs, [self.moment_at(x, loads) for x in xs]
+        xs, _, m = self.diagrams(n=n, loads=loads)
+        return xs, list(m)
+
+    def shear_diagram(self, n: int = 201, loads=None):
+        """``(stations, shears)`` sampled ``n`` points along the beam."""
+        xs, v, _ = self.diagrams(n=n, loads=loads)
+        return xs, list(v)
+
+    def deflection_diagram(self, e_ksi: float, i_in4: float, n: int = 1001,
+                           loads=None, xs=None):
+        """``(stations, deflections)`` — deflection in **inches**, negative =
+        downward, for a prismatic section (``e_ksi`` in ksi, ``i_in4`` in in^4).
+
+        The sagging-positive moment diagram (``n`` even samples, or ``xs``)
+        is integrated twice as curvature ``M/EI``; the rigid-body line is then
+        removed by a least-squares fit through the support stations, so every
+        support sits at (numerically) zero deflection."""
+        xs, _, m = self.diagrams(xs=xs, n=n, loads=loads)
+        x_in = np.asarray(xs) * 12.0
+        phi = np.asarray(m) * 12.0 / (e_ksi * i_in4)   # 1/in
+        slope = _cumtrapz(phi, x_in)
+        v = _cumtrapz(slope, x_in)
+        s_in = np.asarray(self.supports) * 12.0
+        a_mat = np.vstack([np.ones_like(s_in), s_in]).T
+        coef, *_ = np.linalg.lstsq(a_mat, np.interp(s_in, x_in, v), rcond=None)
+        return xs, v - (coef[0] + coef[1] * x_in)
 
     def moment_influence_line(self, x_section: float, *, n: int = 201
                               ) -> InfluenceLine:
@@ -234,6 +313,13 @@ class ContinuousBeam:
         return influence_line_from_ordinates(
             positions, etas, length=self.length,
             label=f"M @ {x_section:.1f}")
+
+
+def _cumtrapz(y, x):
+    """Cumulative trapezoidal integral of ``y`` over ``x``, starting at 0."""
+    out = np.zeros_like(y)
+    out[1:] = np.cumsum(0.5 * (y[1:] + y[:-1]) * np.diff(x))
+    return out
 
 
 def m_about_a_to_shear(w_tot, m_about_a, span):

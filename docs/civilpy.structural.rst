@@ -145,6 +145,14 @@ civilpy.structural.influence\_lines module
    :undoc-members:
    :show-inheritance:
 
+civilpy.structural.line\_girder\_tool module
+--------------------------------------------
+
+.. automodule:: civilpy.structural.line_girder_tool
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 civilpy.structural.midas module
 -------------------------------
 
