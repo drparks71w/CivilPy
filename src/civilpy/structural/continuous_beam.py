@@ -315,6 +315,171 @@ class ContinuousBeam:
             label=f"M @ {x_section:.1f}")
 
 
+@dataclass
+class EnvelopeExtreme:
+    """One extreme of a moving-load envelope: its value and station (ft)."""
+
+    value: float
+    station: float
+
+
+@dataclass
+class MovingLoadEnvelope:
+    """Per-station extreme shear and moment from stepping an axle train
+    (plus any pattern-placed lane load) across a :class:`ContinuousBeam`.
+
+    Arrays share :attr:`stations`; conventions follow the beam (sagging
+    moment positive, left-limit shear).  These are 1D line-girder demands —
+    distribution factors and impact are the caller's business.
+    """
+
+    stations: np.ndarray
+    moment_max: np.ndarray
+    moment_min: np.ndarray
+    shear_max: np.ndarray
+    shear_min: np.ndarray
+
+    def max_positive_moment(self) -> EnvelopeExtreme:
+        i = int(np.argmax(self.moment_max))
+        return EnvelopeExtreme(float(self.moment_max[i]),
+                               float(self.stations[i]))
+
+    def max_negative_moment(self) -> EnvelopeExtreme:
+        """Most negative moment (hogging; 0 at midspan stations is normal)."""
+        i = int(np.argmin(self.moment_min))
+        return EnvelopeExtreme(float(self.moment_min[i]),
+                               float(self.stations[i]))
+
+    def max_shear(self) -> EnvelopeExtreme:
+        """Largest absolute shear (signed value returned)."""
+        hi, lo = np.max(self.shear_max), np.min(self.shear_min)
+        if hi >= -lo:
+            i = int(np.argmax(self.shear_max))
+            return EnvelopeExtreme(float(self.shear_max[i]),
+                                   float(self.stations[i]))
+        i = int(np.argmin(self.shear_min))
+        return EnvelopeExtreme(float(self.shear_min[i]),
+                               float(self.stations[i]))
+
+    def plot(self, ax=None):
+        """Stacked shear/moment envelope plot; returns the figure."""
+        import matplotlib.pyplot as plt
+
+        if ax is None:
+            fig, axes = plt.subplots(2, 1, figsize=(9, 5.5), sharex=True)
+        else:
+            fig, axes = ax.get_figure(), [ax]
+        pairs = [(self.shear_max, self.shear_min, "Shear (kip)"),
+                 (self.moment_max, self.moment_min, "Moment (kip·ft)")]
+        for a, (hi, lo, label) in zip(axes, pairs):
+            a.plot(self.stations, hi, "b", lw=1.4)
+            a.plot(self.stations, lo, "r", lw=1.4)
+            a.fill_between(self.stations, lo, hi, color="b", alpha=0.10)
+            a.axhline(0.0, color="k", lw=0.8)
+            a.set_ylabel(label)
+            a.grid(True, alpha=0.3)
+        axes[-1].set_xlabel("Station (ft)")
+        return fig
+
+
+def unit_response_matrices(beam: ContinuousBeam, xs):
+    """Shear and moment at every station of ``xs`` for a unit (1 kip) load
+    at every position of ``xs``: two ``(len(xs), len(xs))`` arrays whose
+    row ``i`` is the beam's response to the unit load at ``xs[i]``.
+
+    Column ``k`` read down the rows is therefore the influence line of the
+    effect at station ``xs[k]`` — one stiffness solve per row buys every
+    truck, direction, and placement afterwards as a cheap gather-and-sum.
+    """
+    x = np.asarray(xs, dtype=float)
+    v = np.empty((x.size, x.size))
+    m = np.empty((x.size, x.size))
+    for i, p in enumerate(x):
+        _, v[i], m[i] = beam.diagrams(xs=x, loads=[_Point(1.0, p)])
+    return v, m
+
+
+def moving_load_envelope(beam: ContinuousBeam, loads, positions, *,
+                         step: float = 0.5, both_directions: bool = True,
+                         lane_klf: float = 0.0) -> MovingLoadEnvelope:
+    """Step an axle train across ``beam`` and envelope shear and moment at
+    every station.
+
+    ``loads`` (kip) sit at ``positions`` (ft from the first axle) — pass a
+    catalog truck as ``*vehicle.train()`` from
+    :mod:`civilpy.structural.aashto.vehicles`.  Axles off the beam
+    contribute nothing (trains enter and leave the span).  ``step`` sets
+    both the station grid and the train-placement increment; axle
+    placements between grid points interpolate linearly between unit-load
+    rows, so keep ``step`` a divisor of the axle spacings where exactness
+    at the peaks matters (the catalog trucks are all on 0.5-ft multiples).
+
+    ``lane_klf`` adds a uniform lane load placed **patterned** per station:
+    positive influence regions only for the maxima, negative only for the
+    minima — the adverse-placement rule, computed from the same unit-load
+    responses.  Impact and distribution factors are deliberately not
+    applied here.
+
+    >>> b = ContinuousBeam([0.0, 100.0])
+    >>> env = moving_load_envelope(b, [8.0, 32.0, 32.0], [0.0, 14.0, 28.0])
+    >>> round(env.max_positive_moment().value, 1)   # HS20, 100-ft span
+    1523.9
+    """
+    length = beam.length
+    x0 = beam.supports[0]
+    n = max(2, int(round(length / step)))
+    xs = np.linspace(x0, x0 + length, n + 1)
+    h = length / n
+    v_unit, m_unit = unit_response_matrices(beam, xs)
+
+    loads = np.asarray(loads, dtype=float)
+    offsets = np.asarray(positions, dtype=float)
+    trains = [(loads, offsets)]
+    if both_directions and len(loads) > 1:
+        trains.append((loads[::-1], offsets.max() - offsets[::-1]))
+
+    v_max = np.zeros(xs.size)
+    v_min = np.zeros(xs.size)
+    m_max = np.zeros(xs.size)
+    m_min = np.zeros(xs.size)
+    starts = np.arange(x0 - offsets.max(), x0 + length + step / 2, step)
+    for ld, offs in trains:
+        # (n_starts, n_stations) response accumulated one axle at a time:
+        # each axle's global positions pick (interpolated) unit-load rows.
+        v_eff = np.zeros((starts.size, xs.size))
+        m_eff = np.zeros((starts.size, xs.size))
+        for p_axle, off in zip(ld, offs):
+            pos = starts + off
+            inside = (pos >= x0) & (pos <= x0 + length)
+            if not inside.any():
+                continue
+            f = (pos[inside] - x0) / h
+            i0 = np.minimum(f.astype(int), xs.size - 2)
+            w = (f - i0)[:, None]
+            v_eff[inside] += p_axle * ((1.0 - w) * v_unit[i0]
+                                       + w * v_unit[i0 + 1])
+            m_eff[inside] += p_axle * ((1.0 - w) * m_unit[i0]
+                                       + w * m_unit[i0 + 1])
+        v_max = np.maximum(v_max, v_eff.max(axis=0))
+        v_min = np.minimum(v_min, v_eff.min(axis=0))
+        m_max = np.maximum(m_max, m_eff.max(axis=0))
+        m_min = np.minimum(m_min, m_eff.min(axis=0))
+
+    if lane_klf:
+        # Pattern placement per station: integrate the favorable-sign part
+        # of that station's influence line (a column of the unit matrices).
+        v_max += lane_klf * np.trapezoid(np.clip(v_unit, 0.0, None), xs,
+                                         axis=0)
+        v_min += lane_klf * np.trapezoid(np.clip(v_unit, None, 0.0), xs,
+                                         axis=0)
+        m_max += lane_klf * np.trapezoid(np.clip(m_unit, 0.0, None), xs,
+                                         axis=0)
+        m_min += lane_klf * np.trapezoid(np.clip(m_unit, None, 0.0), xs,
+                                         axis=0)
+
+    return MovingLoadEnvelope(xs, m_max, m_min, v_max, v_min)
+
+
 def _cumtrapz(y, x):
     """Cumulative trapezoidal integral of ``y`` over ``x``, starting at 0."""
     out = np.zeros_like(y)

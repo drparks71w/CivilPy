@@ -7,6 +7,21 @@ Versions follow [Semantic Versioning](https://semver.org/) (major.minor.patch).
 
 ## [Unreleased]
 
+- **Rating-vehicle catalog and moving-load envelopes** (groundwork for
+  the ORIL 2026 load-factor assignment methodology, ODOT PID 123396).
+  `aashto.vehicles` gains a frozen `RatingVehicle` axle-train dataclass
+  and the full catalog behind Ohio's legal-load ratings: AASHTO legal
+  trucks Type 3 / 3S2 / 3-3 (MBE Fig. D6A-1), SHVs SU4-SU7 (Fig. D6A-2),
+  FAST-Act EV2/EV3, Ohio 2F1/3F1/4F1/5C1 (BDM 908), and HS20 / HL-93 in
+  train form — all exposed via `RATING_VEHICLES` and ready for the
+  axle-train steppers. `continuous_beam` gains `moving_load_envelope`:
+  unit-load response matrices (one stiffness solve per grid point, every
+  truck/direction/placement a gather-sum afterwards) enveloping shear and
+  moment at every station, with patterned lane-load placement from the
+  same influence columns and `EnvelopeExtreme` peak lookups (max M+, max
+  M-, max |V| with stations). Verified against the closed-form
+  influence-line path and the HS-20 textbook maximum.
+
 - **BCHW rebuilt against the actual Design Data sheets.** The module's
   "no dimension table" premise was wrong — ODOT's six Design Data
   sheets tabulate everything. `box_culvert_headwall` now carries the

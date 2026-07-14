@@ -9,7 +9,17 @@
 Axle-load/spacing definitions for the HL-93 design load (truck, tandem,
 lane) plus legal and permit rating vehicles, with helpers to step axle
 trains across influence lines for moving-load maxima.
+
+The rating-vehicle catalog (:data:`RATING_VEHICLES`) carries the AASHTO
+legal trucks (MBE Fig. D6A-1), the specialized hauling vehicles
+(MBE Fig. D6A-2), the FAST-Act emergency vehicles, and the Ohio legal
+trucks (ODOT BDM Section 908) as :class:`RatingVehicle` axle trains ready
+for :meth:`InfluenceLine.maximize_axle_train
+<civilpy.structural.influence_lines.InfluenceLine.maximize_axle_train>`
+and :func:`~civilpy.structural.continuous_beam.moving_load_envelope`.
 """
+
+from dataclasses import dataclass
 
 class HL93Load:
     """
@@ -120,3 +130,147 @@ class PedestrianLoad:
             f"w={self.uniform_load_psf:.1f} psf, "
             f"{self.uniform_load_klf:.4f} klf)"
         )
+
+
+@dataclass(frozen=True)
+class RatingVehicle:
+    """A rating vehicle as an axle train: loads (kip) at running positions
+    (ft from the first axle), the form the moving-load tools consume.
+
+    ``lane_load_klf`` is nonzero only for loadings whose definition includes
+    a uniform lane component (HL-93); impact / dynamic load allowance is a
+    rating-method choice and is left to the caller.
+    """
+
+    name: str
+    axle_loads_kip: tuple
+    axle_positions_ft: tuple
+    reference: str = ""
+    lane_load_klf: float = 0.0
+
+    def __post_init__(self):
+        if len(self.axle_loads_kip) != len(self.axle_positions_ft):
+            raise ValueError(f"{self.name}: axle loads and positions differ "
+                             f"in length")
+        if list(self.axle_positions_ft) != sorted(self.axle_positions_ft):
+            raise ValueError(f"{self.name}: axle positions must be "
+                             f"non-decreasing")
+
+    @property
+    def gvw_kip(self) -> float:
+        """Gross vehicle weight (kip)."""
+        return float(sum(self.axle_loads_kip))
+
+    @property
+    def gvw_tons(self) -> float:
+        """Gross vehicle weight (US tons)."""
+        return self.gvw_kip / 2.0
+
+    @property
+    def wheelbase_ft(self) -> float:
+        """First-to-last axle distance (ft)."""
+        return float(self.axle_positions_ft[-1] - self.axle_positions_ft[0])
+
+    @property
+    def axle_spacings_ft(self) -> tuple:
+        """Distances between consecutive axles (ft)."""
+        p = self.axle_positions_ft
+        return tuple(b - a for a, b in zip(p, p[1:]))
+
+    def train(self) -> tuple:
+        """``(loads, positions)`` for the axle-train steppers
+        (:meth:`InfluenceLine.maximize_axle_train
+        <civilpy.structural.influence_lines.InfluenceLine.maximize_axle_train>`,
+        :func:`~civilpy.structural.continuous_beam.moving_load_envelope`)."""
+        return list(self.axle_loads_kip), list(self.axle_positions_ft)
+
+    def __repr__(self) -> str:
+        return (f"RatingVehicle({self.name}: {self.gvw_kip:g} kip GVW, "
+                f"{len(self.axle_loads_kip)} axles over "
+                f"{self.wheelbase_ft:g} ft)")
+
+
+#: AASHTO legal trucks (MBE 3rd Ed. Fig. D6A-1) — the routine commercial
+#: configurations, and the three vehicles of the FHWA legal-load rating
+#: mandate (ODOT BDM 908.3).
+LEGAL_TRUCKS = {
+    "Type 3": RatingVehicle(
+        "Type 3", (16.0, 17.0, 17.0), (0.0, 15.0, 19.0),
+        reference="AASHTO MBE Fig. D6A-1"),
+    "Type 3S2": RatingVehicle(
+        "Type 3S2", (10.0, 15.5, 15.5, 15.5, 15.5),
+        (0.0, 11.0, 15.0, 37.0, 41.0),
+        reference="AASHTO MBE Fig. D6A-1"),
+    "Type 3-3": RatingVehicle(
+        "Type 3-3", (12.0, 12.0, 12.0, 16.0, 14.0, 14.0),
+        (0.0, 15.0, 19.0, 34.0, 50.0, 54.0),
+        reference="AASHTO MBE Fig. D6A-1"),
+}
+
+#: Specialized hauling vehicles (MBE 3rd Ed. Fig. D6A-2): single-unit
+#: multi-axle trucks introduced by the FHWA SHV rating requirement.
+SHV_TRUCKS = {
+    "SU4": RatingVehicle(
+        "SU4", (12.0, 8.0, 17.0, 17.0), (0.0, 10.0, 14.0, 18.0),
+        reference="AASHTO MBE Fig. D6A-2"),
+    "SU5": RatingVehicle(
+        "SU5", (12.0, 8.0, 8.0, 17.0, 17.0), (0.0, 10.0, 14.0, 18.0, 22.0),
+        reference="AASHTO MBE Fig. D6A-2"),
+    "SU6": RatingVehicle(
+        "SU6", (11.5, 8.0, 8.0, 17.0, 17.0, 8.0),
+        (0.0, 10.0, 14.0, 18.0, 22.0, 26.0),
+        reference="AASHTO MBE Fig. D6A-2"),
+    "SU7": RatingVehicle(
+        "SU7", (11.5, 8.0, 8.0, 17.0, 17.0, 8.0, 8.0),
+        (0.0, 10.0, 14.0, 18.0, 22.0, 26.0, 30.0),
+        reference="AASHTO MBE Fig. D6A-2"),
+}
+
+#: FAST-Act emergency vehicles (23 U.S.C. 127(r); FHWA EV rating memo).
+EMERGENCY_VEHICLES = {
+    "EV2": RatingVehicle(
+        "EV2", (24.0, 33.5), (0.0, 15.0),
+        reference="FHWA FAST Act EV; AASHTO MBE interim"),
+    "EV3": RatingVehicle(
+        "EV3", (24.0, 31.0, 31.0), (0.0, 15.0, 19.0),
+        reference="FHWA FAST Act EV; AASHTO MBE interim"),
+}
+
+#: Ohio legal loads (ODOT BDM Section 908): the 2F1/3F1/4F1 single-unit
+#: trucks and the 5C1 semitrailer.
+OHIO_LEGAL_TRUCKS = {
+    "2F1": RatingVehicle(
+        "2F1", (10.0, 20.0), (0.0, 10.0),
+        reference="ODOT BDM Section 908"),
+    "3F1": RatingVehicle(
+        "3F1", (12.0, 17.0, 17.0), (0.0, 10.0, 14.0),
+        reference="ODOT BDM Section 908"),
+    "4F1": RatingVehicle(
+        "4F1", (12.0, 14.0, 14.0, 14.0), (0.0, 10.0, 14.0, 18.0),
+        reference="ODOT BDM Section 908"),
+    "5C1": RatingVehicle(
+        "5C1", (12.0, 17.0, 17.0, 17.0, 17.0),
+        (0.0, 12.0, 16.0, 47.0, 51.0),
+        reference="ODOT BDM Section 908"),
+}
+
+#: Design-load trucks in axle-train form.  The HS-20 truck is the Standard
+#: Spec design/rating baseline; the HL-93 entry is the design truck at the
+#: 14-ft (governing short/medium-span) rear spacing with its lane load —
+#: sweep the 14-30 ft rear spacing via :meth:`InfluenceLine.hl93_effect
+#: <civilpy.structural.influence_lines.InfluenceLine.hl93_effect>` when the
+#: variable spacing matters (negative moment over supports).
+DESIGN_TRUCKS = {
+    "HS20": RatingVehicle(
+        "HS20", (8.0, 32.0, 32.0), (0.0, 14.0, 28.0),
+        reference="AASHTO Std. Spec. Art. 3.7"),
+    "HL-93": RatingVehicle(
+        "HL-93", (8.0, 32.0, 32.0), (0.0, 14.0, 28.0),
+        reference="AASHTO LRFD Art. 3.6.1.2", lane_load_klf=0.64),
+}
+
+#: Every rating vehicle above, keyed by name.
+RATING_VEHICLES = {
+    **DESIGN_TRUCKS, **LEGAL_TRUCKS, **SHV_TRUCKS,
+    **EMERGENCY_VEHICLES, **OHIO_LEGAL_TRUCKS,
+}
