@@ -7,6 +7,33 @@ Versions follow [Semantic Versioning](https://semver.org/) (major.minor.patch).
 
 ## [Unreleased]
 
+- **Basic line-girder tool (`structural.line_girder_tool`).** The
+  simplest useful form of a shear/moment/deflection run, with no Rhino
+  or MIDAS dependence: a `BridgeConfig` of dropdown-able settings
+  (barrier type from the ODOT railing catalog, AASHTO vehicle, deck
+  thickness, span count/length, girder size/spacing/overhang, FWS)
+  produces the per-girder load build-up (DC1/DC2/DW klf plus the
+  4.6.2.2 moment/shear/deflection distribution factors, interior and
+  exterior) and V/M/Δ diagrams — dead load exact, live load as a
+  stepped-axle-train + patterned-lane envelope. The *Shear Moment and
+  Deflection Diagrams* notebook was rewritten around it: an
+  ipywidgets dropdown panel plus three statically-rendered preset
+  configurations, replacing the old Rhino-file/MDX walkthrough.
+- **`ContinuousBeam` grows shear and deflection.** `shear_at`,
+  `shear_diagram`, `diagrams` (one reactions solve, vectorized statics
+  at arbitrary stations), and `deflection_diagram` (curvature
+  integrated twice, rigid-body line removed least-squares through the
+  supports, inches, negative down) join `moment_at`. Verified against
+  AISC Steel Construction Manual Table 3-23 cases 1/29/30/43/44 in
+  `test_line_girder_tool.py`, including the moving-load maxima.
+- **Fix: point load exactly on an interior support.** The
+  slope-deflection statics counted such a load in *both* adjacent
+  spans (closed intervals), so a stepped axle landing on a pier
+  inflated the reactions (72-kip truck → 104 kips of reaction) and the
+  envelopes built on them. Span membership is now half-open — the load
+  goes to the span on its right and straight into that support's
+  reaction.
+
 ## [0.4.1] - 2026-07-13
 
 - **Offline `.3dm` backend (`rhino_bim.emit_to_3dm`).** Bakes a
