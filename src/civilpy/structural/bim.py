@@ -76,6 +76,9 @@ PAY_ITEMS: dict[str, PayItem] = {
     "515E30000": PayItem("515E30000",
                          "Intermediate diaphragms [CONFIRM]",
                          "ea", "515", 1),
+    "526E10000": PayItem("526E10000",
+                         "Reinforced concrete approach slabs [CONFIRM]",
+                         "sy", "526", 1),
 }
 
 
@@ -186,6 +189,23 @@ def parapet_tags(bid: str, scd: str, *, scd_year: str | int | None = None,
     if length_ft is not None:
         tags["parapet.length_ft"] = f"{length_ft:g}"
     return tags
+
+
+def approach_slab_tags(bid: str, scd: str = "AS-1-15", *,
+                       scd_year: str | int | None = None,
+                       length_ft: float, width_ft: float,
+                       thickness_in: float, skew_deg: float = 0.0,
+                       fc_psi: float = 4500.0,
+                       area_sy: float | None = None) -> dict:
+    """Approach slab concrete.  ITEM 526 measures the plan **area** (sy)
+    and includes the slab reinforcing (anchor bars into the abutment are
+    the exception — they measure under the ITEM 509 reinforcing items)."""
+    return {**_base("approach_slab", bid, scd=scd, scd_year=scd_year),
+            "approach_slab.length_ft": f"{length_ft:g}",
+            "approach_slab.width_ft": f"{width_ft:g}",
+            "approach_slab.thickness_in": f"{thickness_in:g}",
+            "approach_slab.skew_deg": f"{skew_deg:g}",
+            **concrete_mat(fc_psi, "QC1"), **_pay_tags("526E10000", area_sy)}
 
 
 def bearing_tags(bid: str, *, fixity: str, kind: str = "elastomeric",
