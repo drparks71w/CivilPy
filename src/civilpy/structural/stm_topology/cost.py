@@ -4,7 +4,7 @@
 #  SPDX-License-Identifier: MIT
 #  See the LICENSE file in the project root for full license text.
 
-"""Phase 5 — reinforcement sizing, node checks, material take-off, and an ODOT
+"""Reinforcement sizing, node checks, material take-off, and an ODOT
 cost estimate for a solved strut-and-tie truss.
 
 Forces come from the solved :class:`~civilpy.structural.strut_and_tie.\

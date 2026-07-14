@@ -477,7 +477,7 @@ class TestSummary:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Phase 2 — ACI 318-19 Code Expansions
+# ACI 318-19 code expansions
 # ─────────────────────────────────────────────────────────────────────────────
 
 class TestShearDirection:
@@ -701,7 +701,7 @@ class TestShearLugCheck:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Phase 3 — AASHTO Highway Structures & Modifiers
+# AASHTO highway structures & modifiers
 # ─────────────────────────────────────────────────────────────────────────────
 
 class TestFromCircular:
@@ -857,7 +857,7 @@ class TestBoltDemandsFromPole:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Phase 4 — plot() and from_dxf()
+# plot() and from_dxf()
 # ─────────────────────────────────────────────────────────────────────────────
 
 import math as _math
@@ -1034,7 +1034,7 @@ class TestFromDxf:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Phase 5 — Post-installed uncracked, c_ac splitting factor, stretch length,
+# Post-installed uncracked, c_ac splitting factor, stretch length,
 #            and from_circular with global pole loads
 # ─────────────────────────────────────────────────────────────────────────────
 

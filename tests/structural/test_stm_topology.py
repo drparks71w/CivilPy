@@ -24,7 +24,7 @@ from civilpy.structural.stm_topology.design import (
 )
 
 
-# ── Phase 4: direct-stiffness / indeterminate solver ─────────────────────────
+# ── direct-stiffness / indeterminate solver ─────────────────────────
 
 def test_determinate_solve_unchanged():
     """The method-of-joints path must give the documented deep-beam answer."""
@@ -83,7 +83,7 @@ def test_mechanism_raises():
         m.solve(method="stiffness")
 
 
-# ── Phase 1-2: mesh + SIMP ───────────────────────────────────────────────────
+# ── mesh + SIMP ───────────────────────────────────────────────────
 
 def test_element_stiffness_properties():
     KE = element_stiffness(0.2)
@@ -114,7 +114,7 @@ def test_simp_runs_and_reduces_compliance():
     assert 0.0 <= res.density.min() and res.density.max() <= 1.0 + 1e-9
 
 
-# ── Phase 3: extraction (thinning) ───────────────────────────────────────────
+# ── extraction (thinning) ───────────────────────────────────────────
 
 def test_zhang_suen_thins_to_one_pixel():
     img = np.zeros((9, 20), bool)
@@ -176,7 +176,7 @@ def test_arbitrary_polygon_void_pipeline_runs():
     assert len(result.model.nodes) >= 3
 
 
-# ── Phase 3½: ground-structure refinement / stability ────────────────────────
+# ── ground-structure refinement / stability ────────────────────────
 
 def test_is_stable_detects_mechanism():
     """is_stable must flag an under-braced truss (collinear chain) and accept a

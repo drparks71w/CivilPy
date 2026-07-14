@@ -47,7 +47,7 @@ Versions follow [Semantic Versioning](https://semver.org/) (major.minor.patch).
   `read_bim_quantities` regenerates the pay-item estimate from the
   saved file exactly (round-trip covered in `test_rhino_bim`). The MCP
   server the prototypes used was only a transport; this is the
-  agent-free equivalent for locked-down networks.
+  equivalent for locked-down networks.
 
 - **Substructure Gallery notebook.** One 3-span bridge carrying one of
   each substructure type — semi-integral abutment, hammerhead pier,

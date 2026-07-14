@@ -1175,7 +1175,7 @@ class AnchorBolts:
         return N_ua_max, V_ua_max
 
     # ─────────────────────────────────────────────────────────────────────────
-    # Phase 4 — Visualisation & digital inputs
+    # Visualisation & digital inputs
     # ─────────────────────────────────────────────────────────────────────────
 
     def plot(self, title: str = "", figsize: tuple = (8, 7)):

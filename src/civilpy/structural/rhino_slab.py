@@ -203,8 +203,8 @@ def slab_emit(inp: SlabBridgeInput, *,
     # These ride on a dedicated ``slab.kind=bridge`` marker point, *not* on
     # the document string table: rhino3dm exposes no setter for RhinoDoc
     # .Strings and cannot read it back, so a document-level tag would be
-    # write-only in the offline backend. Same G4 contract note as
-    # ``rhino_gdr._read_gdr_raw``; see docs/Rhino Design Philosophy.md.
+    # write-only in the offline backend (the same contract
+    # ``rhino_gdr._read_gdr_raw`` reads by).
     objects.append(EmitObject(
         kind="point", layer=LAYER_BRIDGE_DECK,
         points=((0.0, 0.0, 0.0),),

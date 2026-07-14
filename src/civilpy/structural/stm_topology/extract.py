@@ -4,7 +4,7 @@
 #  SPDX-License-Identifier: MIT
 #  See the LICENSE file in the project root for full license text.
 
-"""Truss extraction (Phase 3): turn a SIMP density field into a strut-and-tie
+"""Truss extraction: turn a SIMP density field into a strut-and-tie
 truss.
 
 Pipeline: threshold the density to a binary load path, thin it to a one-pixel
@@ -356,7 +356,7 @@ def _nearest_label(model, pt, exclude=()):
     return best
 
 
-# ── ground-structure stabilization (Phase 3½) ──────────────────────────────
+# ── ground-structure stabilization ──────────────────────────────
 #
 # Skeleton tracing reliably finds the *struts* (the load fans down to the
 # supports) but routinely misses the *ties* — the top and bottom chords — because

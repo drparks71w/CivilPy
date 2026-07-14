@@ -19,7 +19,7 @@ Conventions
   alignment is flat at ``z = 0``.
 
 Superelevation/cross-slope is not yet applied to offset elevations (offsets
-sit at the centerline profile elevation) -- see the Work Plan A1 note.
+sit at the centerline profile elevation).
 
 Examples
 --------

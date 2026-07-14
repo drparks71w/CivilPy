@@ -130,7 +130,6 @@ omit = [
     "*/general/database_tools.py",
     "*/general/photos.py",
     "*/general/jupyter.py",
-    "*/structural/steel_db_temp.py",
 ]
 timid = true
 parallel = true

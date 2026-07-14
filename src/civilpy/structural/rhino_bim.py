@@ -22,7 +22,7 @@ cylinder and how to stamp a user string, never where a stud goes.  Known
 backends:
 
 * ``Notebooks/Rhino Components/draw_bim_emit.py`` — live-document driver
-  (run inside Rhino 8, e.g. through an MCP agent) that consumes
+  (run inside Rhino 8, from the ScriptEditor or over MCP) that consumes
   :func:`emit_to_json`.
 * The ``odot_bridge_generator_ghpython.py`` Grasshopper component shares
   the same :func:`~civilpy.structural.bridge_layout.layout_bridge` layout
@@ -47,7 +47,7 @@ Geometry record kinds
 ``point``
     A marker.  The ``bim.type = bridge`` marker carries the bridge-wide
     parameters, because standalone ``rhino3dm`` cannot write or read the
-    RhinoDoc string table (same G4 contract note as ``rhino_slab``); a
+    RhinoDoc string table (the same contract ``rhino_slab`` follows); a
     live-document backend *additionally* mirrors them into
     ``doc.Strings`` for the ``rhino_gdr`` reader.
 
@@ -181,7 +181,7 @@ def _arc(cw: float, ch: float, r: float, a0: float, a1: float,
 def i_profile_wh(section, arc_pts: int = 4) -> list[tuple[float, float]]:
     """Closed W-shape outline as ``(w, h)`` pairs in **inches**, ``w``
     across the flange (0 at the web centerline), ``h`` up from the bottom
-    face.  The web-to-flange k-fillets (work-plan 1.4 — no square
+    face.  The web-to-flange k-fillets (no square
     re-entrant corners) are tessellated with ``arc_pts`` points each; a
     section without a cataloged ``fillet_k`` falls back to square
     corners."""
@@ -260,7 +260,7 @@ def girder_bridge_emit(inp: BridgeInput, *,
 
     objects: list[EmitObject] = []
 
-    # bridge marker: bridge-wide parameters ride here (G4 contract) and a
+    # bridge marker: bridge-wide parameters ride here and a
     # live backend mirrors them into doc.Strings for rhino_gdr
     doc_tags = dict(layout.doc_tags)
     doc_tags.update({
@@ -539,7 +539,7 @@ def _sbr1_cage(br, s: float, B: float, T: float, H: float, L: float,
     return out
 
 
-# ── substructure emit (work-plan phase 4) ─────────────────────────────────
+# ── substructure emit ─────────────────────────────────
 
 SUB_FC_PSI = 4000.0          #: Class QC1 substructure concrete
 
@@ -984,8 +984,8 @@ class _WithId:
 def stm_overlay_emit(model, geom, layout) -> tuple[EmitObject, ...]:
     """The solved cap strut-and-tie model drawn in place on the
     ``Substructure::STM`` layers (ties red, struts blue) — the analysis
-    overlay work-plan 4.6 asks for, merged into the main document instead
-    of a separate ``.3dm``.
+    overlay merged into the main document instead of a separate
+    ``.3dm``.
 
     ``model`` is the solved
     :class:`~civilpy.structural.strut_and_tie.StrutAndTieModel` from the
@@ -1037,7 +1037,7 @@ def add_substructure(emit: BridgeEmit, sub, *,
                       doc_tags=emit.doc_tags)
 
 
-# ── estimating rollup + read-back (work-plan 3.2 / 3.3) ───────────────────
+# ── estimating rollup + read-back ───────────────────
 
 def _tag_quantities(tag_dicts) -> dict[str, dict]:
     """Group tag dicts by ``pay.item`` and total their ``pay.qty`` —
@@ -1183,8 +1183,8 @@ def emit_to_3dm(emit: BridgeEmit, path, *, version: int = 7) -> dict[str, int]:
     the same colored layer taxonomy as the live-document driver, each
     object stamped with its full user-text tags.  The bridge-wide record
     rides on the ``bim.type = bridge`` marker (standalone ``rhino3dm``
-    has no document string table — the G4 contract in the module
-    docstring), so :func:`read_bim_tags` / :func:`read_bim_quantities`
+    has no document string table — see the ``point`` record kind in
+    the module docstring), so :func:`read_bim_tags` / :func:`read_bim_quantities`
     round-trip from the saved file alone.  Returns per-layer object
     counts.
 

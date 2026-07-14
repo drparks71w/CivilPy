@@ -7,7 +7,7 @@
 """BrIM emit layer for prestressed adjacent box-beam bridges.
 
 The :mod:`~civilpy.structural.rhino_box_beam` legacy writer ported to the
-transport-neutral emit architecture (work-plan phase 5.5): the same
+transport-neutral emit architecture: the same
 PSBD-1-25 / PSBDD-1-25 standard-design content —
 
 * box members as four wall prisms each (hollow tube, square-drawn void

@@ -69,7 +69,7 @@ Closing the loop between design and management.
 ## Implementation Status
 
 - [ ] **Rhino MCP Integration:** wiring `civilpy` commands to the `RhinoMCP` server.
-- [ ] **Shadow MCP Wrapper:** Create `mcp_server.py` to expose `civilpy` tools to Claude/Cursor.
+- [ ] **Shadow MCP Wrapper:** Create `mcp_server.py` to expose `civilpy` tools to MCP clients.
 
 ---
 

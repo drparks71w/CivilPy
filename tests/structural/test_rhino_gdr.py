@@ -4,7 +4,7 @@
 #  SPDX-License-Identifier: MIT
 #  See the LICENSE file in the project root for full license text.
 
-"""G4 -- the ``gdr.*`` reader.  Authors a small tagged ``.3dm`` (two girder
+"""The ``gdr.*`` reader.  Authors a small tagged ``.3dm`` (two girder
 lines with bearings and the document-level bridge parameters, exactly what the
 C# GirderLines/GirderShape/GirderBearing commands stamp) and reads it back into
 the canonical hub, mirroring the round-trip style of ``test_rhino_stm``."""
@@ -226,7 +226,7 @@ class TestSpliceWriteBack:
 
 
 def test_missing_deck_params_warn(tmp_path):
-    """Absent gdr.deck_t / gdr.deck_weff must warn loudly (G4 contract)."""
+    """Absent gdr.deck_t / gdr.deck_weff must warn loudly."""
     f = rhino3dm.File3dm()
     f.Settings.ModelUnitSystem = rhino3dm.UnitSystem.Feet
     pl = rhino3dm.Polyline()

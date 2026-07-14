@@ -258,7 +258,7 @@ def test_emit_to_3dm_round_trip(tmp_path, emit):
         assert q_file[item]["qty"] == pytest.approx(rec["qty"])
 
 
-# ── substructure emit (work-plan phase 4) ─────────────────────────────────
+# ── substructure emit ─────────────────────────────────
 
 @pytest.fixture(scope="module")
 def sub_emit(emit):

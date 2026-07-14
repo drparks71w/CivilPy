@@ -6,8 +6,7 @@
 
 """The canonical structural model: a pure, IFC-aligned interchange hub.
 
-This is **stage S1** of the package-coherence track documented in
-``docs/Rhino Design Philosophy.md``.  It is the in-memory analogue of a tagged
+It is the in-memory analogue of a tagged
 ``.3dm`` / an IFC file: a discretized structure (nodes, elements, restraints,
 loads, results) carrying **3D geometry, full 6-DOF restraints, multiple load
 cases, and stable ids** -- everything the lossy 2D

@@ -96,9 +96,8 @@ class StrutAndTieModel:
         The hub's full 6-DOF restraints collapse to the in-plane
         ``(fix_x, fix_y)`` the truss solver consumes, and 3D load vectors are
         projected onto the plane.  ``plane="auto"`` infers the drawing plane
-        from the node coordinates.  This is the reader half of stage S3 in
-        ``docs/Rhino Design Philosophy.md`` -- it lets ``from_3dm`` parse once
-        into the hub and project, instead of carrying a second parser.
+        from the node coordinates.  This lets ``from_3dm`` parse once into
+        the hub and project, instead of carrying a second parser.
         """
         from civilpy.structural.rhino_stm import _detect_plane, _project
         if plane == "auto":

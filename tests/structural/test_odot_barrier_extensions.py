@@ -4,7 +4,7 @@
 #  SPDX-License-Identifier: MIT
 #  See the LICENSE file in the project root for full license text.
 
-"""Tests for the Wave 8 barrier extensions: RM-4.6 end sections,
+"""Tests for the barrier extensions: RM-4.6 end sections,
 RM-4.4 transitions, RM-5.2 bikeway railing, RM-4.7 thrie-beam PCB
 transitions."""
 

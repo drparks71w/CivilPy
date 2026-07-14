@@ -263,3 +263,4 @@ django/
 # ODOT SCD PDF archive (~190 MB, re-downloadable from dot.state.oh.us)
 /res/odot_scds/*
 /Notebooks/temp_las/
+/Notebooks/api_cache/

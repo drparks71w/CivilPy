@@ -20,7 +20,7 @@ remain the controlling document for detailing.
 Beyond the MGS-2.1 system parameters this module carries the three
 **bridge terminal assemblies** as typed post-by-post layouts
 (:data:`BRIDGE_TERMINALS` / :func:`layout_bridge_terminal`) — the
-guardrail-to-bridge-railing hardware Wave 9 builds on — and a standard-
+guardrail-to-bridge-railing hardware — and a standard-
 run post/panel layout (:func:`layout_mgs_run`).
 
 Sources (SCD number — latest cited revision):
