@@ -36,8 +36,14 @@ Versions follow [Semantic Versioning](https://semver.org/) (major.minor.patch).
   on top of the box with the barrel opening clear, a display-only
   precast box stub, footings with the 4 ft extension and cutoff walls,
   and the sheet's reinforcing series — on `Culvert::*` layers.
-  Quantities are the sheet's tabulated values (concrete on the solids,
-  reinforcing on schedule markers), so `pay_item_quantities` /
+  Wingwall roots retain the full design height H (the tabulated `h` is
+  the tip height, dropping with the graded embankment — level walls
+  tabulate h = H); the wall footings clip flush against the culvert
+  footing strip (no overlaps, no wedge gaps); the strip carries its own
+  V/W mats and Z cutoff bars running continuously across the opening;
+  and a skewed culvert's box stub is end-cut on the rotated headwall
+  plane. Quantities are the sheet's tabulated values (concrete on the
+  solids, reinforcing on schedule markers), so `pay_item_quantities` /
   `read_bim_quantities` reproduce the sheet estimate exactly. The
   Grasshopper component now takes the real design inputs (type, span,
   rise, skew, foreslope height). All 24 civilpy-importing GH components

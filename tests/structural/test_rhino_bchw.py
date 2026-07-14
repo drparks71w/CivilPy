@@ -85,13 +85,12 @@ def test_wingwalls_mirror_for_type_a(emit):
                         for p in w2.points}
 
 
-def test_wingwall_top_follows_backslope(emit):
-    row = emit.design.row
+def test_wingwall_full_height_at_root_tapers_to_table_h(emit):
+    d = emit.design
     w1 = next(o for o in emit.objects if o.tags["bim.id"] == "BCHW-WW1")
     zs = sorted({round(p[2], 4) for p in w1.points})
-    assert zs[-1] == pytest.approx(row.h1)                      # root height
-    assert zs[-2] == pytest.approx(
-        max(row.h1 - row.L1 / 2.0, 2.0))                        # 2:1 to tip
+    assert zs[-1] == pytest.approx(d.H)          # root retains full height
+    assert zs[-2] == pytest.approx(d.row.h1)     # tabulated h is the tip
 
 
 def test_foreslope_wall_sits_on_the_box(emit):
@@ -209,7 +208,10 @@ def test_culvert_footing_clear_of_wall_footings(emit):
             s = rx * w.axis[0] + ry * w.axis[1]
             ns = (-w.n_fill[0], -w.n_fill[1])
             dd = rx * ns[0] + ry * ns[1]
-            inside = (1e-6 < s < w.length + 4.0 - 1e-6
+            side = 1.0 if (w.root[0] * f[0] + w.root[1] * f[1]) > 0 else -1.0
+            beyond_joint = (p[0] * f[0] + p[1] * f[1]) * side > half + 1e-6
+            inside = (beyond_joint
+                      and 1e-6 < s < w.length + 4.0 - 1e-6
                       and -(row.footing_w - row.a - 1.5) + 1e-6 < dd
                       < row.a + 1.5 - 1e-6)
             assert not inside, (w.name, p)
@@ -251,3 +253,42 @@ def test_box_stub_has_chamfer_haunches(emit):
     for h in haunches:
         assert len(h.points) == 3                    # 45 deg corner fillet
         assert h.tags["box.display_only"] == "true"
+
+
+def test_footings_meet_flush_no_gap_no_overlap(emit):
+    """The wall footings are clipped to the strip end plane |p.f| = half:
+    they have vertices ON that plane, and none across it."""
+    from civilpy.structural.rhino_bchw import _walls
+
+    w1, w2, f, half = _walls(emit.design)
+    for wid, side in (("BCHW-WW1-FTG", 1.0), ("BCHW-WW2-FTG", -1.0)):
+        ftg = next(o for o in emit.objects if o.tags["bim.id"] == wid)
+        projs = [side * (p[0] * f[0] + p[1] * f[1]) for p in ftg.points]
+        assert min(projs) == pytest.approx(half, abs=1e-6)   # flush contact
+        assert all(pr >= half - 1e-6 for pr in projs)        # no overlap
+
+
+def test_z_bars_run_full_width_across_the_culvert(emit):
+    from civilpy.structural.rhino_bchw import _walls
+
+    _, _, f, half = _walls(emit.design)
+    zbars = [o for o in emit.objects
+             if o.tags["bim.id"].startswith("BCHW-CULV-Z")
+             and not o.tags["bim.id"].startswith("BCHW-CULV-ZL")]
+    assert len(zbars) > 5
+    projs = [p[0] * f[0] + p[1] * f[1] for o in zbars for p in o.points]
+    assert min(projs) < -half * 0.7 and max(projs) > half * 0.7
+    runners = [o for o in emit.objects
+               if o.tags["bim.id"].startswith("BCHW-CULV-ZL")]
+    assert len(runners) == 2
+
+
+def test_box_stub_end_face_on_the_skewed_headwall_plane():
+    theta = 30.0
+    emit = bchw_emit(HeadwallInput("B", 8.0, 6.0, roadway_skew_deg=theta))
+    tan_th = math.tan(math.radians(theta))
+    stubs = [o for o in emit.objects
+             if o.tags.get("bim.type") == "box_culvert"]
+    for o in stubs:
+        for p in o.points:
+            assert p[0] == pytest.approx(p[1] * tan_th, abs=1e-6)
