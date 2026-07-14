@@ -204,9 +204,9 @@ class WingwallInput:
     skew_deg: float           # box culvert skew, theta
     wall_height_ft: float     # H, foreslope wall height
     foreslope_height_ft: float  # hf
-    cutoff_wall_height_ft: float  # hcw
-    footing_width_ft: float   # Wf
-    box_wall_thickness_in: float  # t box
+    cutoff_wall_height_ft: float  # hcw, below top of footing (extends to -hcw)
+    footing_width_ft: float   # Wf, perpendicular to the wall face
+    box_wall_thickness_in: float  # t box; also the foreslope stem thickness
     embankment_slope: float = 2.0  # 2:1 (H:V), per the sheet
 
 
@@ -214,10 +214,13 @@ class WingwallInput:
 class WingwallLayout:
     """The generated wingwall + foreslope wall.
 
-    ``wingwall_outline`` is the wingwall's flared-plan footprint (top of
-    footing, z = 0); ``foreslope_section`` is the Section A-A profile (2:1
-    embankment line down to the foreslope wall, cutoff wall, footing) in
-    the Y-Z plane; ``footing_outline`` is the footing plan rectangle."""
+    ``wingwall_outline`` is the wingwall's flared elevation (top of
+    footing at z = 0, box-face height H tapering to hf at y = L);
+    ``foreslope_section`` is the Section A-A profile (cutoff wall,
+    footing top, foreslope-wall stem with its ``t box`` thickness, 2:1
+    embankment line off the back face) in the Y-Z plane;
+    ``footing_outline`` is the footing plan rectangle drawn at the
+    bottom-of-cutoff elevation ``-hcw``."""
 
     inputs: WingwallInput
     wingwall_outline: tuple[PointXYZ, PointXYZ, PointXYZ, PointXYZ]
@@ -253,15 +256,18 @@ def layout_wingwall(inp: WingwallInput) -> WingwallLayout:
                        pt(0.0, L, hf), pt(0.0, L, 0.0))
 
     # Section A-A: footing at z = 0, cutoff wall down to -hcw, foreslope
-    # wall up to hf, then the 2:1 embankment line continuing up from the
-    # top of wall.
+    # wall up to hf with its stem thickness (t box -- the wall wraps the
+    # box, so the stem matches the box wall), then the 2:1 embankment
+    # line continuing up from the top of the BACK face.
+    t_wall = inp.box_wall_thickness_in / 12.0
     embank_run = hf * inp.embankment_slope
     foreslope_section = (
         (0.0, -Wf / 2.0, -hcw),
         (0.0, -Wf / 2.0, 0.0),
         (0.0, 0.0, 0.0),
         (0.0, 0.0, hf),
-        (0.0, embank_run, hf * 2.0),
+        (0.0, t_wall, hf),
+        (0.0, t_wall + embank_run, hf * 2.0),
     )
 
     footing_outline = (pt(-Wf / 2.0, 0.0, -hcw), pt(-Wf / 2.0, L, -hcw),

@@ -99,6 +99,22 @@ def test_layout_square_wingwall():
     assert lay.footing_outline[3] == (3.0, 0.0, -2.0)
 
 
+def test_section_a_a_stem_thickness():
+    base = dict(length_ft=10.0, skew_deg=0.0, wall_height_ft=8.0,
+                foreslope_height_ft=4.0, cutoff_wall_height_ft=2.0,
+                footing_width_ft=6.0, box_wall_thickness_in=12.0)
+    sec = layout_wingwall(WingwallInput(**base)).foreslope_section
+    # stem: outside face at y=0 up to hf, across t box, then the 2:1
+    # embankment line off the back face
+    assert sec[3] == (0.0, 0.0, 4.0)
+    assert sec[4] == (0.0, 1.0, 4.0)          # 12 in stem
+    assert sec[5] == (0.0, 1.0 + 8.0, 8.0)    # 2:1 rise of hf
+    # the thickness genuinely drives the section
+    thick = layout_wingwall(
+        WingwallInput(**{**base, "box_wall_thickness_in": 18.0}))
+    assert thick.foreslope_section[4][1] == 1.5
+
+
 def test_layout_skewed_wingwall_shears():
     inp = WingwallInput(length_ft=10.0, skew_deg=20.0, wall_height_ft=8.0,
                         foreslope_height_ft=4.0, cutoff_wall_height_ft=2.0,

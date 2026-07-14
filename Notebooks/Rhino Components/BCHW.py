@@ -15,11 +15,13 @@ z = 0 at the top of footing.
 Component inputs (Type Hint / Access in parentheses):
     length       (float, Item)  wingwall length L, ft
     skew         (float, Item)  box culvert skew, degrees (optional, 0)
-    wall_height  (float, Item)  foreslope wall height H, ft
-    foreslope_height (float, Item)  hf, ft
-    cutoff_height    (float, Item)  hcw, ft
-    footing_width    (float, Item)  Wf, ft
-    box_wall_thickness (float, Item)  t box, in
+    wall_height  (float, Item)  wingwall height H at the box face, ft
+    foreslope_height (float, Item)  hf, foreslope wall height, ft
+    cutoff_height    (float, Item)  hcw, cutoff wall depth below top of
+                                    footing (extends to z = -hcw), ft
+    footing_width    (float, Item)  Wf, perpendicular to the wall, ft
+    box_wall_thickness (float, Item)  t box, in -- also the foreslope
+                                    stem thickness in Section A-A
     bake         (bool, Item)   write display geometry to Culvert::BCHW
 Outputs:
     wingwall  (Curve, Item)  wingwall flared outline
@@ -31,15 +33,14 @@ Baked geometry is display-only and carries no gdr.* tags.
 """
 
 """
-# //TODO - Missing civilpy import/design input
-- Might be the worst of all the SCDs in terms of geometry, no rebar at all, There's a vaguely wingwall shaped pentagram 
-    in the front orientation, the front and right perspectives are flipped again, There's a random rising line along the 
-    y-axis leading to nothing. there's a random box beneath the Z=0 axis, the skew seems to work.
-- wall_height input doesn't seem to actually do anything
-- foreslope_height is another input that will likely have to rely on a terrain model input, it shouldn't be user defined
-- cutoff_height seems to be bottom of footing depth below the Z=0 axis
-- footing_width should be renamed to footing depth probably (distance along the alignment
-- box_wall_thickness doesn't seem to do anything
+# //TODO -- still open after the 2026-07 review pass
+- Display polish: the three outputs overlay confusingly in one view (the
+  Section A-A polyline and the footing plan at z = -hcw read as strays
+  next to the elevation); no rebar is drawn (the module only carries the
+  TYPE-1..8 bend legend). Consider porting to the BrIM emit path, which
+  already draws wingwalls from executed RetainingWall designs.
+- foreslope_height should eventually come from a terrain model
+  (civilpy.transportation.terrain now exists) instead of a user input.
 """
 
 import Rhino
