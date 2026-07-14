@@ -1,4 +1,3 @@
-# r: civilpy
 """ODOT RM-4.1 / RM-4.2 Roadway Portable Concrete Barrier — GHPython
 (Rhino 8, CPython 3) source.
 

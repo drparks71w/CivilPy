@@ -1,4 +1,3 @@
-# r: civilpy
 """ODOT EXJ-5-93 Strip Seal Expansion Joint (Box Beam) — GHPython
 (Rhino 8, CPython 3) source.
 

@@ -1,4 +1,3 @@
-# r: civilpy
 """ODOT PSID-1-13 Prestressed Concrete I-Beam — GHPython (Rhino 8,
 CPython 3) source.
 

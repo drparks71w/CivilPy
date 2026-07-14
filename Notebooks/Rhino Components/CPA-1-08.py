@@ -1,4 +1,3 @@
-# r: civilpy
 """ODOT CPA-1-08 Capped Pile Abutment — GHPython (Rhino 8, CPython 3)
 source.
 

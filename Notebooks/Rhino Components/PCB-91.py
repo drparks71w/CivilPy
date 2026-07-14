@@ -1,4 +1,3 @@
-# r: civilpy
 """ODOT PCB-91 Portable Concrete Barrier — GHPython (Rhino 8, CPython 3)
 source.
 

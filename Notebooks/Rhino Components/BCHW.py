@@ -1,4 +1,3 @@
-# r: civilpy
 """ODOT BCHW Concrete Headwalls for Precast Box Culverts — GHPython
 (Rhino 8, CPython 3) source.
 

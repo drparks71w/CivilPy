@@ -1,4 +1,3 @@
-# r: civilpy
 """ODOT VPF-1-24 Vandal Protection Fence — GHPython (Rhino 8, CPython 3)
 source.
 

@@ -1,4 +1,3 @@
-# r: civilpy
 """ODOT BD-1-11 Bearing Details for Box Beam Bridges — GHPython (Rhino 8,
 CPython 3) source.
 

@@ -1,4 +1,3 @@
-# r: civilpy
 """ODOT AS-2-15 Approach Slab Installation (sleeper slab) — GHPython
 (Rhino 8, CPython 3) source.
 

@@ -1,4 +1,3 @@
-# r: civilpy
 """ODOT FB-1-82 Fixed Bearings — GHPython (Rhino 8, CPython 3) source.
 
 Drop-in Grasshopper component for SCD FB-1-82 (rev. 07-19-2024): a

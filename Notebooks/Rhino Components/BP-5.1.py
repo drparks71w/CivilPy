@@ -1,4 +1,3 @@
-# r: civilpy
 """ODOT BP-5.1 Concrete Curbs and Combined Curb & Gutter — GHPython
 (Rhino 8, CPython 3) source.
 

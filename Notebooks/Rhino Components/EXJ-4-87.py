@@ -1,4 +1,3 @@
-# r: civilpy
 """ODOT EXJ-4-87 Strip Seal Expansion Joint (Steel Stringer) — GHPython
 (Rhino 8, CPython 3) source.
 

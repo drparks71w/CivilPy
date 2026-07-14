@@ -1,4 +1,3 @@
-# r: civilpy
 """ODOT CS-1-24 Continuous Slab Bridge — GHPython (Rhino 8, CPython 3)
 source.
 
