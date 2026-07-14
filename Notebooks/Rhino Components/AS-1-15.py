@@ -52,7 +52,22 @@ Outputs:
     slab    (Brep)        the approach slab solid
     rebar   (Curve list)  every bar centerline (A, B501, C, D801/D802)
     outline (Curve)       plan outline at the top of slab
+    preview (Mesh list)   vertex-colored preview: the slab shaded light
+                          blue, every bar an orange pipe at its true
+                          tagged diameter (``rebar.dia_in``)
     report  (str)         design summary + pay-item rollup
+
+Preview: the ``slab``/``rebar``/``outline`` outputs carry data for
+downstream components but their default (red) previews are switched off
+each solve; the ``preview`` meshes carry their colors themselves, so no
+Custom Preview component is needed.  Colors come from
+``rhino_layers.DEFAULT_COLORS``, so the on-canvas preview matches the
+baked layers.  Set ``HIDE_DEFAULT_PREVIEWS = False`` below to get the
+stock red previews back.
+
+New params since the 2026-07 rebuild (add them to the component; the
+script binds by name): inputs ``side``, ``alignment`` (No Type Hint),
+``station``, ``offset``; output ``preview``.
 
 Without an alignment the slab sits on a default due-north tangent with
 the bridge limit at the origin (stations along +Y, transverse along
@@ -79,9 +94,18 @@ for _name in [n for n in list(sys.modules) if n.startswith("civilpy")]:
 from civilpy.structural.odot.approach_slab import ApproachSlabInput
 from civilpy.structural.rhino_approach_slab import approach_slab_emit
 from civilpy.structural.rhino_bim import pay_item_quantities
-from civilpy.structural.rhino_layers import DEFAULT_COLORS
+from civilpy.structural.rhino_layers import (
+    DEFAULT_COLORS,
+    LAYER_APPROACH_SLAB,
+    LAYER_APPROACH_SLAB_REBAR,
+)
 
 TOL = Rhino.RhinoDoc.ActiveDoc.ModelAbsoluteTolerance
+
+#: Preview colors track the baked layer colors (single source of truth).
+SLAB_RGB = DEFAULT_COLORS[LAYER_APPROACH_SLAB]
+REBAR_RGB = DEFAULT_COLORS[LAYER_APPROACH_SLAB_REBAR]
+HIDE_DEFAULT_PREVIEWS = True
 
 
 def _scale():
@@ -110,6 +134,42 @@ def _prism_brep(obj, s):
 
 def _polyline_crv(obj, s):
     return rg.Polyline([_pt(p, s) for p in obj.points]).ToNurbsCurve()
+
+
+def _monotone(mesh, rgb):
+    """Stamp one color on every vertex; GH previews vertex-colored
+    meshes in their own colors with no Custom Preview component."""
+    import System.Drawing as sd
+    mesh.VertexColors.CreateMonotoneMesh(sd.Color.FromArgb(*rgb[:3]))
+    return mesh
+
+
+def _slab_preview(brep):
+    parts = rg.Mesh.CreateFromBrep(brep, rg.MeshingParameters.Default)
+    if not parts:
+        return None
+    m = rg.Mesh()
+    for p in parts:
+        m.Append(p)
+    return _monotone(m, SLAB_RGB)
+
+
+def _bar_preview(crv, dia_in, s):
+    """The bar as a pipe at its true diameter (the emit's rebar.dia_in)."""
+    m = rg.Mesh.CreateFromCurvePipe(
+        crv, dia_in / 24.0 * s, 6, 1, rg.MeshPipeCapStyle.Flat, True)
+    return _monotone(m, REBAR_RGB) if m else None
+
+
+def _hide_default_previews():
+    """Keep slab/rebar/outline as data outputs but stop their stock red
+    preview — the colored ``preview`` meshes replace it."""
+    try:
+        for p in ghenv.Component.Params.Output:
+            if p.NickName in ("slab", "rebar", "outline"):
+                p.Hidden = HIDE_DEFAULT_PREVIEWS
+    except Exception:
+        pass    # not running inside a GH component; nothing to hide
 
 
 def _ensure_layer(doc, path, rgb):
@@ -154,7 +214,8 @@ def _bake(emit, geometry):
 
 # ── main ──────────────────────────────────────────────────────────────────
 
-slab, rebar, outline = None, [], None
+slab, rebar, outline, preview = None, [], None, []
+_hide_default_previews()
 
 if not globals().get("length") or not globals().get("width"):
     report = "Connect at least: length (15/20/25/30 ft, use a Value " \
@@ -194,10 +255,18 @@ else:
             if obj.kind == "prism":
                 g = _prism_brep(obj, s)
                 slab = g
+                if g:
+                    pm = _slab_preview(g)
+                    if pm:
+                        preview.append(pm)
             else:
                 g = _polyline_crv(obj, s)
                 if obj.tags.get("bim.type") == "rebar":
                     rebar.append(g)
+                    pm = _bar_preview(
+                        g, float(obj.tags.get("rebar.dia_in", 0.625)), s)
+                    if pm:
+                        preview.append(pm)
                 elif obj.tags.get("bim.id") == "APS-OUTLINE":
                     outline = g
             geometry.append(g)

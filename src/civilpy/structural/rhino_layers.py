@@ -107,8 +107,10 @@ DEFAULT_COLORS: dict[str, tuple[int, int, int, int]] = {
     LAYER_BARRIERS: (150, 150, 155, 255),
     LAYER_REBAR: (60, 120, 200, 255),
     LAYER_LANE_MARKINGS: (245, 225, 70, 255),
-    LAYER_APPROACH_SLAB: (185, 185, 180, 255),
-    LAYER_APPROACH_SLAB_REBAR: (60, 120, 200, 255),
+    # approach slab reads as light-blue concrete with orange rebar (also
+    # the GH component's preview colors — keep them in sync here)
+    LAYER_APPROACH_SLAB: (173, 216, 230, 255),
+    LAYER_APPROACH_SLAB_REBAR: (255, 140, 0, 255),
     LAYER_SUPERSTRUCTURE: (40, 40, 40, 255),
     LAYER_GIRDERS: (40, 40, 40, 255),
     LAYER_SPLICES: (200, 30, 30, 255),
