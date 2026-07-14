@@ -41,8 +41,17 @@ text on the ``Culvert::*`` layers, so ``read_bim_quantities`` regenerates
 the sheet's estimated quantities from the saved document.
 """
 
+import sys
+
 import Rhino
 import Rhino.Geometry as rg
+
+# DEV RELOAD: drop cached civilpy modules so every recompute re-imports
+# from the editable install -- a 'git pull' takes effect on the next
+# solve with no Rhino restart. Remove (or guard) once running a pinned
+# release instead of the development checkout.
+for _name in [n for n in list(sys.modules) if n.startswith("civilpy")]:
+    del sys.modules[_name]
 
 from civilpy.structural.odot.box_culvert_headwall import HeadwallInput
 from civilpy.structural.rhino_bchw import bchw_emit
