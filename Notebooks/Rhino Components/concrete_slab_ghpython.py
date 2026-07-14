@@ -1,3 +1,4 @@
+# r: civilpy
 """Concrete slab rebar generator — GHPython (Rhino 8, CPython 3) source.
 
 Successor to "Concrete Slab.gh".  Improvements over the original:
