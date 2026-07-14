@@ -7,6 +7,25 @@ Versions follow [Semantic Versioning](https://semver.org/) (major.minor.patch).
 
 ## [Unreleased]
 
+- **Critical-section alignment check for positive-moment RF
+  predictions (`structural.rating_ratios`).** Completes the ORIL 2026
+  flowchart: when positive moment governs, a known vehicle's RF only
+  transfers cleanly if its maximum-moment section falls near the
+  target's, so `predict_rating_factors` now computes each known's M+
+  peak-station offset as a fraction of the span and keeps only knowns
+  inside the report's ±5 % band (`ALIGNMENT_TOL`) in the average —
+  short spans under ~50 ft are where this bites, per the report's
+  Figure 6. Each `RFPrediction` carries the per-known `misalignment`
+  map, the `aligned` subset actually averaged, and an `alignment_ok`
+  flag that goes `False` when *no* known aligns (all are then averaged
+  as a fallback so callers can route the bridge to full analysis
+  instead). Shear and negative-moment cases skip the check — their
+  critical sections sit at the supports for every vehicle. Wired
+  through `identify_governing_case(alignment_tol=...)`; pass `None` to
+  disable. Tests cover long-span convergence, short-span exclusion
+  (a corrupted misaligned known cannot contaminate the prediction),
+  the none-aligned fallback, and the disabled path.
+
 - **Constrained inputs documented at the type level.** Enum-like string
   parameters across the library now carry `typing.Literal` annotations
   and `#:` field docs naming their allowed values — they render in the
@@ -37,7 +56,7 @@ Versions follow [Semantic Versioning](https://semver.org/) (major.minor.patch).
   per configuration) ride the new `UnitResponses` fast path in
   `continuous_beam` — unit-load matrices solved once per beam and
   shared across all vehicles — and carry M+ peak stations for the
-  future critical-section alignment check. `predict_rating_factors`
+  critical-section alignment check. `predict_rating_factors`
   finishes the flowchart: each known RF scaled through the governing
   ratio, averaged, with per-known-vehicle spread kept for QC.
   Synthetic-recovery tests confirm exact identification of action and

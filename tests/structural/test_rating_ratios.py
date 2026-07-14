@@ -170,6 +170,66 @@ class TestContinuousIdentification:
         assert case.span_ratio == pytest.approx(1.2)
 
 
+class TestCriticalSectionAlignment:
+    def test_long_span_nearly_all_aligned(self):
+        # Figure 6: beyond ~60 ft nearly all pairings converge inside
+        # +/-5% (5C1's split axle groups are the lone straggler)
+        basis = simple_span_demands(120.0, ALL)
+        rfs = synthetic_rfs(basis, "positive_moment", 5000.0)
+        case = identify_governing_case(rfs, 120.0)
+        for p in case.predictions.values():
+            assert p.alignment_ok
+            assert len(p.aligned) >= len(OHIO_KNOWN_VEHICLES) - 1
+        assert set(case.predictions["Type 3"].aligned) == \
+            set(OHIO_KNOWN_VEHICLES)
+
+    def test_short_span_excludes_misaligned_known(self):
+        # At 40 ft the HL-93 M+ peak sits >5% of the span from Type 3-3's,
+        # so HL-93 must not contaminate that prediction
+        basis = simple_span_demands(40.0, ALL)
+        rfs = synthetic_rfs(basis, "positive_moment", 800.0)
+        rfs["HL-93"] *= 2.0                     # corrupt an excluded known
+        preds = predict_rating_factors(rfs, basis, "positive_moment")
+        p = preds["Type 3-3"]
+        assert "HL-93" not in p.aligned
+        assert p.misalignment["HL-93"] > 0.05
+        truth = 800.0 / basis.effects("positive_moment", ("Type 3-3",))[0]
+        assert p.rf == pytest.approx(truth)     # unaffected by corruption
+        unchecked = predict_rating_factors(rfs, basis, "positive_moment",
+                                           alignment_tol=None)
+        assert unchecked["Type 3-3"].rf > truth # corruption leaks without it
+
+    def test_shear_case_carries_no_alignment_info(self):
+        basis = simple_span_demands(60.0, ALL)
+        rfs = synthetic_rfs(basis, "shear", 250.0)
+        case = identify_governing_case(rfs, 60.0)
+        p = case.predictions["Type 3"]
+        assert p.misalignment is None and p.aligned is None
+        assert p.alignment_ok
+
+    def test_none_aligned_falls_back_to_all_and_flags(self):
+        basis = simple_span_demands(40.0, ALL)
+        rfs = synthetic_rfs(basis, "positive_moment", 800.0)
+        preds = predict_rating_factors(rfs, basis, "positive_moment",
+                                       alignment_tol=1e-12)
+        for p in preds.values():
+            exact = tuple(n for n, m in p.misalignment.items() if m <= 1e-12)
+            assert p.aligned == exact
+            if not exact:
+                assert not p.alignment_ok
+                assert p.rf == pytest.approx(
+                    np.mean(list(p.per_known.values())))
+
+    def test_disabled_check_matches_plain_mean(self):
+        basis = simple_span_demands(40.0, ALL)
+        rfs = synthetic_rfs(basis, "positive_moment", 800.0)
+        preds = predict_rating_factors(rfs, basis, "positive_moment",
+                                       alignment_tol=None)
+        for p in preds.values():
+            assert p.misalignment is None
+            assert p.rf == pytest.approx(np.mean(list(p.per_known.values())))
+
+
 class TestPredictionHelper:
     def test_predict_from_explicit_basis(self):
         basis = simple_span_demands(85.0, ALL)

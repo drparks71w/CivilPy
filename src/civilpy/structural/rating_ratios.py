@@ -293,7 +293,9 @@ def identify_governing_case(known_rfs: Mapping, max_span: float, *,
     positive moment against shear; ``continuous=True`` adds negative
     moment and sweeps ``span_ratios`` (default 1.00-1.80 by 0.01) for the
     global norm minimum across all actions.  ``step`` defaults to 0.5 ft
-    for simple spans and 1.0 ft for the continuous sweep.
+    for simple spans and 1.0 ft for the continuous sweep.  When positive
+    moment governs, predictions apply the critical-section alignment
+    check (see :func:`predict_rating_factors`).
 
     >>> basis = simple_span_demands(80.0, ("HS20", "Type 3", "3F1", "SU4"))
     >>> rfs = {n: 900.0 / e for n, e in
@@ -321,8 +323,9 @@ def identify_governing_case(known_rfs: Mapping, max_span: float, *,
         action = min(norms, key=norms.get)
         return GoverningCase(action, None, norms[action], norms, basis,
                              tuple(known),
-                             predict_rating_factors(known, basis, action,
-                                                    targets))
+                             predict_rating_factors(
+                                 known, basis, action, targets,
+                                 alignment_tol=alignment_tol))
 
     ratios = (np.round(np.arange(1.0, 1.8001, 0.01), 2)
               if span_ratios is None else np.asarray(span_ratios, dtype=float))
@@ -341,5 +344,6 @@ def identify_governing_case(known_rfs: Mapping, max_span: float, *,
     return GoverningCase(action, float(ratios[k]), norms[action], norms,
                          basis, tuple(known),
                          predict_rating_factors(known, basis, action,
-                                                targets),
+                                                targets,
+                                                alignment_tol=alignment_tol),
                          span_ratios=ratios, sweep=sweep)
