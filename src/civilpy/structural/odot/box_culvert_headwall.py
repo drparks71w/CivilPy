@@ -38,6 +38,7 @@ legs" split as the sheet itself.
 
 import math
 from dataclasses import dataclass, field
+from typing import Literal
 
 Point = tuple[float, float]  # (x, y) inches, local to the bend shape
 
@@ -555,17 +556,28 @@ FORESLOPE_WALL_QUANTITIES = {
 @dataclass(frozen=True)
 class HeadwallInput:
     """Design inputs for one culvert-end headwall assembly (Design Data
-    sheets).  ``headwall_type`` per sheet 1/6: "A" when the culvert is
-    normal to the roadway, "B" for roadway skews of 15/30/45 degrees (or
-    0 with a straight wingwall), "C" only where site constraints keep the
-    wingwalls parallel to the roadway."""
+    sheets), resolved against the tables by :func:`design_headwall`."""
 
-    headwall_type: str           # "A" | "B" | "C"
+    #: Sheet 1/6 selection: ``"A"`` when the culvert is normal to the
+    #: roadway (both wingwalls at 45 deg), ``"B"`` for roadway skews of
+    #: 0/15/30/45 deg (one 45 deg wingwall + one straight), ``"C"`` only
+    #: where site constraints keep both wingwalls parallel to the roadway.
+    headwall_type: Literal["A", "B", "C"]
+    #: Box clear span, ft — tabulated 8-20 in 2 ft increments
+    #: (:data:`BOX_SPAN_RANGE_FT`).
     box_span_ft: float
+    #: Box clear rise, ft — tabulated 4-10 in 1 ft increments
+    #: (:data:`BOX_RISE_RANGE_FT`).
     box_rise_ft: float
-    box_slab_thickness_in: float = 10.0   # box top/bottom slab, per design
-    roadway_skew_deg: float = 0.0         # theta (Type B tables)
-    foreslope_wall_height_in: float = 6.0  # 6 or 18
+    #: Box top/bottom slab thickness, in (from the box design); feeds
+    #: ``H = rise + 2 slab + foreslope height``.
+    box_slab_thickness_in: float = 10.0
+    #: Roadway skew theta, deg.  Type B is tabulated for
+    #: :data:`TYPE_B_SKEWS` (0/15/30/45) only.
+    roadway_skew_deg: float = 0.0
+    #: Foreslope wall height above the top of the culvert, in — the
+    #: sheet allows **6 or 18 only** (:data:`FORESLOPE_WALL_HEIGHTS_IN`).
+    foreslope_wall_height_in: float = 6.0
 
 
 @dataclass(frozen=True)
