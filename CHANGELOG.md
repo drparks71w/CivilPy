@@ -7,6 +7,22 @@ Versions follow [Semantic Versioning](https://semver.org/) (major.minor.patch).
 
 ## [Unreleased]
 
+- **Cost estimate straight from a BrIM `.3dm`
+  (`structural.bim.cost_estimate`, `structural.rhino_bim.read_bim_estimate`).**
+  The pay-item quantity read-back now runs through a swappable unit-price
+  book: `DEFAULT_UNIT_PRICES` seeds planning-level $/unit for the catalog
+  items, `cost_estimate(quantities, prices={...})` extends each row with
+  `unit_price`/`cost` (unpriced items are flagged, not silently dropped)
+  and totals the rest, and `read_bim_estimate(path)` does the whole trip
+  from a saved Rhino file in one call. Read-back also honors layer
+  visibility now — `read_bim_tags`/`read_bim_quantities` walk the layer
+  parent chain and skip components under a hidden layer (e.g. a `Legacy`
+  tree kept for reference), so the takeoff counts exactly what the
+  viewport shows (`include_hidden=True` restores the old behavior; the
+  bridge marker always comes back). Demonstrated end-to-end in the new
+  **BIM Cost Estimate from a Rhino Model** notebook against the committed
+  `AI Generated Bridge.3dm`.
+
 - **Critical-section alignment check for positive-moment RF
   predictions (`structural.rating_ratios`).** Completes the ORIL 2026
   flowchart: when positive moment governs, a known vehicle's RF only

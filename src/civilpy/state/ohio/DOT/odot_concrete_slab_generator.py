@@ -63,15 +63,15 @@ def get_deck_parameters(span_length: int, continuous_span: bool = False, over_si
 
     # Extract bar parameters based on bridge type
     if not continuous_span:
-        # Simple span - flat structure
-        result['a_bar_spacing'] = params['a_bar_spacing']
-        result['a_bar_size'] = params['a_bar_size']
-        result['b_bar_spacing'] = params['b_bar_spacing']
-        result['b_bar_size'] = params['b_bar_size']
-        result['m_bar_spacing'] = params['m_bar_spacing']
-        result['m_bar_size'] = params['m_bar_size']
-        result['n_bar_spacing'] = params['n_bar_spacing']
-        result['n_bar_size'] = params['n_bar_size']
+        # Simple span - same nested bar dicts as continuous, fewer bars
+        result['a_bar_spacing'] = params['a_bar']['spacing']
+        result['a_bar_size'] = params['a_bar']['size']
+        result['b_bar_spacing'] = params['b_bar']['spacing']
+        result['b_bar_size'] = params['b_bar']['size']
+        result['m_bar_spacing'] = params['m_bar']['spacing']
+        result['m_bar_size'] = params['m_bar']['size']
+        result['n_bar_spacing'] = params['n_bar']['spacing']
+        result['n_bar_size'] = params['n_bar']['size']
 
         # Edge details for simple span
         result['edge_d'] = edge_params['d']

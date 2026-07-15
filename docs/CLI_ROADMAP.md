@@ -9,7 +9,14 @@ The preferred workflow is **files in, tables out**: DIGGS XML, `.csv`,
 `.xlsx`, `.las`/`.laz`, `.3dm`, LPILE data files, TIFF plan sets in;
 `.csv` / `.xlsx` (and terminal tables) out.
 
-Status: **draft for review** — refine this document before Phase 0 starts.
+Status: **approved; first build landed 2026-07-14.**  `src/civilpy/cli/`
+now carries Phase 0 (registry, themed UI, ResultTable writers, lazy
+imports), the Phase 2 interactive shell (completion, toolbar docs, slash
+commands, /log), a Phase 4 seed (session `load` + `--boring` object
+references), and eight commands: `boring parse|batch`, `odot slab`,
+`hydro channel|scour-pier`, `road vcurve|hcurve`.  Next up: the remaining
+Phase 1 batch commands (snbi validate, photos, report notebook, odot
+bridge/tiff).
 
 ---
 
@@ -66,6 +73,10 @@ engineering logic lives in the CLI layer.
    annotations` in all new modules, no 3.10+ syntax.
 5. **Units are explicit.** US customary throughout (matching the library);
    every output column header carries its unit; Pint stays internal.
+6. **Pretty by default, never silent.** Color and visual structure are part
+   of the product, not decoration: a single rich theme applied everywhere,
+   and a progress bar (or spinner with elapsed time) on **any operation
+   expected to take more than ~5 seconds**. See §3a.
 
 ## 3. Architecture
 
@@ -77,6 +88,7 @@ src/civilpy/cli/
     batch.py           # argparse front end for one-shot mode
     session.py         # Workspace: named loaded objects, history, cwd
     io_.py             # loaders (by extension) + ResultTable writers
+    ui.py              # shared rich Console, theme, progress helpers
     docs.py            # /help, /docs rendering from specs + docstrings
     commands/
         boring.py      # parse/summary/export
@@ -166,6 +178,54 @@ input-file hashes, timestamp, civilpy version). Writers:
 - multi-table commands (e.g. line-girder: loads, DFs, envelopes) write one
   workbook.
 
+## 3a. Visual design & progress feedback
+
+All terminal output flows through one `ui.py` module: a single shared
+`rich.Console` with a named **CivilPy theme**, so color usage is consistent
+and defined in exactly one place.
+
+**Theme** (rich theme styles, refine during Phase 0):
+
+| Style | Used for |
+|---|---|
+| `civilpy.ok` (green ✓) | completed steps, written files |
+| `civilpy.warn` (yellow) | engineering advisories (Flag-level SNBI, cover limits) |
+| `civilpy.err` (red ✗) | failures, validation Errors, nonzero exits |
+| `civilpy.value` (cyan) | numbers/results in prose lines |
+| `civilpy.unit` (dim) | unit annotations |
+| `civilpy.path` (magenta, underlined) | file paths (clickable where supported) |
+| `civilpy.heading` (bold blue) | table titles, group headers in `/commands` |
+
+Tables get column-type-aware styling (units dimmed in headers, governing
+rows highlighted), panels frame multi-part results, and the shell banner /
+`/commands` catalog use rule lines and group colors. `NO_COLOR` and
+non-TTY output (pipes, CI) degrade automatically to plain text — rich
+handles both; never emit ANSI into a redirected file.
+
+**Progress rule:** any operation with an expected runtime over ~5 seconds
+must show live progress — no silent stalls. Conventions:
+
+- **Determinate work** (N files, N holes, N sheets, N iterations):
+  `rich.progress` bar with count, percentage, elapsed + ETA. Applies to
+  `boring batch`, `photos rename|resize|stamp|exif`, `odot tiff
+  join|split`, `snbi validate` (per record), `stm optimize` (per SIMP
+  iteration), `terrain` LiDAR ingestion (per point chunk), batch
+  downloads (per photo, with transfer size).
+- **Indeterminate work** (single network call, external engine run,
+  nbconvert): spinner + task description + elapsed time, e.g.
+  `⠸ Querying TIMS for SFN 2100992… 4.1s`. Applies to `odot bridge`,
+  `report notebook`, `lpile simulate`, CANDE runs.
+- **Multi-stage commands** (line-girder: loads → DFs → envelope → write)
+  render a step checklist, each line flipping to `civilpy.ok` as it
+  completes.
+- Implementation: `ui.progress()` / `ui.spinner()` context managers wrap
+  `rich.progress` so command modules never construct progress UI
+  directly; library-layer functions gain an optional `on_progress`
+  callback (no rich imports inside `civilpy.*` engineering modules — the
+  CLI owns presentation).
+- In `--quiet`/`--json`/non-TTY mode, progress goes to a log line at
+  start/end instead of a live display.
+
 ## 4. Command catalog (target state)
 
 Grouped as the shell will present them. ✱ = depends on an optional extra.
@@ -223,6 +283,8 @@ than the wrapped photo downloader.
 ### Phase 0 — Foundation (the skeleton walks)
 - `civilpy/cli/` package; registry, batch front end, `ResultTable` +
   csv/xlsx/terminal writers; lazy-import + extras error convention.
+- `ui.py`: CivilPy rich theme + `progress()`/`spinner()` helpers (§3a) —
+  in from day one so every later command inherits the look.
 - Port the two commands that already exist in script form:
   `odot slab` (has argparse) and `boring parse` (stdlib-only).
 - `pyproject`: entry point moves from `civilpy.CLI:civilpy_cli` to the new
@@ -282,7 +344,7 @@ than the wrapped photo downloader.
 
 | Dep | Status | Call |
 |---|---|---|
-| `rich` | already core | all terminal rendering |
+| `rich` | already core | all terminal rendering: theme, tables, panels, progress bars/spinners |
 | `prompt_toolkit` | **new core** | the shell *is* the product; pure-Python, 3.8+ |
 | `openpyxl` | already core | xlsx writer |
 | `argparse` | stdlib | one-shot mode; no click/typer (registry already owns the metadata they'd provide) |

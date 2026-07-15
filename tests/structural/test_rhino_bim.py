@@ -226,6 +226,71 @@ def test_read_bim_round_trip(tmp_path, emit):
     assert q["513E10220"]["qty"] == pytest.approx(5 * 230.0 * 150.0)
 
 
+def test_cost_estimate_pricing():
+    from civilpy.structural.bim import DEFAULT_UNIT_PRICES, cost_estimate
+
+    q = {"513E10220": {"desc": "steel", "unit": "lb", "qty": 1000.0,
+                       "objects": 5},
+         "516E10000": {"desc": "bearing", "unit": "ea", "qty": 4.0,
+                       "objects": 4},
+         "999E99999": {"desc": "mystery", "unit": "ea", "qty": 2.0,
+                       "objects": 2}}
+    est = cost_estimate(q, prices={"516E10000": 2500.0})
+    # default book price, override price, and the unpriced item
+    assert est.rows["513E10220"]["cost"] == pytest.approx(
+        1000.0 * DEFAULT_UNIT_PRICES["513E10220"])
+    assert est.rows["516E10000"]["unit_price"] == 2500.0
+    assert est.rows["999E99999"]["cost"] is None
+    assert est.unpriced == ("999E99999",)
+    assert est.total == pytest.approx(
+        1000.0 * DEFAULT_UNIT_PRICES["513E10220"] + 4 * 2500.0)
+    # quantity fields ride along and the table renders
+    assert est.rows["513E10220"]["objects"] == 5
+    assert "total" in str(est)
+
+
+def test_read_back_skips_hidden_layers(tmp_path, emit):
+    r3 = pytest.importorskip("rhino3dm")
+    from civilpy.structural.rhino_bim import (
+        read_bim_estimate, read_bim_quantities, read_bim_tags)
+
+    # a live layer plus a Legacy tree hidden at the *parent* only —
+    # the child stays Visible, like a real Rhino doc with Legacy off
+    f = r3.File3dm()
+    live = r3.Layer(); live.Name = "Bearings"
+    i_live = f.Layers.Add(live)
+    parent = r3.Layer(); parent.Name = "Legacy"; parent.Visible = False
+    f.Layers.Add(parent)
+    child = r3.Layer(); child.Name = "Bearings-old"
+    child.ParentLayerId = f.Layers[1].Id
+    i_child = f.Layers.Add(child)
+
+    def add(tags, layer_index):
+        attr = r3.ObjectAttributes()
+        attr.LayerIndex = layer_index
+        for k, v in tags.items():
+            attr.SetUserString(k, v)
+        f.Objects.AddPoint(r3.Point3d(0, 0, 0), attr)
+
+    add({"bim.type": "bridge", "bim.id": "BRIDGE"}, i_child)  # marker hidden
+    for o in emit.objects:
+        if o.tags.get("bim.type") == "bearing":
+            add(o.tags, i_live)
+            add(o.tags, i_child)          # stale duplicate under Legacy
+    path = tmp_path / "legacy.3dm"
+    assert f.Write(str(path), 7)
+
+    # only the live copies count, but the bridge record still comes back
+    back = read_bim_tags(path)
+    assert back["bridge"]["bim.id"] == "BRIDGE"
+    assert len(back["components"]) == 20
+    assert read_bim_quantities(path)["516E10000"]["qty"] == 20
+    q_all = read_bim_quantities(path, include_hidden=True)
+    assert q_all["516E10000"]["qty"] == 40
+    est = read_bim_estimate(path, prices={"516E10000": 1800.0})
+    assert est.total == pytest.approx(20 * 1800.0)
+
+
 def test_emit_json_round_trip(emit):
     data = json.loads(emit_to_json(emit))
     assert data["doc_tags"]["bim.units"] == "ft"
