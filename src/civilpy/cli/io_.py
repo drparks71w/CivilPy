@@ -53,12 +53,18 @@ class ResultTable:
 
 @dataclass
 class CommandResult:
-    """Tables plus the provenance that lets an output file be reproduced."""
+    """Tables plus the provenance that lets an output file be reproduced.
+
+    ``exit_code`` lets a command that *completed* still fail the process —
+    a validation run reports its errors as tables and exits nonzero so CI
+    can gate on it.
+    """
 
     tables: List[ResultTable]
     command: str = ""
     inputs: dict = field(default_factory=dict)
     input_files: List[str] = field(default_factory=list)
+    exit_code: int = 0
 
     def provenance_rows(self) -> List[Tuple[str, str]]:
         rows = [

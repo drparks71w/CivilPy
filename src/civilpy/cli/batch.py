@@ -168,7 +168,7 @@ def execute(argv: List[str], ctx: Optional[CliContext] = None,
             return 2
         for path in written:
             ui.ok(f"wrote [civilpy.path]{path}[/]")
-    return 0
+    return result.exit_code
 
 
 def main(argv: Optional[List[str]] = None) -> int:
