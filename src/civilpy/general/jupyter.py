@@ -17,7 +17,14 @@ from nbconvert import WebPDFExporter, PDFExporter, LatexExporter
 from nbconvert.preprocessors import TagRemovePreprocessor
 
 
-def notebook_converter(notebook_path, format='webpdf'):
+def notebook_converter(notebook_path, format='webpdf', text_width="70ch"):
+    """Export a notebook, limiting rendered markdown to a readable line length.
+
+    ``text_width`` caps the measure of markdown text in HTML-based exports
+    (webpdf) so paragraphs read like an article instead of spanning the full
+    page; code cells keep the full width. Pass ``None`` to disable. Ignored
+    for the latex-based 'pdf' and 'latex' formats.
+    """
     # Set the appropriate event loop policy for Windows
     if asyncio.get_event_loop().is_running():
         asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
@@ -25,6 +32,15 @@ def notebook_converter(notebook_path, format='webpdf'):
     # Read the notebook
     with open(notebook_path, 'r', encoding='utf-8') as f:
         notebook = nbformat.read(f, as_version=4)
+
+    if format == 'webpdf' and text_width:
+        style_cell = nbformat.v4.new_markdown_cell(
+            "<style>\n"
+            ".jp-RenderedMarkdown, .jp-MarkdownOutput "
+            "{ max-width: " + text_width + "; }\n"
+            "</style>"
+        )
+        notebook.cells.insert(0, style_cell)
 
     # Configure the tag removal preprocessor
     tag_remove_preprocessor = TagRemovePreprocessor()
