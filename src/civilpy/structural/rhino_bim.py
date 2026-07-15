@@ -1067,10 +1067,33 @@ def pay_item_quantities(emit: BridgeEmit) -> dict[str, dict]:
     return _tag_quantities(o.tags for o in emit.objects)
 
 
-def read_bim_tags(path) -> dict:
+def _layer_visibility(f) -> dict[int, bool]:
+    """Effective visibility per layer index: a layer is visible only if it
+    and every ancestor up the parent chain is (matching what the Rhino
+    viewport shows when a parent layer is turned off)."""
+    by_id = {layer.Id: layer for layer in f.Layers}
+    out: dict[int, bool] = {}
+    for layer in f.Layers:
+        cur, visible = layer, True
+        while cur is not None:
+            if not cur.Visible:
+                visible = False
+                break
+            cur = by_id.get(cur.ParentLayerId)
+        out[layer.Index] = visible
+    return out
+
+
+def read_bim_tags(path, *, include_hidden: bool = False) -> dict:
     """Read a BrIM-tagged ``.3dm`` back: every object carrying ``bim.type``
     returns its full user-text dict, and the ``bim.type = bridge`` marker's
     tags come back as the bridge-wide record.
+
+    Components on hidden layers (directly, or under a hidden parent — e.g.
+    a ``Legacy`` tree kept for reference) are skipped, so the rollup counts
+    exactly what the Rhino document displays; pass ``include_hidden=True``
+    to read everything.  The bridge marker is document metadata and comes
+    back regardless.
 
     This is the round-trip half of the source-of-truth contract: the saved
     Rhino document alone carries enough attributes to regenerate the
@@ -1084,6 +1107,7 @@ def read_bim_tags(path) -> dict:
     f = r3.File3dm.Read(str(path))
     if f is None:
         raise FileNotFoundError(f"could not read 3dm file: {path}")
+    vis = _layer_visibility(f)
     bridge: dict = {}
     components: list[dict] = []
     for obj in f.Objects:
@@ -1092,13 +1116,29 @@ def read_bim_tags(path) -> dict:
         if btype == "bridge":
             bridge = us
         elif btype is not None:
-            components.append(us)
+            if include_hidden or (obj.Attributes.Visible
+                                  and vis.get(obj.Attributes.LayerIndex, True)):
+                components.append(us)
     return {"bridge": bridge, "components": components}
 
 
-def read_bim_quantities(path) -> dict[str, dict]:
+def read_bim_quantities(path, *, include_hidden: bool = False) -> dict[str, dict]:
     """Pay-item rollup for a saved BrIM ``.3dm`` (read-back + estimate)."""
-    return _tag_quantities(read_bim_tags(path)["components"])
+    return _tag_quantities(
+        read_bim_tags(path, include_hidden=include_hidden)["components"])
+
+
+def read_bim_estimate(path, prices: dict[str, float] | None = None,
+                      *, include_hidden: bool = False):
+    """Priced pay-item rollup straight from a saved BrIM ``.3dm`` — the
+    quantity read-back run through :func:`civilpy.structural.bim.cost_estimate`.
+    Unit prices default to the planning-level
+    :data:`~civilpy.structural.bim.DEFAULT_UNIT_PRICES` book; pass
+    ``prices`` to override with project numbers."""
+    from civilpy.structural.bim import cost_estimate
+
+    return cost_estimate(
+        read_bim_quantities(path, include_hidden=include_hidden), prices)
 
 
 # ── JSON transport for the live-document driver ───────────────────────────

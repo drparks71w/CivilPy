@@ -86,6 +86,76 @@ def pay_item(code: str) -> PayItem:
     return PAY_ITEMS[code]
 
 
+#: Planning-level unit prices ($ per pay-item unit) for the seed catalog —
+#: round numbers in the range of recent ODOT bid tabulations, meant to rank
+#: alternatives and sanity-check a budget, **not** to replace a district
+#: estimate.  Override any entry (or add items) through the ``prices``
+#: argument of :func:`cost_estimate`.
+DEFAULT_UNIT_PRICES: dict[str, float] = {
+    "513E10220": 2.25,       # structural steel, fabricated + erected, $/lb
+    "513E20000": 10.0,       # welded shear stud, $/ea
+    "509E00200": 1.60,       # epoxy coated reinforcing, $/lb
+    "509E00100": 1.40,       # black reinforcing, $/lb
+    "509E00300": 3.00,       # GFRP deformed bar, $/lb
+    "511E12100": 950.0,      # QC2 superstructure (deck) concrete, $/cy
+    "511E40000": 850.0,      # QC1 substructure concrete, $/cy
+    "512E10000": 1200.0,     # parapet/railing concrete, $/cy
+    "516E10000": 2000.0,     # elastomeric bearing, $/ea
+    "507E10000": 75.0,       # HP pile furnished + driven, $/ft
+    "515E10000": 22000.0,    # PS box beam member, $/ea
+    "515E20000": 30000.0,    # PS I-beam member, $/ea
+    "515E30000": 1500.0,     # PS intermediate diaphragm, $/ea
+    "526E10000": 120.0,      # RC approach slab, $/sy
+}
+
+
+@dataclass(frozen=True)
+class CostEstimate:
+    """A priced pay-item rollup.  ``rows`` extends the quantity records
+    (``{"desc", "unit", "qty", "objects"}``) with ``unit_price`` and
+    ``cost``; items the price book doesn't know are listed in ``unpriced``
+    (their ``cost`` is ``None``) and excluded from ``total``."""
+
+    rows: dict[str, dict]
+    total: float
+    unpriced: tuple[str, ...] = ()
+
+    def __str__(self) -> str:
+        lines = [f"{'item':<12}{'qty':>14} {'unit':<5}{'unit $':>10}"
+                 f"{'cost $':>14}  description"]
+        for item, r in self.rows.items():
+            up = f"{r['unit_price']:,.2f}" if r["unit_price"] is not None else "--"
+            c = f"{r['cost']:,.0f}" if r["cost"] is not None else "--"
+            lines.append(f"{item:<12}{r['qty']:>14,.1f} {r['unit']:<5}"
+                         f"{up:>10}{c:>14}  {r['desc']}")
+        lines.append(f"{'total':<12}{'':>14} {'':<5}{'':>10}"
+                     f"{self.total:>14,.0f}")
+        return "\n".join(lines)
+
+
+def cost_estimate(quantities: dict[str, dict],
+                  prices: dict[str, float] | None = None) -> CostEstimate:
+    """Price a quantity rollup (the ``{item: {"desc", "unit", "qty", ...}}``
+    dict that ``pay_item_quantities`` / ``read_bim_quantities`` produce).
+
+    Unit prices come from :data:`DEFAULT_UNIT_PRICES` updated with
+    ``prices``; see the caveat there — these are planning numbers."""
+    book = {**DEFAULT_UNIT_PRICES, **(prices or {})}
+    rows: dict[str, dict] = {}
+    total = 0.0
+    unpriced: list[str] = []
+    for item, rec in sorted(quantities.items()):
+        up = book.get(item)
+        cost = None if up is None else round(rec["qty"] * up, 2)
+        if cost is None:
+            unpriced.append(item)
+        else:
+            total += cost
+        rows[item] = {**rec, "unit_price": up, "cost": cost}
+    return CostEstimate(rows=rows, total=round(total, 2),
+                        unpriced=tuple(unpriced))
+
+
 def _pay_tags(code: str | None, quantity: float | None = None) -> dict:
     if code is None:
         return {}
