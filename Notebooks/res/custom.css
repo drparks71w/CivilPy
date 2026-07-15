@@ -15,19 +15,3 @@
 .jp-Notebook .jp-MarkdownOutput {
     max-width: 70ch;
 }
-
-/* ODOT brand palette (transportation.ohio.gov/brand):
- * primary blue #0E3F75, cardinal red #C12637, zephyr green #00855B */
-.jp-Notebook .jp-RenderedMarkdown h1,
-.jp-Notebook .jp-RenderedMarkdown h2 {
-    color: #0E3F75;
-}
-
-.jp-Notebook .jp-RenderedMarkdown h1 {
-    border-bottom: 2px solid #C12637;
-    padding-bottom: 0.2em;
-}
-
-.jp-Notebook .jp-RenderedMarkdown h3 {
-    color: #54585A;
-}

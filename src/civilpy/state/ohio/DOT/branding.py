@@ -108,6 +108,11 @@ def stamp_title_block(notebook_path, title=None, logo_path=None):
 
     Idempotent: an existing cell containing ``TITLE_BLOCK_MARKER`` is replaced
     in place. Edits the raw JSON to preserve the file's existing formatting.
+
+    Note this brands the notebook file itself — only appropriate for actual
+    ODOT deliverables. For everything else, leave the notebook unbranded and
+    pass ``branding='odot'`` to ``notebook_converter`` so the title block
+    exists only in the generated PDF.
     """
     notebook_path = Path(notebook_path)
     raw = notebook_path.read_text(encoding="utf-8")
@@ -137,3 +142,28 @@ def stamp_title_block(notebook_path, title=None, logo_path=None):
     if had_newline:
         out += "\n"
     notebook_path.write_text(out, encoding="utf-8")
+
+
+def remove_title_block(notebook_path):
+    """Remove any stamped title-block cell, preserving file formatting."""
+    notebook_path = Path(notebook_path)
+    raw = notebook_path.read_text(encoding="utf-8")
+    had_newline = raw.endswith("\n")
+    nb = json.loads(raw)
+
+    kept = []
+    for cell in nb["cells"]:
+        src = cell.get("source", "")
+        text = src if isinstance(src, str) else "".join(src)
+        if cell.get("cell_type") == "markdown" and TITLE_BLOCK_MARKER in text:
+            continue
+        kept.append(cell)
+    if len(kept) == len(nb["cells"]):
+        return False
+    nb["cells"] = kept
+
+    out = json.dumps(nb, indent=1, ensure_ascii=False)
+    if had_newline:
+        out += "\n"
+    notebook_path.write_text(out, encoding="utf-8")
+    return True
