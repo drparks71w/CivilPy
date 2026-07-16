@@ -61,31 +61,35 @@ NBI_DESIGN_TYPE_CODES = {
 }
 
 
-def get_tims_data(data_source='Roadway'):
+def get_tims_data(data_source='Roadway', where='1=1'):
     """
-    Download all records from an ODOT TIMS ArcGIS MapServer layer into a DataFrame.
+    Download records from an ODOT TIMS ArcGIS MapServer layer into a DataFrame.
 
-    Paginates through the service in batches of 1000 records until all features
-    are retrieved. Prints progress to stdout.
+    Paginates through the service in batches of 1000 records until all matching
+    features are retrieved. Prints progress to stdout.
 
     Args:
         data_source (str): Which TIMS layer to query. One of:
 
-            - ``'Roadway'`` — Roadway Information layer (default)
-            - ``'Bridge'`` — Bridge Assets layer
+            - ``'Roadway'`` — Road Inventory layer (default)
+            - ``'Bridge'`` — Bridge Inventory layer
+
+        where (str): A SQL ``WHERE`` clause used to filter the layer server-side.
+            Defaults to ``'1=1'`` (all records). Pass a filter to pull a small,
+            fast subset, e.g. ``"COUNTY_CD='ATH'"`` for one county's bridges.
 
     Returns:
-        pandas.DataFrame: All feature attributes from the selected layer, one row
-        per feature. Returns an empty DataFrame if no records are found.
+        pandas.DataFrame: All matching feature attributes, one row per feature.
+        Returns an empty DataFrame if no records are found.
 
     Example:
-        >>> df = get_tims_data('Bridge')
+        >>> df = get_tims_data('Bridge', where="COUNTY_CD='ATH'")
         >>> 'SFN' in df.columns
         True
     """
     types = {
-        'Roadway': "https://gis.dot.state.oh.us/arcgis/rest/services/TIMS/Roadway_Information/MapServer/8",
-        'Bridge': "https://gis.dot.state.oh.us/arcgis/rest/services/TIMS/Assets/MapServer/5"
+        'Roadway': "https://tims.dot.state.oh.us/ags/rest/services/Roadway_Information/Road_Inventory/MapServer/0",
+        'Bridge': "https://tims.dot.state.oh.us/ags/rest/services/Assets/Bridge_Inventory/MapServer/0"
     }
 
     metadata_url = types[data_source]
@@ -104,7 +108,7 @@ def get_tims_data(data_source='Roadway'):
 
     while True:
         params = {
-            'where': '1=1',
+            'where': where,
             'outFields': ','.join(all_fields),
             'resultOffset': offset,
             'resultRecordCount': BATCH_SIZE,
