@@ -323,6 +323,88 @@ def test_emit_to_3dm_round_trip(tmp_path, emit):
         assert q_file[item]["qty"] == pytest.approx(rec["qty"])
 
 
+def _mesh_volume(m) -> float:
+    """Signed volume of a closed mesh by the divergence theorem — an
+    independent check that the ear-clipped caps close the solid
+    correctly (a fan that left the section would skew this)."""
+    vol = 0.0
+    for i in range(len(m.Faces)):
+        idx = list(m.Faces[i])
+        tris = [(idx[0], idx[1], idx[2])]
+        if len(idx) == 4 and idx[2] != idx[3]:
+            tris.append((idx[0], idx[2], idx[3]))
+        for a, b, c in tris:
+            v0, v1, v2 = m.Vertices[a], m.Vertices[b], m.Vertices[c]
+            vol += (v0.X * (v1.Y * v2.Z - v1.Z * v2.Y)
+                    - v0.Y * (v1.X * v2.Z - v1.Z * v2.X)
+                    + v0.Z * (v1.X * v2.Y - v1.Y * v2.X)) / 6.0
+    return vol
+
+
+def test_emit_to_3dm_mesh_flavor(tmp_path, emit):
+    """The web-viewer flavor: every solid lands as a *closed* mesh (no
+    breps — 3DMLoader would render those empty), tags and the estimate
+    round-trip identically to the brep flavor."""
+    r3 = pytest.importorskip("rhino3dm")
+    from civilpy.structural.bridge_layout import girder_section
+    from civilpy.structural.rhino_bim import (
+        _polygon_area, emit_to_3dm, read_bim_quantities)
+
+    path = tmp_path / "web.3dm"
+    counts = emit_to_3dm(emit, path, mesh=True)
+    assert sum(counts.values()) == len(emit.objects)
+
+    f = r3.File3dm.Read(str(path))
+    n_solids = sum(1 for o in emit.objects
+                   if o.kind in ("prism", "cylinder"))
+    meshes = [o for o in f.Objects if isinstance(o.Geometry, r3.Mesh)]
+    assert len(meshes) == n_solids
+    assert not any(isinstance(o.Geometry, (r3.Brep, r3.Extrusion))
+                   for o in f.Objects)
+    for o in meshes:
+        assert o.Geometry.IsClosed, dict(
+            o.Attributes.GetUserStrings() or {})
+
+    # the non-convex I-profile caps close to the exact prism volume
+    g1 = next(o for o in meshes
+              if dict(o.Attributes.GetUserStrings())["bim.id"] == "G1")
+    sec = girder_section("W36X150")
+    area_ft2 = _polygon_area(i_profile_wh(sec)) / 144.0
+    assert _mesh_volume(g1.Geometry) == pytest.approx(
+        area_ft2 * emit.layout.total_length_ft, rel=1e-6)
+    # the crowned deck closes to its tagged pay quantity
+    deck = next(o for o in meshes
+                if dict(o.Attributes.GetUserStrings()).get("bim.type")
+                == "deck")
+    assert _mesh_volume(deck.Geometry) / 27.0 == pytest.approx(
+        float(dict(deck.Attributes.GetUserStrings())["pay.qty"]), rel=1e-3)
+
+    # identical read-back contract to the brep flavor
+    q_emit = pay_item_quantities(emit)
+    q_file = read_bim_quantities(path)
+    assert set(q_file) == set(q_emit)
+    for item, rec in q_emit.items():
+        assert q_file[item]["qty"] == pytest.approx(rec["qty"])
+
+
+def test_triangulate_loop_nonconvex():
+    from civilpy.structural.rhino_bim import _triangulate_loop
+
+    # CCW L-shape: a centroid fan would leave the section
+    poly = [(0.0, 0.0), (4.0, 0.0), (4.0, 1.0), (1.0, 1.0),
+            (1.0, 3.0), (0.0, 3.0)]
+    tris = _triangulate_loop(poly)
+    assert len(tris) == len(poly) - 2
+
+    def area(a, b, c):
+        return ((b[0] - a[0]) * (c[1] - a[1])
+                - (b[1] - a[1]) * (c[0] - a[0])) / 2.0
+
+    total = sum(area(poly[a], poly[b], poly[c]) for a, b, c in tris)
+    assert total == pytest.approx(6.0)          # all CCW, sums to the area
+    assert all(area(poly[a], poly[b], poly[c]) > 0 for a, b, c in tris)
+
+
 # ── substructure emit ─────────────────────────────────
 
 @pytest.fixture(scope="module")

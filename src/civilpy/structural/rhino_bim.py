@@ -1179,17 +1179,137 @@ def _newell_normal(pts) -> tuple[float, float, float]:
     return (nx / length, ny / length, nz / length)
 
 
-def _prism_geometry(r3, pts, vector):
+def _triangulate_loop(pts2d) -> list[tuple[int, int, int]]:
+    """Ear-clipping triangulation of a simple CCW 2D polygon (unrepeated
+    points).  Returns CCW-wound index triples.  Handles the non-convex
+    profiles the emits produce (I-sections with fillets, the crowned deck,
+    hammerhead elevation profiles) where a centroid fan would leave the
+    section."""
+    def cross(o, a, b):
+        return ((a[0] - o[0]) * (b[1] - o[1])
+                - (a[1] - o[1]) * (b[0] - o[0]))
+
+    span = max(max(abs(u), abs(v)) for u, v in pts2d) or 1.0
+    eps = 1e-12 * span * span
+    idx = list(range(len(pts2d)))
+    tris: list[tuple[int, int, int]] = []
+    while len(idx) > 3:
+        clipped = False
+        # prefer strictly convex ears; accept collinear ones only when
+        # no strict ear remains (degenerate but topologically sound)
+        for tol in (eps, -eps):
+            for k in range(len(idx)):
+                i0 = idx[k - 1]
+                i1 = idx[k]
+                i2 = idx[(k + 1) % len(idx)]
+                a, b, c = pts2d[i0], pts2d[i1], pts2d[i2]
+                if cross(a, b, c) <= tol:
+                    continue
+                if any(cross(a, b, p) >= -eps and cross(b, c, p) >= -eps
+                       and cross(c, a, p) >= -eps
+                       for p in (pts2d[m] for m in idx
+                                 if m not in (i0, i1, i2))):
+                    continue
+                tris.append((i0, i1, i2))
+                idx.pop(k)
+                clipped = True
+                break
+            if clipped:
+                break
+        if not clipped:                      # degenerate input: fan out
+            tris.extend((idx[0], idx[k], idx[k + 1])
+                        for k in range(1, len(idx) - 1))
+            return tris
+    tris.append((idx[0], idx[1], idx[2]))
+    return tris
+
+
+def _plane_basis(n: tuple[float, float, float]):
+    """Right-handed in-plane basis ``(e1, e2)`` with ``e1 x e2 = n``."""
+    a = (1.0, 0.0, 0.0) if abs(n[0]) < 0.9 else (0.0, 1.0, 0.0)
+    d = sum(ai * ni for ai, ni in zip(a, n))
+    e1 = tuple(ai - d * ni for ai, ni in zip(a, n))
+    length = math.sqrt(sum(c * c for c in e1)) or 1.0
+    e1 = tuple(c / length for c in e1)
+    e2 = (n[1] * e1[2] - n[2] * e1[1],
+          n[2] * e1[0] - n[0] * e1[2],
+          n[0] * e1[1] - n[1] * e1[0])
+    return e1, e2
+
+
+def _prism_mesh(r3, pts, vector):
+    """Closed prism mesh: side quads plus ear-clipped caps.  This is the
+    render-ready form a browser loader can shade directly — three's
+    ``3DMLoader`` has no tessellator, so breps arrive empty there — and
+    the caps are correct for non-convex profiles, unlike a centroid
+    fan."""
+    n = _newell_normal(pts)
+    h = sum(v * c for v, c in zip(vector, n))
+    if h < 0:                     # loop CCW about the extrusion direction
+        pts = tuple(reversed(pts))
+        n = tuple(-c for c in n)
+    e1, e2 = _plane_basis(n)
+    pts2d = [(sum(p[i] * e1[i] for i in range(3)),
+              sum(p[i] * e2[i] for i in range(3))) for p in pts]
+    tris = _triangulate_loop(pts2d)
+
+    m = r3.Mesh()
+    npt = len(pts)
+    for base in (pts, [tuple(c + v for c, v in zip(p, vector)) for p in pts]):
+        for p in base:
+            m.Vertices.Add(*p)
+    for i in range(npt):
+        j = (i + 1) % npt
+        m.Faces.AddFace(i, j, npt + j, npt + i)
+    for a, b, c in tris:
+        m.Faces.AddFace(a, c, b)                       # bottom cap, outward
+        m.Faces.AddFace(npt + a, npt + b, npt + c)     # top cap, outward
+    m.Normals.ComputeNormals()
+    m.Compact()
+    return m
+
+
+def _cylinder_mesh(r3, base, tip, radius_ft: float, segments: int = 16):
+    """Closed cylinder mesh (side quads + center-fan caps) between two
+    points — the render-ready twin of the cylinder brep."""
+    axis = tuple(t - b for b, t in zip(base, tip))
+    length = math.sqrt(sum(c * c for c in axis))
+    if length <= 0.0:
+        return None
+    a = tuple(c / length for c in axis)
+    e1, e2 = _plane_basis(a)
+
+    m = r3.Mesh()
+    for origin in (base, tip):
+        for k in range(segments):
+            t = 2.0 * math.pi * k / segments
+            m.Vertices.Add(*(o + radius_ft * (math.cos(t) * u
+                                              + math.sin(t) * v)
+                             for o, u, v in zip(origin, e1, e2)))
+    c0 = m.Vertices.Add(*base)
+    c1 = m.Vertices.Add(*tip)
+    for i in range(segments):
+        j = (i + 1) % segments
+        m.Faces.AddFace(i, j, segments + j, segments + i)
+        m.Faces.AddFace(c0, j, i)
+        m.Faces.AddFace(c1, segments + i, segments + j)
+    m.Normals.ComputeNormals()
+    m.Compact()
+    return m
+
+
+def _prism_geometry(r3, pts, vector, *, mesh: bool = False):
     """Prism solid for the offline backend.  The perpendicular case (every
     prism the emits produce today) becomes a capped ``Extrusion`` brep —
     correct caps for the non-convex profiles (I-sections, parapets).  An
-    oblique vector falls back to a closed mesh with centroid-fan caps."""
+    oblique vector — or ``mesh=True`` (the web-viewer path) — builds a
+    closed mesh with ear-clipped caps instead."""
     n = _newell_normal(pts)
     h = sum(v * c for v, c in zip(vector, n))
     residual = math.sqrt(sum((v - h * c) ** 2 for v, c in zip(vector, n)))
     v_len = math.sqrt(sum(v * v for v in vector)) or 1.0
 
-    if residual <= 1e-6 * v_len:
+    if not mesh and residual <= 1e-6 * v_len:
         loop = r3.Polyline()
         for p in pts:
             loop.Add(*p)
@@ -1197,25 +1317,11 @@ def _prism_geometry(r3, pts, vector):
         ext = r3.Extrusion.Create(loop.ToPolylineCurve(), h, True)
         return ext.ToBrep(False) if ext else None
 
-    m = r3.Mesh()
-    npt = len(pts)
-    for base in (pts, [tuple(c + v for c, v in zip(p, vector)) for p in pts]):
-        for p in base:
-            m.Vertices.Add(*p)
-    cx, cy, cz = (sum(p[i] for p in pts) / npt for i in range(3))
-    c0 = m.Vertices.Add(cx, cy, cz)
-    c1 = m.Vertices.Add(cx + vector[0], cy + vector[1], cz + vector[2])
-    for i in range(npt):
-        j = (i + 1) % npt
-        m.Faces.AddFace(i, j, npt + j, npt + i)
-        m.Faces.AddFace(c0, j, i)
-        m.Faces.AddFace(c1, npt + i, npt + j)
-    m.Normals.ComputeNormals()
-    m.Compact()
-    return m
+    return _prism_mesh(r3, pts, vector)
 
 
-def emit_to_3dm(emit: BridgeEmit, path, *, version: int = 7) -> dict[str, int]:
+def emit_to_3dm(emit: BridgeEmit, path, *, version: int = 7,
+                mesh: bool = False) -> dict[str, int]:
     """Bake the emit straight into a ``.3dm`` with standalone ``rhino3dm``
     — no Rhino session, no MCP server, no network: the notebook-only path
     to a real Rhino file.  Prisms become capped extrusion breps, studs
@@ -1228,6 +1334,12 @@ def emit_to_3dm(emit: BridgeEmit, path, *, version: int = 7) -> dict[str, int]:
     round-trip from the saved file alone.  Returns per-layer object
     counts.
 
+    ``mesh=True`` routes every solid (prisms *and* stud cylinders)
+    through closed-mesh construction instead of breps — the web-viewer
+    flavor: headless ``rhino3dm`` cannot tessellate breps, so three's
+    ``3DMLoader`` renders a brep file empty, while meshes arrive
+    shaded.  Tag stamping and read-back are identical in both flavors.
+
     ``Notebooks/Rhino Components/draw_bim_emit.py`` remains the
     live-document twin (same JSON payload via :func:`emit_to_json`) when
     a running Rhino 8 should host the model instead of a file."""
@@ -1236,6 +1348,7 @@ def emit_to_3dm(emit: BridgeEmit, path, *, version: int = 7) -> dict[str, int]:
     from civilpy.structural.rhino_layers import ensure_layer
 
     f = r3.File3dm()
+    f.Settings.ModelUnitSystem = r3.UnitSystem.Feet
     layer_idx = {name: ensure_layer(f, name)
                  for name in sorted({o.layer for o in emit.objects})}
 
@@ -1248,7 +1361,7 @@ def emit_to_3dm(emit: BridgeEmit, path, *, version: int = 7) -> dict[str, int]:
 
         added = None
         if o.kind == "prism":
-            geom = _prism_geometry(r3, o.points, o.vector)
+            geom = _prism_geometry(r3, o.points, o.vector, mesh=mesh)
             if isinstance(geom, r3.Brep):
                 added = f.Objects.AddBrep(geom, a)
             elif geom is not None:
@@ -1259,18 +1372,25 @@ def emit_to_3dm(emit: BridgeEmit, path, *, version: int = 7) -> dict[str, int]:
                 pl.Add(*p)
             added = f.Objects.AddCurve(pl.ToPolylineCurve(), a)
         elif o.kind == "cylinder":
-            (bx, by, bz), (tx, ty, tz) = o.points
-            axis = (tx - bx, ty - by, tz - bz)
-            length = math.sqrt(sum(c * c for c in axis))
-            if length > 0.0:
-                brep = r3.Cylinder(r3.Circle(o.radius_ft), length).ToBrep(
-                    True, True)
-                xf = r3.Transform.PlaneToPlane(
-                    r3.Plane(r3.Point3d(0.0, 0.0, 0.0),
-                             r3.Vector3d(0.0, 0.0, 1.0)),
-                    r3.Plane(r3.Point3d(bx, by, bz), r3.Vector3d(*axis)))
-                brep.Transform(xf)
-                added = f.Objects.AddBrep(brep, a)
+            if mesh:
+                geom = _cylinder_mesh(r3, o.points[0], o.points[1],
+                                      o.radius_ft)
+                if geom is not None:
+                    added = f.Objects.AddMesh(geom, a)
+            else:
+                (bx, by, bz), (tx, ty, tz) = o.points
+                axis = (tx - bx, ty - by, tz - bz)
+                length = math.sqrt(sum(c * c for c in axis))
+                if length > 0.0:
+                    brep = r3.Cylinder(r3.Circle(o.radius_ft),
+                                       length).ToBrep(True, True)
+                    xf = r3.Transform.PlaneToPlane(
+                        r3.Plane(r3.Point3d(0.0, 0.0, 0.0),
+                                 r3.Vector3d(0.0, 0.0, 1.0)),
+                        r3.Plane(r3.Point3d(bx, by, bz),
+                                 r3.Vector3d(*axis)))
+                    brep.Transform(xf)
+                    added = f.Objects.AddBrep(brep, a)
         elif o.kind == "point":
             added = f.Objects.AddPoint(r3.Point3d(*o.points[0]), a)
 
