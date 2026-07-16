@@ -313,3 +313,207 @@ def test_pier_metrics_sidecar(record, layout):
         geom.cap.origin[2] - (geom.footings[0].z_top - 3.5))
     # JSON-safe: the sidecar lands next to the JSONB record
     json.dumps(m)
+
+
+# ── Phase-6 breadth: bent pier, pile bent, seat abutment ─────────────────
+
+from civilpy.structural.bim_spec import (  # noqa: E402
+    BENT_PIER_CHECK_INPUTS,
+    PILE_BENT_CHECK_INPUTS,
+    SEAT_ABUTMENT_CHECK_INPUTS,
+    BentPierRecord,
+    PileBentRecord,
+    PileRecord,
+    SeatAbutmentRecord,
+    WingwallRecord,
+    abutment_metrics,
+)
+
+
+@pytest.fixture()
+def bent_cap() -> PierCapRecord:
+    """A bent/pile-bent/abutment cap: governing tie in the bottom chord."""
+    return PierCapRecord(span_ft=36.0, depth_ft=4.0, thickness_ft=3.5,
+                         tie_bar_size=9, tie_bar_count=8, tie_at_top=False)
+
+
+@pytest.fixture()
+def bent_record(bent_cap) -> BentPierRecord:
+    return BentPierRecord(
+        pier_cap=bent_cap,
+        column=PierStemRecord(height_ft=18.0, bars_area_in2=8.0,
+                              diameter_in=36.0),
+        column_xs_ft=(6.0, 18.0, 30.0),
+        footing=FootingRecord(length_ft=9.0, width_ft=9.0,
+                              thickness_ft=3.0))
+
+
+@pytest.fixture()
+def pile_bent_record(bent_cap) -> PileBentRecord:
+    return PileBentRecord(
+        pier_cap=bent_cap,
+        piles=PileRecord(xs_ft=(2.0, 10.0, 18.0, 26.0, 34.0)))
+
+
+@pytest.fixture()
+def abutment_record(bent_cap) -> SeatAbutmentRecord:
+    return SeatAbutmentRecord(
+        cap=bent_cap,
+        piles=PileRecord(xs_ft=(2.0, 10.0, 18.0, 26.0, 34.0),
+                         shape="HP10X42"),
+        wingwall=WingwallRecord(length_ft=12.0, stem_height_ft=8.0,
+                                stem_thickness_ft=1.5, base_width_ft=6.0,
+                                footing_thickness_ft=2.0))
+
+
+def test_breadth_round_trips(bent_record, pile_bent_record,
+                             abutment_record):
+    for rec in (bent_record, pile_bent_record, abutment_record):
+        assert rec.validate() == []
+        wire = json.loads(json.dumps(rec.to_dict()))
+        assert type(rec).from_dict(wire) == rec
+    assert bent_record.to_dict()["subtype"] == "bent"
+    assert pile_bent_record.to_dict()["subtype"] == "pile_bent"
+    doc = abutment_record.to_dict()
+    assert doc["bim.type"] == "abutment" and doc["subtype"] == "seat"
+    # identity guard: a pier document cannot load as an abutment
+    with pytest.raises(ValueError, match="not a abutment/seat"):
+        SeatAbutmentRecord.from_dict(bent_record.to_dict())
+
+
+def test_breadth_cross_validation(bent_record, pile_bent_record):
+    doc = bent_record.to_dict()
+    doc["column_xs_ft"] = [6.0]                    # one column = hammerhead
+    problems = BentPierRecord.from_dict(doc).validate()
+    assert any(">= 2 columns" in p for p in problems)
+
+    doc["column_xs_ft"] = [6.0, 99.0]              # off the cap end
+    problems = BentPierRecord.from_dict(doc).validate()
+    assert any("outside the cap span" in p for p in problems)
+
+    doc2 = pile_bent_record.to_dict()
+    doc2["piles"]["xs_ft"] = []
+    problems = PileBentRecord.from_dict(doc2).validate()
+    assert any("at least one pile" in p for p in problems)
+
+
+# every (element, article) pair resolves against its own record schema
+_BREADTH_MAPS = [
+    (BentPierRecord, BENT_PIER_CHECK_INPUTS),
+    (PileBentRecord, PILE_BENT_CHECK_INPUTS),
+    (SeatAbutmentRecord, SEAT_ABUTMENT_CHECK_INPUTS),
+]
+
+
+@pytest.mark.parametrize(
+    "cls,mapping,article",
+    [(cls, m, a) for cls, m in _BREADTH_MAPS for a in m],
+    ids=lambda v: getattr(v, "__name__", None) or (
+        v if isinstance(v, str) else None))
+def test_breadth_check_inputs_resolve(cls, mapping, article):
+    """The §3 forcing function for the Phase-6 elements — same contract
+    as the hammerhead test: check exists, required params mapped, mapped
+    names real, referenced paths on the schema."""
+    from civilpy.structural.aashto import lrfd
+
+    fn = lrfd.ARTICLES.get(article)
+    assert fn is not None, f"{article} missing from the ported ARTICLES"
+
+    sig = inspect.signature(fn)
+    m = mapping[article]
+    required = {p.name for p in sig.parameters.values()
+                if p.default is inspect.Parameter.empty}
+    assert not required - set(m), (
+        f"{article}: required inputs {sorted(required - set(m))} have no "
+        f"Spec-field resolution on {cls.__name__}")
+    assert not set(m) - set(sig.parameters), (
+        f"{article}: mapped names {sorted(set(m) - set(sig.parameters))} "
+        f"are not parameters of {fn.__name__}")
+    schema = record_paths(cls)
+    for param, entry in m.items():
+        paths = ((entry[1],) if entry[0] == "field"
+                 else entry[1] if entry[0] == "derived" else ())
+        for path in paths:
+            assert path in schema, (
+                f"{article}.{param}: path {path!r} not on {cls.__name__}")
+
+
+def test_pile_check_runs_from_record_inputs(pile_bent_record):
+    """The pile compression check resolves a_g / r_y from the stored HP
+    label and runs — the first exercise of 6.9.4.1.1 from a record."""
+    from civilpy.structural.aashto import lrfd
+    from civilpy.structural.steel import SteelSection
+
+    p = pile_bent_record.piles
+    hp = SteelSection(p.shape)
+    a_g = float(hp.area.magnitude)
+    r_y = float(hp.r_y.magnitude)
+    kl_over_r = 1.0 * max(p.unbraced_length_ft, 1.0) * 12.0 / r_y
+    res = lrfd.ARTICLES["6.9.4.1.1"](a_g=a_g, f_y=p.fy_ksi,
+                                     kl_over_r=kl_over_r)
+    assert res.capacity > 0.0
+
+
+def test_bent_builds_placed_geometry(bent_record, layout):
+    from civilpy.structural.substructure import substructure_units
+
+    unit = substructure_units(layout)[1]
+    geom = bent_record.build(layout, unit)
+    assert len(geom.columns) == 3 and len(geom.footings) == 3
+    assert not geom.piles
+    m = pier_metrics(geom)
+    assert m["n_columns"] == 3
+    assert m["stem_height_ft"] == pytest.approx(18.0)
+    # three 36 in circular columns
+    import math
+    one = math.pi * 1.5 ** 2 * 18.0 / 27.0
+    assert m["stem_volume_cy"] == pytest.approx(3 * one, rel=1e-3)
+    json.dumps(m)
+
+
+def test_pile_bent_builds_placed_geometry(pile_bent_record, layout):
+    from civilpy.structural.substructure import substructure_units
+
+    unit = substructure_units(layout)[1]
+    geom = pile_bent_record.build(layout, unit)
+    assert not geom.columns and len(geom.piles) == 5
+    assert all(p.shape == "HP12X53" for p in geom.piles)
+    m = pier_metrics(geom)
+    assert m["n_piles"] == 5
+    assert m["pile_total_lf"] == pytest.approx(5 * 40.0)
+    json.dumps(m)
+
+
+def test_abutment_builds_placed_geometry(abutment_record, layout):
+    from civilpy.structural.substructure import substructure_units
+
+    unit = substructure_units(layout)[0]        # the rear abutment
+    geom = abutment_record.build(layout, unit)
+    assert len(geom.piles) == 5
+    assert geom.backwall is not None and geom.backwall.height_ft > 0.0
+    assert len(geom.wingwalls) == 4             # stem + footing, both ends
+    m = abutment_metrics(geom)
+    assert m["n_piles"] == 5 and m["pile_total_lf"] == pytest.approx(200.0)
+    assert m["backwall_height_ft"] > 0.0
+    assert m["wingwall_volume_cy"] > 0.0
+    assert m["concrete_cy"] > m["cap_volume_cy"]
+    assert m["height_ft"] > m["cap_depth_ft"]
+    json.dumps(m)
+
+
+def test_breadth_records_emit_tagged_objects(bent_record, pile_bent_record,
+                                             abutment_record, layout):
+    """All three breadth elements flow through the tagged emit — piles,
+    backwall, and wingwalls land as objects with bim.type tags."""
+    from civilpy.structural.rhino_bim import substructure_emit
+    from civilpy.structural.substructure import substructure_units
+    from civilpy.structural.substructure_layout import SubstructureLayout
+
+    units = substructure_units(layout)
+    sub = SubstructureLayout(
+        layout=layout,
+        abutments=(abutment_record.build(layout, units[0]),),
+        piers=(bent_record.build(layout, units[1]),))
+    kinds = {o.tags.get("bim.type") for o in substructure_emit(sub)}
+    assert {"pier_cap", "column", "footing", "abutment_cap", "backwall",
+            "wingwall", "pile"} <= kinds

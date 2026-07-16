@@ -26,13 +26,14 @@ those records **once**, as plain dataclasses of JSON-safe primitives:
   ``.3dm`` emit, and every check input without the session that authored
   it.
 
-The first element modeled end-to-end is the single-column hammerhead
-pier (:class:`HammerheadPierRecord`); other substructure types follow
-the same pattern.  :data:`HAMMERHEAD_CHECK_INPUTS` is the coverage map
-tying each LRFD check consuming a hammerhead to the record fields that
-feed it — the test suite walks it, so a check added without a mapped
-input path (or a field renamed out from under one) fails loudly instead
-of rotting silently.
+The first element modeled end-to-end was the single-column hammerhead
+pier (:class:`HammerheadPierRecord`); the Phase-6 breadth elements —
+:class:`BentPierRecord`, :class:`PileBentRecord`,
+:class:`SeatAbutmentRecord` — follow the same pattern.  Each element has
+a ``*_CHECK_INPUTS`` coverage map tying every LRFD check that consumes
+it to the record fields that feed it — the test suite walks the maps, so
+a check added without a mapped input path (or a field renamed out from
+under one) fails loudly instead of rotting silently.
 
 Units follow the hub convention: layout-scale dimensions in **feet**
 (``_ft``), section-scale in **inches** (``_in``), strengths in **ksi**.
@@ -204,6 +205,29 @@ class Provenance(SpecRecord):
     sheet: str | None = spec_field(None)
 
 
+class ElementRecord(SpecRecord):
+    """Base for whole-element records: the ``bim.type``/``subtype``
+    identity keys stamped into the flattened document, and the guarded
+    round-trip every element shares."""
+
+    BIM_TYPE = ""
+    SUBTYPE = ""
+
+    def to_dict(self) -> dict:
+        """The JSONB document: identity keys + flattened fields."""
+        return {"bim.type": self.BIM_TYPE, "subtype": self.SUBTYPE,
+                "schema_version": SCHEMA_VERSION, **record_to_dict(self)}
+
+    @classmethod
+    def from_dict(cls, data: dict):
+        if data.get("bim.type", cls.BIM_TYPE) != cls.BIM_TYPE or \
+                data.get("subtype", cls.SUBTYPE) != cls.SUBTYPE:
+            raise ValueError(
+                f"not a {cls.BIM_TYPE}/{cls.SUBTYPE} document: "
+                f"{data.get('bim.type')}/{data.get('subtype')}")
+        return record_from_dict(cls, data)
+
+
 # ── hammerhead pier: the Phase-1 vertical slice ───────────────────────────
 
 @dataclass(frozen=True)
@@ -328,8 +352,59 @@ class CapDetailingRecord(SpecRecord):
                                           "face bearing dimension")
 
 
+# ── reconstitution helpers (shared by every cap-on-support element) ───────
+
+def _pier_column(stem: PierStemRecord, cover_in: float):
+    """The :class:`~civilpy.structural.pier.PierColumn` the geometry
+    builders consume, carrying the stored steel as one layer at cover
+    (geometry needs only the total; run the P-M checks with a real ring
+    via :func:`stem_rebar_layers`)."""
+    from civilpy.structural.pier import PierColumn
+    from civilpy.structural.aashto.lrfd.columns import RebarLayer
+
+    return PierColumn(
+        height=stem.height_ft * 12.0,
+        layers=[RebarLayer(area=stem.bars_area_in2, depth=cover_in)],
+        f_c=stem.fc_ksi, f_y=stem.fy_ksi, b=stem.b_in, h=stem.h_in,
+        diameter=stem.diameter_in, spiral=stem.spiral, fixity=stem.fixity)
+
+
+def _cap_design(cap: PierCapRecord):
+    """A :class:`~civilpy.structural.stm_topology.design.PierCapDesign`
+    carrying the stored envelope + tie schedule (the record is the
+    design's *output*; the optimizer sweep is not replayed)."""
+    from types import SimpleNamespace
+
+    from civilpy.structural.stm_topology.design import (
+        DepthCandidate, PierCapDesign)
+
+    tie_y = cap.depth_ft - 0.2 if cap.tie_at_top else 0.2
+    tie = SimpleNamespace(force=0.0, bar_size=cap.tie_bar_size,
+                          bar_count=cap.tie_bar_count, member=("A", "B"))
+    result = SimpleNamespace(
+        report=SimpleNamespace(ties=[tie]),
+        model=SimpleNamespace(nodes={"A": (0.0, tie_y),
+                                     "B": (cap.span_ft, tie_y)}))
+    cand = DepthCandidate(depth=cap.depth_ft, cost=0.0, concrete_cost=0.0,
+                          steel_lb=0.0, strut_angle=0.0, node_ratio=0.0,
+                          max_tie=0.0, complete=True, feasible=True,
+                          result=result)
+    return PierCapDesign(optimal=cand, candidates=[cand],
+                         span=cap.span_ft, thickness=cap.thickness_ft)
+
+
+def _footing_spec(footing: FootingRecord | None):
+    """The layout-side :class:`FootingSpec`, or None."""
+    if footing is None:
+        return None
+    from civilpy.structural.substructure_layout import FootingSpec
+    return FootingSpec(length_ft=footing.length_ft,
+                       width_ft=footing.width_ft,
+                       thickness_ft=footing.thickness_ft)
+
+
 @dataclass(frozen=True)
-class HammerheadPierRecord(SpecRecord):
+class HammerheadPierRecord(ElementRecord):
     """One hammerhead pier as a storable parametric record — the Phase-1
     vertical slice of the queryable-BIM schema.  ``standard`` +
     ``standard_year`` key the standards-catalog defaults lookup;
@@ -355,79 +430,27 @@ class HammerheadPierRecord(SpecRecord):
         if self.provenance is None:
             object.__setattr__(self, "provenance", Provenance())
 
-    # ── document round-trip ──────────────────────────────────────────
-    def to_dict(self) -> dict:
-        """The JSONB document: identity keys + flattened fields."""
-        return {"bim.type": self.BIM_TYPE, "subtype": self.SUBTYPE,
-                "schema_version": SCHEMA_VERSION, **record_to_dict(self)}
-
-    @classmethod
-    def from_dict(cls, data: dict) -> "HammerheadPierRecord":
-        if data.get("bim.type", cls.BIM_TYPE) != cls.BIM_TYPE or \
-                data.get("subtype", cls.SUBTYPE) != cls.SUBTYPE:
-            raise ValueError(
-                f"not a {cls.BIM_TYPE}/{cls.SUBTYPE} document: "
-                f"{data.get('bim.type')}/{data.get('subtype')}")
-        return record_from_dict(cls, data)
-
     # ── reconstitution: record -> executed-design objects ────────────
     def to_pier_column(self):
-        """The :class:`~civilpy.structural.pier.PierColumn` the geometry
-        builder consumes, carrying the stored steel as one layer at
-        cover (geometry needs only the total; run the P-M checks with a
-        real ring via :func:`stem_rebar_layers`)."""
-        from civilpy.structural.pier import PierColumn
-        from civilpy.structural.aashto.lrfd.columns import RebarLayer
-
-        s = self.pier_stem
-        return PierColumn(
-            height=s.height_ft * 12.0,
-            layers=[RebarLayer(area=s.bars_area_in2,
-                               depth=self.detailing.cover_in)],
-            f_c=s.fc_ksi, f_y=s.fy_ksi, b=s.b_in, h=s.h_in,
-            diameter=s.diameter_in, spiral=s.spiral, fixity=s.fixity)
+        """See :func:`_pier_column`."""
+        return _pier_column(self.pier_stem, self.detailing.cover_in)
 
     def to_cap_design(self):
-        """A :class:`~civilpy.structural.stm_topology.design.PierCapDesign`
-        carrying the stored envelope + tie schedule (the record is the
-        design's *output*; the optimizer sweep is not replayed)."""
-        from types import SimpleNamespace
-
-        from civilpy.structural.stm_topology.design import (
-            DepthCandidate, PierCapDesign)
-
-        c = self.pier_cap
-        tie_y = c.depth_ft - 0.2 if c.tie_at_top else 0.2
-        tie = SimpleNamespace(force=0.0, bar_size=c.tie_bar_size,
-                              bar_count=c.tie_bar_count, member=("A", "B"))
-        result = SimpleNamespace(
-            report=SimpleNamespace(ties=[tie]),
-            model=SimpleNamespace(nodes={"A": (0.0, tie_y),
-                                         "B": (c.span_ft, tie_y)}))
-        cand = DepthCandidate(depth=c.depth_ft, cost=0.0, concrete_cost=0.0,
-                              steel_lb=0.0, strut_angle=0.0, node_ratio=0.0,
-                              max_tie=0.0, complete=True, feasible=True,
-                              result=result)
-        return PierCapDesign(optimal=cand, candidates=[cand],
-                             span=c.span_ft, thickness=c.thickness_ft)
+        """See :func:`_cap_design`."""
+        return _cap_design(self.pier_cap)
 
     def build(self, layout, unit, **frame_kw):
         """Place the pier under ``layout`` — the same contract as the
         specs :func:`~civilpy.structural.substructure_layout
         .assemble_substructure` consumes, so a stored record slots
         straight into the emit pipeline."""
-        from civilpy.structural.substructure_layout import (
-            FootingSpec, HammerheadSpec)
+        from civilpy.structural.substructure_layout import HammerheadSpec
 
-        ftg = None
-        if self.footing is not None:
-            ftg = FootingSpec(length_ft=self.footing.length_ft,
-                              width_ft=self.footing.width_ft,
-                              thickness_ft=self.footing.thickness_ft)
         return HammerheadSpec(
             cap_design=self.to_cap_design(), column=self.to_pier_column(),
             tip_depth_ft=self.pier_cap.tip_depth_ft,
-            footing=ftg).build(layout, unit, **frame_kw)
+            footing=_footing_spec(self.footing)).build(layout, unit,
+                                                       **frame_kw)
 
 
 def stem_rebar_layers(record: HammerheadPierRecord, n_layers: int = 2):
@@ -443,6 +466,205 @@ def stem_rebar_layers(record: HammerheadPierRecord, n_layers: int = 2):
     return [RebarLayer(area=per,
                        depth=c + (depth - 2.0 * c) * k / (n_layers - 1))
             for k in range(n_layers)]
+
+
+# ── shared sub-records for the Phase-6 breadth elements ──────────────────
+
+@dataclass(frozen=True)
+class PileRecord(SpecRecord):
+    """A driven HP-pile group under a cap: positions along the support
+    line (girder-1 frame, same as the cap design's supports), the AISC
+    section, and the structural-check inputs.  Pay length is the driven
+    length from the geotech recommendation."""
+
+    xs_ft: tuple[float, ...] = spec_field(
+        unit="ft", desc="pile centers along the cap, girder-1 frame")
+    shape: str = spec_field("HP12X53", checks=("6.9.4.1.1",),
+                            desc="AISC HP label (CPP-1-08 default)")
+    length_ft: float = spec_field(40.0, unit="ft", gt=0.0,
+                                  desc="driven/pay length")
+    fy_ksi: float = spec_field(50.0, unit="ksi", gt=0.0,
+                               checks=("6.9.4.1.1",))
+    unbraced_length_ft: float = spec_field(
+        0.0, unit="ft", ge=0.0, checks=("6.9.4.1.1",),
+        desc="exposed/scour length; 0 = fully embedded")
+
+    def _cross_validate(self):
+        problems = []
+        if not self.xs_ft:
+            problems.append("xs_ft: at least one pile required")
+        if not all(isinstance(x, (int, float)) and not isinstance(x, bool)
+                   for x in self.xs_ft):
+            problems.append("xs_ft: entries must be numbers")
+        return problems
+
+
+@dataclass(frozen=True)
+class WingwallRecord(SpecRecord):
+    """Wingwall panel dimensions — the executed
+    :class:`~civilpy.structural.abutment.RetainingWall` stem/footing as
+    stored parameters, plus the run along the roadway.  The Section-11
+    wall checks are not yet in the ported library, so this record is
+    geometry/quantity space; its check-coverage entries land when they
+    port (the §3 fallback: manual enumeration until the check exists)."""
+
+    length_ft: float = spec_field(unit="ft", gt=0.0,
+                                  desc="run along the roadway")
+    stem_height_ft: float = spec_field(unit="ft", gt=0.0)
+    stem_thickness_ft: float = spec_field(unit="ft", gt=0.0)
+    base_width_ft: float = spec_field(unit="ft", gt=0.0)
+    footing_thickness_ft: float = spec_field(unit="ft", gt=0.0)
+
+
+# ── Phase-6 breadth: bent pier, pile bent, seat abutment ─────────────────
+
+@dataclass(frozen=True)
+class BentPierRecord(ElementRecord):
+    """One multi-column bent pier: the cap envelope + governing tie (the
+    bent cap's tie is normally the **bottom** chord — set
+    ``pier_cap.tie_at_top=False`` when storing one), a uniform column
+    section/steel, and the column centers along the cap.  Per-column
+    height/section variation is a later refinement; the uniform case is
+    the standard-drawing bent."""
+
+    pier_cap: PierCapRecord
+    column: PierStemRecord
+    column_xs_ft: tuple[float, ...] = spec_field(
+        unit="ft", desc="column centers from the cap's left end")
+    footing: FootingRecord | None = None
+    detailing: CapDetailingRecord | None = spec_field(None)
+    standard: str | None = spec_field(None, desc="ODOT standard drawing id")
+    standard_year: int | None = spec_field(None, ge=1900)
+    provenance: Provenance | None = spec_field(None)
+
+    BIM_TYPE = "pier"
+    SUBTYPE = "bent"
+
+    def __post_init__(self):
+        if self.detailing is None:
+            object.__setattr__(self, "detailing", CapDetailingRecord())
+        if self.provenance is None:
+            object.__setattr__(self, "provenance", Provenance())
+
+    def _cross_validate(self):
+        problems = []
+        if len(self.column_xs_ft) < 2:
+            problems.append("column_xs_ft: a bent needs >= 2 columns "
+                            "(one column is a hammerhead)")
+        for x in self.column_xs_ft:
+            if not 0.0 <= x <= self.pier_cap.span_ft:
+                problems.append(f"column_xs_ft: {x} outside the cap span "
+                                f"[0, {self.pier_cap.span_ft}]")
+        return problems
+
+    def to_bent(self):
+        """The ``bent`` object :func:`~civilpy.structural
+        .substructure_layout.pier_geometry` consumes: column positions in
+        inches from the cap's left end + one executed column per
+        position."""
+        from types import SimpleNamespace
+
+        col = _pier_column(self.column, self.detailing.cover_in)
+        return SimpleNamespace(
+            cap=SimpleNamespace(column_positions=[x * 12.0
+                                                  for x in self.column_xs_ft]),
+            columns=[col] * len(self.column_xs_ft))
+
+    def build(self, layout, unit, **frame_kw):
+        from civilpy.structural.substructure_layout import BentPierSpec
+
+        return BentPierSpec(
+            cap_design=_cap_design(self.pier_cap), bent=self.to_bent(),
+            footing=_footing_spec(self.footing)).build(layout, unit,
+                                                       **frame_kw)
+
+
+@dataclass(frozen=True)
+class PileBentRecord(ElementRecord):
+    """One capped-pile pier (pile bent): the cap directly on driven HP
+    piles — the CPP-1-08 pattern.  The cap design's supports are the
+    piles, so the governing tie is normally the bottom chord."""
+
+    pier_cap: PierCapRecord
+    piles: PileRecord
+    detailing: CapDetailingRecord | None = spec_field(None)
+    standard: str | None = spec_field(None, desc="ODOT standard drawing id")
+    standard_year: int | None = spec_field(None, ge=1900)
+    provenance: Provenance | None = spec_field(None)
+
+    BIM_TYPE = "pier"
+    SUBTYPE = "pile_bent"
+
+    def __post_init__(self):
+        if self.detailing is None:
+            object.__setattr__(self, "detailing", CapDetailingRecord())
+        if self.provenance is None:
+            object.__setattr__(self, "provenance", Provenance())
+
+    def build(self, layout, unit, **frame_kw):
+        from civilpy.structural.substructure_layout import PileBentSpec
+
+        return PileBentSpec(
+            cap_design=_cap_design(self.pier_cap),
+            pile_xs_ft=self.piles.xs_ft, pile_shape=self.piles.shape,
+            pile_length_ft=self.piles.length_ft).build(layout, unit,
+                                                       **frame_kw)
+
+
+@dataclass(frozen=True)
+class SeatAbutmentRecord(ElementRecord):
+    """One conventional capped-pile seat abutment: the cap on driven
+    piles, the backwall up to the low deck edge, and optional wingwalls.
+    The semi-integral and integral variants get their own subtypes when
+    they land (their geometry builders already exist)."""
+
+    cap: PierCapRecord
+    piles: PileRecord
+    backwall_thickness_in: float = spec_field(18.0, unit="in", gt=0.0)
+    wingwall: WingwallRecord | None = None
+    detailing: CapDetailingRecord | None = spec_field(None)
+    standard: str | None = spec_field(None, desc="ODOT standard drawing id")
+    standard_year: int | None = spec_field(None, ge=1900)
+    provenance: Provenance | None = spec_field(None)
+
+    BIM_TYPE = "abutment"
+    SUBTYPE = "seat"
+
+    def __post_init__(self):
+        if self.detailing is None:
+            object.__setattr__(self, "detailing", CapDetailingRecord())
+        if self.provenance is None:
+            object.__setattr__(self, "provenance", Provenance())
+
+    def to_abutment_spec(self):
+        """The layout-side :class:`~civilpy.structural
+        .substructure_layout.AbutmentSpec` (wingwall reconstituted as the
+        4-attribute wall the geometry builder reads)."""
+        from types import SimpleNamespace
+
+        from civilpy.structural.substructure_layout import AbutmentSpec
+
+        wall = None
+        length = 0.0
+        if self.wingwall is not None:
+            w = self.wingwall
+            wall = SimpleNamespace(stem_height=w.stem_height_ft,
+                                   stem_thickness=w.stem_thickness_ft,
+                                   base_width=w.base_width_ft,
+                                   footing_thickness=w.footing_thickness_ft)
+            length = w.length_ft
+        return AbutmentSpec(pile_xs_ft=self.piles.xs_ft,
+                            pile_shape=self.piles.shape,
+                            pile_length_ft=self.piles.length_ft,
+                            backwall_thickness_in=self.backwall_thickness_in,
+                            wingwall=wall, wingwall_length_ft=length)
+
+    def build(self, layout, unit, **frame_kw):
+        from civilpy.structural.substructure_layout import SeatAbutmentSpec
+
+        return SeatAbutmentSpec(
+            cap_design=_cap_design(self.cap),
+            spec=self.to_abutment_spec()).build(layout, unit, **frame_kw)
 
 
 # ── metrics sidecar ───────────────────────────────────────────────────────
@@ -468,6 +690,8 @@ def pier_metrics(geom) -> dict:
     }
     if cap.soffit_profile is not None:
         m["tip_depth_ft"] = min(d for _, d in cap.soffit_profile)
+    if geom.piles:
+        m["pile_total_lf"] = round(sum(p.length_ft for p in geom.piles), 1)
     if cols:
         m["stem_height_ft"] = round(
             max(c.height_ft for c in cols), 3)
@@ -488,6 +712,43 @@ def pier_metrics(geom) -> dict:
         + sum(c.volume_cy for c in cols)
         + sum(f.volume_cy for f in geom.footings), 3)
     m["height_ft"] = round(cap.origin[2] - z_lo, 3)
+    return m
+
+
+def abutment_metrics(geom) -> dict:
+    """Derived metrics for one placed abutment
+    (:class:`~civilpy.structural.substructure_layout.AbutmentGeometry`)
+    — same emit-time sidecar contract as :func:`pier_metrics`."""
+    cap = geom.cap
+    m = {
+        "cap_length_ft": cap.length_ft,
+        "cap_width_ft": cap.width_ft,
+        "cap_depth_ft": cap.depth_ft,
+        "cap_volume_cy": round(cap.volume_cy, 3),
+        "cap_top_elev_ft": cap.origin[2],
+        "n_seats": len(geom.seats),
+        "n_piles": len(geom.piles),
+        "pile_total_lf": round(sum(p.length_ft for p in geom.piles), 1),
+    }
+    walls_cy = 0.0
+    z_hi = cap.origin[2]
+    if geom.backwall is not None:
+        m["backwall_height_ft"] = round(geom.backwall.height_ft, 3)
+        walls_cy += geom.backwall.volume_cy
+        z_hi = max(z_hi, geom.backwall.origin[2] + geom.backwall.height_ft)
+    if geom.diaphragm is not None:
+        m["diaphragm_height_ft"] = round(geom.diaphragm.height_ft, 3)
+        walls_cy += geom.diaphragm.volume_cy
+        z_hi = max(z_hi, geom.diaphragm.origin[2]
+                   + geom.diaphragm.height_ft)
+    if geom.wingwalls:
+        m["wingwall_volume_cy"] = round(
+            sum(w.volume_cy for w in geom.wingwalls), 3)
+        walls_cy += sum(w.volume_cy for w in geom.wingwalls)
+    seats_cy = sum((s.side_in / 12.0) ** 2 * (s.height_in / 12.0) / 27.0
+                   for s in geom.seats)
+    m["concrete_cy"] = round(cap.volume_cy + seats_cy + walls_cy, 3)
+    m["height_ft"] = round(z_hi - (cap.origin[2] - cap.depth_ft), 3)
     return m
 
 
@@ -606,6 +867,77 @@ HAMMERHEAD_CHECK_INPUTS: dict[str, dict[str, tuple]] = {
                 "Euler load from cracked EI and effective length"),
         "m_2": ("loads", "larger end moment"),
     },
+}
+
+
+def _retarget(mapping: dict, renames: dict[str, str]) -> dict:
+    """A copy of a check-inputs map with record-path prefixes renamed —
+    the cap/column checks are the same physics on every cap-on-support
+    element; only the field paths differ per record class.  The coverage
+    test resolves the result against the target record, so a bad rename
+    fails loudly."""
+    def fix(path: str) -> str:
+        for old, new in renames.items():
+            if path.startswith(old):
+                return new + path[len(old):]
+        return path
+
+    out = {}
+    for article, inputs in mapping.items():
+        out[article] = {}
+        for param, entry in inputs.items():
+            if entry[0] == "field":
+                out[article][param] = ("field", fix(entry[1]))
+            elif entry[0] == "derived":
+                out[article][param] = ("derived",
+                                       tuple(fix(p) for p in entry[1]),
+                                       entry[2])
+            else:
+                out[article][param] = entry
+    return out
+
+
+#: The cap D-region / sectional / detailing checks — identical on every
+#: cap-on-support element (hammerhead, bent, pile bent, abutment).
+_CAP_ARTICLES = ("5.8.2.4", "5.8.2.5", "5.8.2.6", "5.7.3.3", "5.7.2.5",
+                 "5.7.2.6", "5.6.7", "5.10.8.2.1")
+
+#: The compression-member checks the hammerhead stem runs — a bent's
+#: columns run the same set.
+_COLUMN_ARTICLES = ("5.6.4.4", "5.6.4.2", "5.6.4.5 check", "4.5.3.2.2b")
+
+#: Driven HP piles: steel compression member (kl/r from the section and
+#: the exposed/scour length; fully-embedded piles are axial-only).
+_PILE_CHECK_INPUTS: dict[str, dict[str, tuple]] = {
+    "6.9.4.1.1": {
+        "a_g": ("derived", ("piles.shape",), "AISC HP section area"),
+        "f_y": ("field", "piles.fy_ksi"),
+        "kl_over_r": ("derived", ("piles.shape",
+                                  "piles.unbraced_length_ft"),
+                      "K*Lu/r_y from the section and exposed length"),
+        "p_u": ("loads", "factored pile reaction"),
+    },
+}
+
+#: Multi-column bent: the hammerhead map with the stem paths renamed to
+#: the bent's uniform ``column`` record (same checks, same physics).
+BENT_PIER_CHECK_INPUTS: dict[str, dict[str, tuple]] = _retarget(
+    HAMMERHEAD_CHECK_INPUTS, {"pier_stem.": "column."})
+
+#: Pile bent: the cap family plus the pile compression check.
+PILE_BENT_CHECK_INPUTS: dict[str, dict[str, tuple]] = {
+    **{a: HAMMERHEAD_CHECK_INPUTS[a] for a in _CAP_ARTICLES},
+    **_PILE_CHECK_INPUTS,
+}
+
+#: Seat abutment: cap family (paths under ``cap.``) plus piles.  The
+#: backwall / wingwall (Section 11) checks are not yet in the ported
+#: library — their fields are geometry/quantity space until they land
+#: (the §3 fallback), at which point they join this map.
+SEAT_ABUTMENT_CHECK_INPUTS: dict[str, dict[str, tuple]] = {
+    **_retarget({a: HAMMERHEAD_CHECK_INPUTS[a] for a in _CAP_ARTICLES},
+                {"pier_cap.": "cap."}),
+    **_PILE_CHECK_INPUTS,
 }
 
 
