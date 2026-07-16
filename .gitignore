@@ -193,6 +193,7 @@ django/
 /Notebooks/*.pdf
 /Notebooks/Bridge Backlog Forecast.ipynb
 /Notebooks/.jupyter_ystore.db
+/Notebooks/tims_practice.db
 /res/sample point cloud/3DML_urban_point_cloud.xyz
 /res/sample point cloud/3DML_validation.xyz
 /res/sample point cloud/2020_Drone_M.las
