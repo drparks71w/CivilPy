@@ -1376,3 +1376,71 @@ GIRDER_CHECK_INPUTS: dict[str, dict[str, tuple]] = {
                 "splice plate area"),
     },
 }
+
+
+@dataclass(frozen=True)
+class BridgeLayoutRecord(ElementRecord):
+    """The bridge-level superstructure geometry as a storable record: the
+    :class:`~civilpy.structural.bridge_layout.BridgeInput` a stored bridge
+    reconstitutes to for the ``.3dm`` emit.  This is the whole-bridge frame
+    (spans, girder count/spacing, overhang, skew, deck) that the per-girder-line
+    :class:`SteelGirderRecord` details hang off; the batch materializer reads it,
+    calls :meth:`to_bridge_input`, and runs ``girder_bridge_emit`` — so the
+    served model comes from an authored Spec, not a second geometry engine
+    (build plan §2.4/§8).  Every field mirrors ``BridgeInput`` one-for-one, so
+    the round-trip is faithful."""
+
+    spans_ft: tuple[float, ...] = spec_field(
+        unit="ft", desc="span lengths along the centerline")
+    girder_count: int = spec_field(2, ge=2)
+    girder_spacing_ft: float = spec_field(8.0, unit="ft", gt=0.0)
+    girder_label: str = spec_field("W36X150",
+                                   desc="AISC rolled shape (current engine)")
+    overhang_ft: float = spec_field(3.0, unit="ft", gt=0.0)
+    railing: str = spec_field("SBR-1-20", desc="ODOT SCD railing designation")
+    grade: str = spec_field("Grade 50",
+                            enum=("Grade 36", "Grade 50", "Grade 50W",
+                                  "Grade HPS70W"))
+    skew_deg: float = spec_field(0.0, unit="deg")
+    design_haunch_in: float = spec_field(2.0, unit="in", ge=0.0)
+    deck_thickness_in: float | None = spec_field(
+        None, unit="in", gt=0.0, desc="None = ODOT standard deck design")
+    deck_fc_ksi: float = spec_field(4.5, unit="ksi", gt=0.0)
+    cross_slope_pct: float = spec_field(2.0, desc="deck cross slope, percent")
+    crown_offset_ft: float | None = spec_field(
+        None, unit="ft", desc="crown transverse offset; None = centered")
+    composite: bool = spec_field(True)
+    standard: str | None = spec_field(None, desc="ODOT standard drawing id")
+    standard_year: int | None = spec_field(None, ge=1900)
+    provenance: Provenance | None = spec_field(None)
+
+    BIM_TYPE = "bridge"
+    SUBTYPE = "layout"
+
+    def __post_init__(self):
+        if self.provenance is None:
+            object.__setattr__(self, "provenance", Provenance())
+
+    def _cross_validate(self):
+        problems = []
+        if not self.spans_ft:
+            problems.append("spans_ft: at least one span required")
+        elif not all(isinstance(s, (int, float)) and not isinstance(s, bool)
+                     and s > 0 for s in self.spans_ft):
+            problems.append("spans_ft: entries must be positive numbers")
+        return problems
+
+    def to_bridge_input(self):
+        """Reconstitute the :class:`~civilpy.structural.bridge_layout
+        .BridgeInput` the superstructure emit consumes."""
+        from civilpy.structural.bridge_layout import BridgeInput
+
+        return BridgeInput(
+            spans_ft=tuple(self.spans_ft), girder_count=self.girder_count,
+            girder_spacing_ft=self.girder_spacing_ft,
+            girder_label=self.girder_label, overhang_ft=self.overhang_ft,
+            railing=self.railing, grade=self.grade, skew_deg=self.skew_deg,
+            design_haunch_in=self.design_haunch_in,
+            deck_thickness_in=self.deck_thickness_in,
+            deck_fc_ksi=self.deck_fc_ksi, cross_slope_pct=self.cross_slope_pct,
+            crown_offset_ft=self.crown_offset_ft, composite=self.composite)

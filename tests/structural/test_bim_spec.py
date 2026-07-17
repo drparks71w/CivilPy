@@ -743,3 +743,49 @@ def test_girder_to_bridge_input_catalog_and_plate(girder):
     with pytest.raises(NotImplementedError, match="plate-section emit"):
         girder.to_bridge_input(girder_count=5, girder_spacing_ft=8.0,
                                overhang_ft=3.0)
+
+
+# ── whole-bridge layout record (materializer input, §2.4) ─────────────────
+
+from civilpy.structural.bim_spec import BridgeLayoutRecord  # noqa: E402
+
+
+@pytest.fixture()
+def bridge_layout_record() -> BridgeLayoutRecord:
+    return BridgeLayoutRecord(
+        spans_ft=(80.0, 80.0), girder_count=5, girder_spacing_ft=8.0,
+        girder_label="W36X150", overhang_ft=3.0, railing="SBR-1-20",
+        grade="Grade 50W", provenance=Provenance(source="brr"))
+
+
+def test_bridge_layout_round_trips(bridge_layout_record):
+    doc = bridge_layout_record.to_dict()
+    assert doc["bim.type"] == "bridge" and doc["subtype"] == "layout"
+    wire = json.loads(json.dumps(doc))
+    assert BridgeLayoutRecord.from_dict(wire) == bridge_layout_record
+    assert wire["spans_ft"] == [80.0, 80.0]
+
+
+def test_bridge_layout_validates_spans():
+    rec = BridgeLayoutRecord(spans_ft=(), girder_count=5,
+                             girder_spacing_ft=8.0, girder_label="W36X150",
+                             overhang_ft=3.0)
+    assert any("at least one span" in p for p in rec.validate())
+    bad = BridgeLayoutRecord(spans_ft=(80.0, -1.0), girder_count=5,
+                             girder_spacing_ft=8.0, girder_label="W36X150",
+                             overhang_ft=3.0)
+    assert any("positive numbers" in p for p in bad.validate())
+
+
+def test_bridge_layout_reconstitutes_and_emits(bridge_layout_record):
+    """The materializer path: stored record -> BridgeInput -> real emit."""
+    from civilpy.structural.bridge_layout import BridgeInput, layout_bridge
+    from civilpy.structural.rhino_bim import girder_bridge_emit
+
+    inp = bridge_layout_record.to_bridge_input()
+    assert isinstance(inp, BridgeInput)
+    assert inp.spans_ft == (80.0, 80.0) and inp.girder_label == "W36X150"
+    # it drives layout + the tagged emit without error
+    layout_bridge(inp)
+    emit = girder_bridge_emit(inp)
+    assert any(o.tags.get("bim.type") == "bridge" for o in emit.objects)
