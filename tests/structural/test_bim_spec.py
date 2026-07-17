@@ -517,3 +517,229 @@ def test_breadth_records_emit_tagged_objects(bent_record, pile_bent_record,
     kinds = {o.tags.get("bim.type") for o in substructure_emit(sub)}
     assert {"pier_cap", "column", "footing", "abutment_cap", "backwall",
             "wingwall", "pile"} <= kinds
+
+
+# ══ Phase-6a: girder record + beam-customization schema spaces (§3a) ═════════
+
+import math  # noqa: E402
+
+from civilpy.structural.bim_spec import (  # noqa: E402
+    GIRDER_CHECK_INPUTS,
+    BearingStiffenerRecord,
+    CompositeRecord,
+    CrossFrameRecord,
+    FieldSpliceRecord,
+    GirderSectionRecord,
+    LongitudinalStiffenerRecord,
+    PlateSegmentRecord,
+    SteelGirderRecord,
+    TransverseStiffenerRecord,
+    girder_metrics,
+)
+
+
+@pytest.fixture()
+def girder() -> SteelGirderRecord:
+    """A built-up plate girder carrying every §3a customization."""
+    return SteelGirderRecord(
+        section=GirderSectionRecord(
+            web_depth_in=54.0, web_thickness_in=0.5,
+            top_flange_width_in=16.0, top_flange_thickness_in=1.0,
+            bot_flange_width_in=18.0, bot_flange_thickness_in=1.25,
+            fyc_ksi=50.0, fyw_ksi=50.0),
+        length_ft=160.0, grade="Grade 50W",
+        plates=(
+            PlateSegmentRecord(0.0, 80.0, 54.0, 0.5, 16.0, 1.0, 18.0, 1.25),
+            PlateSegmentRecord(80.0, 160.0, 54.0, 0.5, 16.0, 1.25, 18.0, 1.5)),
+        composite=CompositeRecord(effective_width_in=96.0),
+        transverse_stiffener=TransverseStiffenerRecord(
+            plate_width_in=6.0, plate_thickness_in=0.5, spacing_in=72.0),
+        bearing_stiffener=BearingStiffenerRecord(
+            plate_width_in=7.0, plate_thickness_in=0.625, pairs=1),
+        longitudinal_stiffener=LongitudinalStiffenerRecord(
+            plate_width_in=5.0, plate_thickness_in=0.5,
+            location_from_top_flange_in=18.0),
+        cross_frame=CrossFrameRecord(
+            member_shape="L4X4X1/2", member_length_ft=8.0, spacing_ft=20.0),
+        splice=FieldSpliceRecord(
+            station_ft=80.0, flange_width_left_in=16.0,
+            flange_width_right_in=16.0, flange_thickness_in=1.0,
+            web_depth_in=54.0, web_thickness_left_in=0.5,
+            web_thickness_right_in=0.5),
+        provenance=Provenance(source="brr"))
+
+
+def test_girder_round_trips(girder):
+    doc = girder.to_dict()
+    assert doc["bim.type"] == "girder" and doc["subtype"] == "steel"
+    wire = json.loads(json.dumps(doc))
+    assert SteelGirderRecord.from_dict(wire) == girder
+    # nested + tuple-of-record fields survive the wire
+    assert wire["section"]["web_depth_in"] == 54.0
+    assert wire["plates"][1]["bot_flange_thickness_in"] == 1.5
+    assert wire["splice"]["station_ft"] == 80.0
+    with pytest.raises(ValueError, match="not a girder/steel"):
+        SteelGirderRecord.from_dict({"bim.type": "pier", "subtype": "bent"})
+
+
+def test_girder_validate_clean(girder):
+    assert girder.validate() == []
+    girder.validate(strict=True)
+    # minimal girder: just a cataloged section, no customizations
+    minimal = SteelGirderRecord(
+        section=GirderSectionRecord(label="W36X150"), length_ft=80.0)
+    assert minimal.validate() == []
+    assert minimal.provenance.source == "manual"
+
+
+def test_girder_section_is_label_xor_plates():
+    both = GirderSectionRecord(label="W36X150", web_depth_in=36.0,
+                               web_thickness_in=0.6, top_flange_width_in=12.0,
+                               top_flange_thickness_in=0.9,
+                               bot_flange_width_in=12.0,
+                               bot_flange_thickness_in=0.9)
+    assert any("either a catalog label" in p for p in both.validate())
+    neither = GirderSectionRecord()
+    assert any("either a catalog label" in p for p in neither.validate())
+
+
+def test_girder_catches_bad_data_and_plate_gaps(girder):
+    doc = girder.to_dict()
+    doc["section"]["web_thickness_in"] = -0.5           # bound
+    doc["grade"] = "Grade 999"                          # enum
+    doc["plates"][1]["x_start_ft"] = 90.0               # gap after 80 ft
+    bad = SteelGirderRecord.from_dict(doc)
+    problems = bad.validate()
+    assert any("section.web_thickness_in" in p and "> 0" in p
+               for p in problems)
+    assert any("grade" in p and "Grade 999" in p for p in problems)
+    assert any("gap/overlap" in p for p in problems)
+
+
+def test_girder_section_resolve_catalog_and_plates(girder):
+    d, t_w, b_fc, t_fc = girder.section.resolve()
+    assert (d, t_w, b_fc, t_fc) == (54.0, 0.5, 16.0, 1.0)
+    cat = GirderSectionRecord(label="W36X150")
+    d2, t_w2, b_fc2, t_fc2 = cat.resolve()
+    assert d2 == pytest.approx(35.9) and b_fc2 == pytest.approx(12.0)
+
+
+def test_girder_field_metadata_rides_on_the_field():
+    from dataclasses import fields as dfields
+
+    by_name = {f.name: f for f in dfields(CrossFrameRecord)}
+    assert by_name["frame_type"].metadata["enum"] == ("X", "K", "bent_plate")
+    assert "6.9.4.1.1" in by_name["member_shape"].metadata["checks"]
+    sec = {f.name: f for f in dfields(GirderSectionRecord)}
+    assert sec["web_depth_in"].metadata["unit"] == "in"
+
+
+# ── check coverage: the §3 forcing function, §3a elements ─────────────────
+
+#: Every ported LRFD check that consumes a steel girder line.  6.7.4
+#: (cross-frame spacing) and 6.10.11.3 (longitudinal stiffener) are absent by
+#: design -- not yet in the ported library, so their fields are quantity space.
+GIRDER_CHECKS = (
+    "6.10.8.2.2", "6.10.8.2.3", "6.10.9",          # section: flange/LTB/web
+    "6.10.10.1.2", "6.10.10.4",                    # composite studs
+    "6.10.11.2.3",                                 # bearing stiffener
+    "6.8.2.1", "6.9.4.1.1",                        # cross-frame members
+    "6.13.6.1.3b", "6.13.6.1.3c", "6.13.6.1.4",    # field splice
+)
+
+
+def test_every_girder_check_is_mapped():
+    assert set(GIRDER_CHECK_INPUTS) == set(GIRDER_CHECKS)
+
+
+@pytest.mark.parametrize("article", GIRDER_CHECKS)
+def test_girder_check_inputs_resolve(article):
+    from civilpy.structural.aashto import lrfd
+
+    fn = lrfd.ARTICLES.get(article)
+    assert fn is not None, f"{article} missing from the ported ARTICLES"
+
+    sig = inspect.signature(fn)
+    mapping = GIRDER_CHECK_INPUTS[article]
+    required = {p.name for p in sig.parameters.values()
+                if p.default is inspect.Parameter.empty}
+    assert not required - set(mapping), (
+        f"{article} ({fn.__name__}): required inputs "
+        f"{sorted(required - set(mapping))} have no Spec-field resolution")
+    assert not set(mapping) - set(sig.parameters), (
+        f"{article}: mapped names {sorted(set(mapping) - set(sig.parameters))}"
+        f" are not parameters of {fn.__name__}")
+    schema = record_paths(SteelGirderRecord)
+    for param, entry in mapping.items():
+        paths = ((entry[1],) if entry[0] == "field"
+                 else entry[1] if entry[0] == "derived" else ())
+        for path in paths:
+            assert path in schema, (
+                f"{article}.{param}: path {path!r} not on SteelGirderRecord")
+
+
+def test_girder_checks_run_from_record_inputs(girder):
+    """First exercise of the steel port from record-resolved inputs: the
+    section, composite, cross-frame member, and splice checks all produce
+    sane numbers from Spec fields alone."""
+    from civilpy.structural.aashto import lrfd
+    from civilpy.structural.steel import SteelSection
+
+    A = lrfd.ARTICLES
+    d, t_w, b_fc, t_fc = girder.section.resolve()
+    sec = girder.section
+    assert A["6.10.8.2.2"](b_fc=b_fc, t_fc=t_fc, f_yc=sec.fyc_ksi,
+                           f_yw=sec.fyw_ksi).capacity > 0.0
+    assert A["6.10.9"](d_web=d, t_w=t_w, f_yw=sec.fyw_ksi).capacity > 0.0
+
+    cf = girder.cross_frame
+    m = SteelSection(cf.member_shape)
+    a_g, r_y = float(m.area.magnitude), float(m.r_y.magnitude)
+    assert A["6.8.2.1"](a_g=a_g, f_y=cf.fy_ksi).capacity > 0.0
+    kl_r = 1.0 * cf.member_length_ft * 12.0 / r_y
+    assert A["6.9.4.1.1"](a_g=a_g, f_y=cf.fy_ksi,
+                          kl_over_r=kl_r).capacity > 0.0
+
+    comp = girder.composite
+    e_c = 57.0 * math.sqrt(comp.deck_fc_ksi * 1000.0) / 1000.0
+    assert A["6.10.10.4"](d_stud=comp.stud_diameter_in,
+                          f_c=comp.deck_fc_ksi, e_c=e_c).capacity > 0.0
+
+    sp = girder.splice
+    plates = A["6.13.6.1.3b"](
+        flange_width_left=sp.flange_width_left_in,
+        flange_width_right=sp.flange_width_right_in,
+        flange_thickness=sp.flange_thickness_in,
+        web_thickness_left=sp.web_thickness_left_in,
+        web_thickness_right=sp.web_thickness_right_in)
+    assert plates is not None
+
+
+def test_girder_metrics_sidecar(girder):
+    m = girder_metrics(girder)
+    assert m["length_ft"] == 160.0
+    assert m["is_plate_girder"] is True and m["section_label"] is None
+    assert m["web_depth_in"] == 54.0
+    assert m["is_composite"] is True
+    assert m["n_plate_segments"] == 2
+    assert m["has_bearing_stiffeners"] is True
+    assert m["has_longitudinal_stiffener"] is True
+    assert m["n_splices"] == 1
+    assert m["cross_frame_bays"] == 8          # 160 ft / 20 ft
+    json.dumps(m)
+
+
+def test_girder_to_bridge_input_catalog_and_plate(girder):
+    from civilpy.structural.bridge_layout import BridgeInput
+
+    cat = SteelGirderRecord(
+        section=GirderSectionRecord(label="W36X150"), length_ft=80.0,
+        grade="Grade 50W", composite=CompositeRecord())
+    bi = cat.to_bridge_input(girder_count=5, girder_spacing_ft=8.0,
+                             overhang_ft=3.0)
+    assert isinstance(bi, BridgeInput)
+    assert bi.girder_label == "W36X150" and bi.composite is True
+    # the plate-section girder can't feed the current prismatic engine yet
+    with pytest.raises(NotImplementedError, match="plate-section emit"):
+        girder.to_bridge_input(girder_count=5, girder_spacing_ft=8.0,
+                               overhang_ft=3.0)

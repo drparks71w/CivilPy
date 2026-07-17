@@ -953,3 +953,426 @@ def record_paths(cls) -> set[str]:
         if is_dataclass(tp):
             out |= {f"{f.name}.{p}" for p in record_paths(tp)}
     return out
+
+
+# ══ Phase-6a: superstructure girder record + beam-customization spaces ══════
+#
+# Build plan §3a.  The superstructure emit draws prismatic rolled girders only
+# (a catalog label, composite reduced to a stud toggle); the real-bridge
+# details below have no space to live in the schema and would be silently
+# dropped by the BIM round-trip.  Each gets the §3a three-part treatment: a
+# JSON-safe record with field metadata, a place on the girder for the tagged
+# emit to consume, and check-coverage-map entries.  These land *before* the
+# BrR->Spec extract that fills them (§9): the girder record must exist first or
+# extraction has nowhere to put the data.
+#
+# Consuming checks that are already ported to ``aashto.lrfd`` go straight into
+# the coverage map (6.10.8 flange/LTB, 6.10.9 web shear, 6.10.10 studs,
+# 6.10.11.2.3 bearing stiffener, 6.13.6 splice, 6.8.2.1/6.9.4.1.1 cross-frame
+# members).  The two that are *not* yet ported -- 6.7.4 (cross-frame spacing)
+# and 6.10.11.3 (longitudinal stiffener) -- leave their fields as
+# geometry/quantity space until they land, exactly the WingwallRecord fallback.
+#
+# A customization the checks consume is a *single* nested record (like
+# ``PileRecord`` under a bent): one controlling detail whose scalar fields the
+# coverage test resolves.  The full variable-depth plate schedule rides in the
+# ``plates`` tuple as geometry/quantity space -- a tapered prism is still a
+# loop + profile, so the mesh emit reuses unchanged.
+
+
+@dataclass(frozen=True)
+class GirderSectionRecord(SpecRecord):
+    """The girder cross-section the sectional checks run on: EITHER a cataloged
+    rolled shape (``label``) OR an explicit built-up plate section.  This is the
+    single controlling section (the design's governing positive-moment / pier
+    section); the whole variable-depth schedule lives in
+    :attr:`SteelGirderRecord.plates`.  Give exactly one representation -- a
+    label or the full set of plate dims -- and :meth:`resolve` returns the
+    ``(d, t_w, b_fc, t_fc)`` the checks need from whichever is present."""
+
+    label: str | None = spec_field(
+        None, desc="AISC rolled shape, e.g. W36X150",
+        checks=("6.10.8.2.2", "6.10.8.2.3", "6.10.9"))
+    web_depth_in: float | None = spec_field(
+        None, unit="in", gt=0.0, checks=("6.10.9", "6.10.8.2.3"))
+    web_thickness_in: float | None = spec_field(
+        None, unit="in", gt=0.0, checks=("6.10.9", "6.10.8.2.3"))
+    top_flange_width_in: float | None = spec_field(
+        None, unit="in", gt=0.0, checks=("6.10.8.2.2", "6.10.8.2.3"))
+    top_flange_thickness_in: float | None = spec_field(
+        None, unit="in", gt=0.0, checks=("6.10.8.2.2", "6.10.8.2.3"))
+    bot_flange_width_in: float | None = spec_field(None, unit="in", gt=0.0)
+    bot_flange_thickness_in: float | None = spec_field(None, unit="in", gt=0.0)
+    fyc_ksi: float = spec_field(50.0, unit="ksi", gt=0.0,
+                                checks=("6.10.8.2.2", "6.10.8.2.3"))
+    fyw_ksi: float = spec_field(50.0, unit="ksi", gt=0.0,
+                                checks=("6.10.9", "6.10.8.2.2", "6.10.8.2.3"))
+
+    _PLATE_DIMS = ("web_depth_in", "web_thickness_in", "top_flange_width_in",
+                   "top_flange_thickness_in", "bot_flange_width_in",
+                   "bot_flange_thickness_in")
+
+    def _cross_validate(self):
+        has_label = self.label is not None
+        has_plates = all(getattr(self, n) is not None
+                         for n in self._PLATE_DIMS)
+        if has_label == has_plates:
+            return ["give either a catalog label or a full plate section, "
+                    "not both / neither"]
+        return []
+
+    def resolve(self) -> tuple[float, float, float, float]:
+        """``(depth, web_thickness, top_flange_width, top_flange_thickness)``
+        in inches -- from the AISC catalog when a ``label`` is stored, else the
+        explicit plate dims."""
+        if self.label is not None:
+            from civilpy.structural.bridge_layout import girder_section
+            gs = girder_section(self.label)
+            return (gs.depth, gs.web_thickness, gs.flange_width,
+                    gs.flange_thickness)
+        return (self.web_depth_in, self.web_thickness_in,
+                self.top_flange_width_in, self.top_flange_thickness_in)
+
+
+@dataclass(frozen=True)
+class PlateSegmentRecord(SpecRecord):
+    """One station-ranged built-up girder segment: the web + flange plates over
+    ``[x_start_ft, x_end_ft]``.  Variable depth rides on ``web_depth_in``
+    varying between segments; flange transitions on the flange plate dims.
+    Geometry/quantity space for the mesh emit -- the sectional checks run on the
+    single :class:`GirderSectionRecord`."""
+
+    x_start_ft: float = spec_field(unit="ft", ge=0.0)
+    x_end_ft: float = spec_field(unit="ft", gt=0.0)
+    web_depth_in: float = spec_field(unit="in", gt=0.0)
+    web_thickness_in: float = spec_field(unit="in", gt=0.0)
+    top_flange_width_in: float = spec_field(unit="in", gt=0.0)
+    top_flange_thickness_in: float = spec_field(unit="in", gt=0.0)
+    bot_flange_width_in: float = spec_field(unit="in", gt=0.0)
+    bot_flange_thickness_in: float = spec_field(unit="in", gt=0.0)
+
+    def _cross_validate(self):
+        if self.x_end_ft <= self.x_start_ft:
+            return [f"x_end_ft {self.x_end_ft} must exceed x_start_ft "
+                    f"{self.x_start_ft}"]
+        return []
+
+
+@dataclass(frozen=True)
+class CompositeRecord(SpecRecord):
+    """The shear-stud connection + composite deck properties -- promotes what
+    were emit-time stud arguments into stored fields so a bridge round-trips
+    them.  Consuming checks 6.10.10 (fatigue pitch, stud strength)."""
+
+    stud_diameter_in: float = spec_field(0.875, unit="in", gt=0.0,
+                                         checks=("6.10.10.1.2", "6.10.10.4"))
+    studs_per_row: int = spec_field(3, ge=1, checks=("6.10.10.1.2",))
+    pitch_in: float = spec_field(12.0, unit="in", gt=0.0,
+                                 checks=("6.10.10.1.2",),
+                                 desc="longitudinal stud pitch, governing zone")
+    effective_width_in: float = spec_field(
+        96.0, unit="in", gt=0.0, desc="effective flange width (4.6.2.6)")
+    modular_ratio_n: float = spec_field(8.0, gt=0.0,
+                                        desc="steel/concrete modular ratio")
+    haunch_in: float = spec_field(2.0, unit="in", ge=0.0)
+    deck_fc_ksi: float = spec_field(4.5, unit="ksi", gt=0.0,
+                                    checks=("6.10.10.4",))
+
+
+@dataclass(frozen=True)
+class TransverseStiffenerRecord(SpecRecord):
+    """Transverse web stiffener plates on the governing shear zone: dims +
+    the panel spacing ``d_o`` that turns on 6.10.9's stiffened-panel path.
+    The record's presence means a stiffened web (absent = the unstiffened
+    default)."""
+
+    plate_width_in: float = spec_field(unit="in", gt=0.0)
+    plate_thickness_in: float = spec_field(unit="in", gt=0.0)
+    spacing_in: float = spec_field(unit="in", gt=0.0,
+                                   desc="panel length d_o (feeds 6.10.9)")
+    single_sided: bool = spec_field(False)
+
+
+@dataclass(frozen=True)
+class BearingStiffenerRecord(SpecRecord):
+    """Bearing stiffener plate pair at a support (6.10.11.2.3)."""
+
+    plate_width_in: float = spec_field(unit="in", gt=0.0,
+                                       checks=("6.10.11.2.3",))
+    plate_thickness_in: float = spec_field(unit="in", gt=0.0,
+                                           checks=("6.10.11.2.3",))
+    pairs: int = spec_field(1, ge=1, checks=("6.10.11.2.3",),
+                            desc="stiffener pairs at the seat")
+    fy_ksi: float = spec_field(50.0, unit="ksi", gt=0.0,
+                               checks=("6.10.11.2.3",))
+    milled_to_bear: bool = spec_field(True)
+
+
+@dataclass(frozen=True)
+class LongitudinalStiffenerRecord(SpecRecord):
+    """Longitudinal web stiffener on a deep web.  6.10.11.3 is not yet in the
+    ported library, so this is geometry/quantity space; its check-coverage
+    entry lands when the article ports (the :class:`WingwallRecord`
+    fallback)."""
+
+    plate_width_in: float = spec_field(unit="in", gt=0.0)
+    plate_thickness_in: float = spec_field(unit="in", gt=0.0)
+    location_from_top_flange_in: float = spec_field(
+        unit="in", gt=0.0, desc="stiffener depth below the compression flange")
+    fy_ksi: float = spec_field(50.0, unit="ksi", gt=0.0)
+
+
+@dataclass(frozen=True)
+class CrossFrameRecord(SpecRecord):
+    """An intermediate cross-frame / steel diaphragm bay: type, member section,
+    connection plate, and along-span spacing.  The members run the ported
+    tension/compression checks (6.8.2.1 / 6.9.4.1.1); the *spacing* feeds
+    6.7.4 when it ports and the LTB unbraced length today (6.10.8.2.3
+    ``l_b``)."""
+
+    frame_type: str = spec_field("K", enum=("X", "K", "bent_plate"))
+    member_shape: str = spec_field("L4X4X1/2", checks=("6.8.2.1", "6.9.4.1.1"),
+                                   desc="AISC angle/WT/channel label")
+    member_length_ft: float = spec_field(
+        6.0, unit="ft", gt=0.0, checks=("6.9.4.1.1",),
+        desc="diagonal/chord work length")
+    spacing_ft: float = spec_field(20.0, unit="ft", gt=0.0,
+                                   desc="along-span spacing (6.7.4 / l_b)")
+    connection_plate_thickness_in: float = spec_field(0.5, unit="in", gt=0.0)
+    fy_ksi: float = spec_field(50.0, unit="ksi", gt=0.0,
+                               checks=("6.8.2.1", "6.9.4.1.1"))
+
+
+@dataclass(frozen=True)
+class FieldSpliceRecord(SpecRecord):
+    """A bolted field splice on the girder (6.13.6 family): location, the
+    flange/web splice-plate schedule as the checks size it, and the bolt group.
+    Ties into the NSBA splice designer and the girder->splice ``gdr.*``
+    contract."""
+
+    station_ft: float = spec_field(unit="ft", ge=0.0)
+    flange_width_left_in: float = spec_field(unit="in", gt=0.0,
+                                             checks=("6.13.6.1.3b",))
+    flange_width_right_in: float = spec_field(unit="in", gt=0.0,
+                                              checks=("6.13.6.1.3b",))
+    flange_thickness_in: float = spec_field(unit="in", gt=0.0,
+                                            checks=("6.13.6.1.3b", "6.13.6.1.4"))
+    web_depth_in: float = spec_field(unit="in", gt=0.0,
+                                     checks=("6.13.6.1.3c",))
+    web_thickness_left_in: float = spec_field(
+        unit="in", gt=0.0, checks=("6.13.6.1.3b", "6.13.6.1.3c"))
+    web_thickness_right_in: float = spec_field(
+        unit="in", gt=0.0, checks=("6.13.6.1.3b", "6.13.6.1.3c"))
+    flange_clearance_in: float = spec_field(1.0, unit="in", gt=0.0,
+                                            checks=("6.13.6.1.3c",))
+    splice_plate_thickness_in: float = spec_field(
+        0.5, unit="in", gt=0.0, checks=("6.13.6.1.4",),
+        desc="flange splice plate thickness (filler reduction)")
+    bolt_diameter_in: float = spec_field(0.875, unit="in", gt=0.0)
+    bolt_rows: int = spec_field(2, ge=1)
+    bolt_cols: int = spec_field(3, ge=1)
+    bolt_fu_ksi: float = spec_field(120.0, unit="ksi", gt=0.0)
+    plate_fy_ksi: float = spec_field(50.0, unit="ksi", gt=0.0)
+    plate_fu_ksi: float = spec_field(65.0, unit="ksi", gt=0.0)
+
+
+@dataclass(frozen=True)
+class SteelGirderRecord(ElementRecord):
+    """One steel girder line as a storable parametric record -- the Phase-6a
+    superstructure schema space.  ``section`` is the controlling section (a
+    catalog label or a built-up plate section); the optional customization
+    records give cross-frames, stiffeners, the composite block, and a field
+    splice somewhere to live.  ``plates`` carries the full variable-depth
+    schedule for the mesh emit.  The check inputs are in
+    :data:`GIRDER_CHECK_INPUTS`."""
+
+    section: GirderSectionRecord
+    length_ft: float = spec_field(unit="ft", gt=0.0)
+    grade: str = spec_field("Grade 50",
+                            enum=("Grade 36", "Grade 50", "Grade 50W",
+                                  "Grade HPS70W"))
+    plates: tuple[PlateSegmentRecord, ...] | None = spec_field(
+        None, desc="variable-depth plate schedule (emit/quantity space)")
+    composite: CompositeRecord | None = spec_field(None)
+    transverse_stiffener: TransverseStiffenerRecord | None = spec_field(None)
+    bearing_stiffener: BearingStiffenerRecord | None = spec_field(None)
+    longitudinal_stiffener: LongitudinalStiffenerRecord | None = \
+        spec_field(None)
+    cross_frame: CrossFrameRecord | None = spec_field(None)
+    splice: FieldSpliceRecord | None = spec_field(None)
+    standard: str | None = spec_field(None, desc="ODOT standard drawing id")
+    standard_year: int | None = spec_field(None, ge=1900)
+    provenance: Provenance | None = spec_field(None)
+
+    BIM_TYPE = "girder"
+    SUBTYPE = "steel"
+
+    def __post_init__(self):
+        if self.provenance is None:
+            object.__setattr__(self, "provenance", Provenance())
+
+    def _cross_validate(self):
+        problems = []
+        if self.plates is not None:
+            for i, seg in enumerate(self.plates):
+                problems += [f"plates[{i}].{p}" for p in seg.validate()]
+            spans = [(s.x_start_ft, s.x_end_ft) for s in self.plates]
+            for (a0, a1), (b0, _) in zip(spans, spans[1:]):
+                if abs(a1 - b0) > 1e-6:
+                    problems.append(
+                        f"plates: gap/overlap between {a1} and {b0} ft")
+            if spans and spans[-1][1] - spans[0][0] > self.length_ft + 1e-6:
+                problems.append("plates: schedule runs past length_ft")
+        return problems
+
+    def to_bridge_input(self, *, girder_count: int, girder_spacing_ft: float,
+                        overhang_ft: float, spans_ft=None, **overrides):
+        """Reconstitute the :class:`~civilpy.structural.bridge_layout
+        .BridgeInput` the superstructure emit consumes today.  Only a cataloged
+        ``section.label`` maps into the current prismatic engine; a plate
+        schedule and the stiffener/cross-frame/splice records are carried for
+        the emit extension (§3a follow-on) and raise here until it lands."""
+        from civilpy.structural.bridge_layout import BridgeInput
+
+        if self.section.label is None:
+            raise NotImplementedError(
+                "plate-section emit is the §3a geometry follow-on; the "
+                "current engine takes a catalog label only")
+        return BridgeInput(
+            spans_ft=tuple(spans_ft) if spans_ft else (self.length_ft,),
+            girder_count=girder_count, girder_spacing_ft=girder_spacing_ft,
+            girder_label=self.section.label, overhang_ft=overhang_ft,
+            grade=self.grade,
+            composite=self.composite is not None, **overrides)
+
+
+def girder_metrics(record: SteelGirderRecord) -> dict:
+    """Derived, JSON-safe metrics for the sidecar/generated columns: the
+    query-hot superstructure numbers, computed from the record (not remeasured
+    off the mesh) the way ``pier_metrics`` is."""
+    d, t_w, b_fc, t_fc = record.section.resolve()
+    m: dict = {
+        "length_ft": record.length_ft,
+        "section_label": record.section.label,
+        "web_depth_in": d,
+        "is_composite": record.composite is not None,
+        "is_plate_girder": record.section.label is None,
+        "n_plate_segments": len(record.plates) if record.plates else 0,
+        "has_transverse_stiffeners": record.transverse_stiffener is not None,
+        "has_bearing_stiffeners": record.bearing_stiffener is not None,
+        "has_longitudinal_stiffener":
+            record.longitudinal_stiffener is not None,
+        "n_splices": 1 if record.splice is not None else 0,
+    }
+    if record.cross_frame is not None:
+        m["cross_frame_bays"] = max(
+            1, round(record.length_ft / record.cross_frame.spacing_ft))
+        m["cross_frame_type"] = record.cross_frame.frame_type
+    return m
+
+
+#: The check-coverage map for a steel girder line (build plan §3, applied to
+#: §3a).  Aggregates every ported LRFD check that consumes some part of the
+#: girder and where its inputs live.  ``("loads", ...)`` marks a demand from
+#: the line-girder / grillage analysis, not a stored field.  The coverage test
+#: asserts every required parameter of every listed check resolves to a path on
+#: :class:`SteelGirderRecord`.  Not-yet-ported checks (6.7.4 cross-frame
+#: spacing, 6.10.11.3 longitudinal stiffener) are deliberately absent -- their
+#: fields are quantity space until the article lands.
+GIRDER_CHECK_INPUTS: dict[str, dict[str, tuple]] = {
+    # compression-flange local buckling
+    "6.10.8.2.2": {
+        "b_fc": ("derived", ("section.label", "section.top_flange_width_in"),
+                 "compression-flange width from the catalog DB or plates"),
+        "t_fc": ("derived", ("section.label",
+                             "section.top_flange_thickness_in"),
+                 "compression-flange thickness"),
+        "f_yc": ("field", "section.fyc_ksi"),
+        "f_yw": ("field", "section.fyw_ksi"),
+    },
+    # lateral-torsional buckling (unbraced length = cross-frame spacing)
+    "6.10.8.2.3": {
+        "l_b": ("derived", ("cross_frame.spacing_ft",),
+                "unbraced length between cross-frames"),
+        "b_fc": ("derived", ("section.label", "section.top_flange_width_in"),
+                 "compression-flange width"),
+        "t_fc": ("derived", ("section.label",
+                             "section.top_flange_thickness_in"),
+                 "compression-flange thickness"),
+        "d_c": ("derived", ("section.label", "section.web_depth_in"),
+                "depth of web in compression"),
+        "t_w": ("derived", ("section.label", "section.web_thickness_in"),
+                "web thickness"),
+        "f_yc": ("field", "section.fyc_ksi"),
+        "f_yw": ("field", "section.fyw_ksi"),
+    },
+    # web shear (d_o from the transverse stiffener turns on the panel path)
+    "6.10.9": {
+        "d_web": ("derived", ("section.label", "section.web_depth_in"),
+                  "web depth"),
+        "t_w": ("derived", ("section.label", "section.web_thickness_in"),
+                "web thickness"),
+        "f_yw": ("field", "section.fyw_ksi"),
+    },
+    # shear-connector fatigue pitch
+    "6.10.10.1.2": {
+        "d_stud": ("field", "composite.stud_diameter_in"),
+        "n_per_row": ("field", "composite.studs_per_row"),
+        "shear_flow": ("loads", "fatigue horizontal shear flow at the section"),
+        "pitch": ("field", "composite.pitch_in"),
+    },
+    # shear-connector strength
+    "6.10.10.4": {
+        "d_stud": ("field", "composite.stud_diameter_in"),
+        "f_c": ("field", "composite.deck_fc_ksi"),
+        "e_c": ("derived", ("composite.deck_fc_ksi",),
+                "deck modulus from f_c (C5.4.2.4)"),
+    },
+    # bearing stiffener
+    "6.10.11.2.3": {
+        "a_pn": ("derived", ("bearing_stiffener.plate_width_in",
+                             "bearing_stiffener.plate_thickness_in",
+                             "bearing_stiffener.pairs"),
+                 "net projecting bearing area"),
+        "f_ys": ("field", "bearing_stiffener.fy_ksi"),
+    },
+    # cross-frame member: tension
+    "6.8.2.1": {
+        "a_g": ("derived", ("cross_frame.member_shape",),
+                "AISC member gross area"),
+        "f_y": ("field", "cross_frame.fy_ksi"),
+    },
+    # cross-frame member: compression
+    "6.9.4.1.1": {
+        "a_g": ("derived", ("cross_frame.member_shape",),
+                "AISC member gross area"),
+        "f_y": ("field", "cross_frame.fy_ksi"),
+        "kl_over_r": ("derived", ("cross_frame.member_shape",
+                                  "cross_frame.member_length_ft"),
+                      "K*L/r_y from the section and work length"),
+    },
+    # field splice: flange plates
+    "6.13.6.1.3b": {
+        "flange_width_left": ("field", "splice.flange_width_left_in"),
+        "flange_width_right": ("field", "splice.flange_width_right_in"),
+        "flange_thickness": ("field", "splice.flange_thickness_in"),
+        "web_thickness_left": ("field", "splice.web_thickness_left_in"),
+        "web_thickness_right": ("field", "splice.web_thickness_right_in"),
+    },
+    # field splice: web plate
+    "6.13.6.1.3c": {
+        "web_depth": ("field", "splice.web_depth_in"),
+        "web_thickness": ("field", "splice.web_thickness_left_in"),
+        "web_thickness_other": ("field", "splice.web_thickness_right_in"),
+        "flange_clearance": ("field", "splice.flange_clearance_in"),
+    },
+    # field splice: filler plate reduction
+    "6.13.6.1.4": {
+        "a_f": ("derived", ("splice.flange_width_left_in",
+                            "splice.flange_thickness_in"),
+                "smaller-side flange area"),
+        "a_p": ("derived", ("splice.flange_width_left_in",
+                            "splice.splice_plate_thickness_in"),
+                "splice plate area"),
+    },
+}
