@@ -561,11 +561,16 @@ def girder() -> SteelGirderRecord:
             location_from_top_flange_in=18.0),
         cross_frame=CrossFrameRecord(
             member_shape="L4X4X1/2", member_length_ft=8.0, spacing_ft=20.0),
-        splice=FieldSpliceRecord(
-            station_ft=80.0, flange_width_left_in=16.0,
+        splices=(FieldSpliceRecord(
+            station_ft=53.0, flange_width_left_in=16.0,
             flange_width_right_in=16.0, flange_thickness_in=1.0,
             web_depth_in=54.0, web_thickness_left_in=0.5,
             web_thickness_right_in=0.5),
+                 FieldSpliceRecord(       # a second, deliberately different splice
+            station_ft=107.0, flange_width_left_in=18.0,
+            flange_width_right_in=18.0, flange_thickness_in=1.25,
+            web_depth_in=54.0, web_thickness_left_in=0.5,
+            web_thickness_right_in=0.625)),
         provenance=Provenance(source="brr"))
 
 
@@ -577,7 +582,8 @@ def test_girder_round_trips(girder):
     # nested + tuple-of-record fields survive the wire
     assert wire["section"]["web_depth_in"] == 54.0
     assert wire["plates"][1]["bot_flange_thickness_in"] == 1.5
-    assert wire["splice"]["station_ft"] == 80.0
+    assert [s["station_ft"] for s in wire["splices"]] == [53.0, 107.0]
+    assert wire["splices"][1]["flange_width_left_in"] == 18.0   # differs from #1
     with pytest.raises(ValueError, match="not a girder/steel"):
         SteelGirderRecord.from_dict({"bim.type": "pier", "subtype": "bent"})
 
@@ -705,7 +711,7 @@ def test_girder_checks_run_from_record_inputs(girder):
     assert A["6.10.10.4"](d_stud=comp.stud_diameter_in,
                           f_c=comp.deck_fc_ksi, e_c=e_c).capacity > 0.0
 
-    sp = girder.splice
+    sp = girder.splices[0]
     plates = A["6.13.6.1.3b"](
         flange_width_left=sp.flange_width_left_in,
         flange_width_right=sp.flange_width_right_in,
@@ -724,7 +730,7 @@ def test_girder_metrics_sidecar(girder):
     assert m["n_plate_segments"] == 2
     assert m["has_bearing_stiffeners"] is True
     assert m["has_longitudinal_stiffener"] is True
-    assert m["n_splices"] == 1
+    assert m["n_splices"] == 2
     assert m["cross_frame_bays"] == 8          # 160 ft / 20 ft
     json.dumps(m)
 

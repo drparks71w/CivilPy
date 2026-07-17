@@ -201,13 +201,19 @@ def _girder_record():
         longitudinal_stiffener=LongitudinalStiffenerRecord(
             plate_width_in=5.0, plate_thickness_in=0.5,
             location_from_top_flange_in=12.0),
-        cross_frame=CrossFrameRecord(member_shape="L4X4X1/2",
-                                     member_length_ft=8.0, spacing_ft=23.0),
-        splice=FieldSpliceRecord(
+        cross_frame=CrossFrameRecord(
+            frame_type="X", member_shape="L4X4X1/2", member_length_ft=8.0,
+            stations_ft=(20.0, 45.0, 70.0, 90.0)),      # irregular per-bay
+        splices=(FieldSpliceRecord(
             station_ft=70.0, flange_width_left_in=12.0,
             flange_width_right_in=12.0, flange_thickness_in=0.94,
             web_depth_in=35.9, web_thickness_left_in=0.625,
-            web_thickness_right_in=0.625))
+            web_thickness_right_in=0.625),
+                 FieldSpliceRecord(
+            station_ft=160.0, flange_width_left_in=14.0,
+            flange_width_right_in=14.0, flange_thickness_in=1.0,
+            web_depth_in=35.9, web_thickness_left_in=0.75,
+            web_thickness_right_in=0.625)))
 
 
 def test_add_girder_details_appends_tagged_geometry(emit):
@@ -220,8 +226,13 @@ def test_add_girder_details_appends_tagged_geometry(emit):
         assert e2.of_type(t), t
     kinds = {o.tags.get("stiffener.kind") for o in e2.of_type("stiffener")}
     assert {"transverse", "bearing", "longitudinal"} <= kinds
-    # a field splice = web + top + bottom plate on each of the 5 lines
-    assert len(e2.of_type("field_splice")) == 15
+    # 2 splices x (web + top + bottom) x 5 lines = 30
+    assert len(e2.of_type("field_splice")) == 30
+    # the two splices are placed at their distinct stations
+    assert {"70", "160"} <= {o.tags["bim.id"].split("@")[1].split("-")[0]
+                             for o in e2.of_type("field_splice")}
+    # cross-frames at the 4 explicit stations, per bay between 4 girder pairs
+    assert len(e2.of_type("cross_frame")) == 4 * 4 * 2    # X-type = 2 diagonals
     ids = [o.tags["bim.id"] for o in e2.objects if "bim.type" in o.tags]
     assert len(ids) == len(set(ids)), "bim.id values must stay unique"
 
@@ -230,8 +241,8 @@ def test_add_girder_details_apply_to_subset(emit):
     from civilpy.structural.rhino_bim import add_girder_details
 
     e2 = add_girder_details(emit, _girder_record(), apply_to=[1])
-    assert len(e2.of_type("field_splice")) == 3            # one line only
-    assert all("-G1-" in o.tags["bim.id"] for o in e2.of_type("field_splice"))
+    assert len(e2.of_type("field_splice")) == 6           # 2 splices, one line
+    assert all("-G1@" in o.tags["bim.id"] for o in e2.of_type("field_splice"))
 
 
 def test_add_girder_details_only_present_features(emit):

@@ -554,14 +554,12 @@ def _cross_frames(lines, cf, d_ft, grade, L):
         area_in2 = 4.0
     a_ft2 = area_in2 / 144.0
     ordered = sorted(lines, key=lambda g: g.line_no)
-    spacing_ft = cf.spacing_ft
+    stations = cf.bay_stations(L)                     # per-bay, lossless
     for g1, g2 in zip(ordered, ordered[1:]):
         z_top = g1.start[2]
         z_bot = z_top - d_ft
         y1, y2 = g1.start[1], g2.start[1]
-        x, n = spacing_ft, 0
-        while x < L - 1e-6:
-            n += 1
+        for n, x in enumerate(stations, start=1):
             members = []
             if cf.frame_type in ("X", "K"):
                 members += [((x, y1, z_bot), (x, y2, z_top)),
@@ -576,7 +574,6 @@ def _cross_frames(lines, cf, d_ft, grade, L):
                         f"CF-{g1.line_no}{g2.line_no}-{n}-{mi + 1}",
                         frame_type=cf.frame_type, member_shape=cf.member_shape,
                         grade=grade, weight_lb=_steel_lb(a_ft2 * length_ft))))
-            x += spacing_ft
     return out
 
 
@@ -585,6 +582,7 @@ def _field_splice(lines, sp, d_ft, grade, *, splice_len_ft=2.0):
     bolts = sp.bolt_rows * sp.bolt_cols * 2          # both sides of the joint
     t_ft = sp.splice_plate_thickness_in / 12.0
     x0 = sp.station_ft - splice_len_ft / 2.0
+    sid = f"{sp.station_ft:g}"                        # unique per splice station
     for g in lines:
         z_top = g.start[2]
         z_bot = z_top - d_ft
@@ -596,7 +594,7 @@ def _field_splice(lines, sp, d_ft, grade, *, splice_len_ft=2.0):
             points=((x0, y, z_bot), (x0, y + t_ft, z_bot),
                     (x0, y + t_ft, z_top), (x0, y, z_top)),
             vector=(splice_len_ft, 0.0, 0.0),
-            tags=bim.field_splice_tags(f"SPL-G{g.line_no}-web",
+            tags=bim.field_splice_tags(f"SPL-G{g.line_no}@{sid}-web",
                                        bolt_count=bolts, grade=grade,
                                        weight_lb=_steel_lb(t_ft * d_ft
                                                            * splice_len_ft)))
@@ -609,7 +607,8 @@ def _field_splice(lines, sp, d_ft, grade, *, splice_len_ft=2.0):
                         (x0, y - bf_ft / 2.0, zf - t_ft)),
                 vector=(splice_len_ft, 0.0, 0.0),
                 tags=bim.field_splice_tags(
-                    f"SPL-G{g.line_no}-{tag}", bolt_count=bolts, grade=grade,
+                    f"SPL-G{g.line_no}@{sid}-{tag}", bolt_count=bolts,
+                    grade=grade,
                     weight_lb=_steel_lb(bf_ft * t_ft * splice_len_ft))))
     return out
 
@@ -647,8 +646,8 @@ def add_girder_details(emit: BridgeEmit, record, *,
                                           d_ft, grade, L)
     if record.cross_frame is not None:
         extra += _cross_frames(lines, record.cross_frame, d_ft, grade, L)
-    if record.splice is not None:
-        extra += _field_splice(lines, record.splice, d_ft, grade)
+    for splice in (record.splices or ()):
+        extra += _field_splice(lines, splice, d_ft, grade)
 
     return BridgeEmit(inputs=emit.inputs, layout=layout,
                       objects=emit.objects + tuple(extra),

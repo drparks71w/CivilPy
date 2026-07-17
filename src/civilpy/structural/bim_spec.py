@@ -952,6 +952,13 @@ def record_paths(cls) -> set[str]:
         tp = _strip_optional(hints[f.name])
         if is_dataclass(tp):
             out |= {f"{f.name}.{p}" for p in record_paths(tp)}
+        elif typing.get_origin(tp) is tuple:
+            args = typing.get_args(tp)
+            if args and is_dataclass(args[0]):
+                # a schedule (tuple of records): a check input can reference the
+                # element-type fields — "some entry has this field", the losless
+                # per-bay / per-splice model
+                out |= {f"{f.name}.{p}" for p in record_paths(args[0])}
     return out
 
 
@@ -1137,10 +1144,36 @@ class CrossFrameRecord(SpecRecord):
         6.0, unit="ft", gt=0.0, checks=("6.9.4.1.1",),
         desc="diagonal/chord work length")
     spacing_ft: float = spec_field(20.0, unit="ft", gt=0.0,
-                                   desc="along-span spacing (6.7.4 / l_b)")
+                                   desc="uniform along-span spacing fallback")
+    stations_ft: tuple[float, ...] | None = spec_field(
+        None, unit="ft",
+        desc="explicit cross-frame line stations — the lossless per-bay "
+             "placement for irregular spacing; None = uniform at spacing_ft")
     connection_plate_thickness_in: float = spec_field(0.5, unit="in", gt=0.0)
     fy_ksi: float = spec_field(50.0, unit="ksi", gt=0.0,
                                checks=("6.8.2.1", "6.9.4.1.1"))
+
+    def bay_stations(self, length_ft: float) -> tuple[float, ...]:
+        """The cross-frame line stations along a girder of ``length_ft``:
+        the stored :attr:`stations_ft` when given (irregular spacing kept
+        verbatim), else a uniform run at :attr:`spacing_ft`."""
+        if self.stations_ft is not None:
+            return tuple(self.stations_ft)
+        n = max(1, int(round(length_ft / self.spacing_ft)))
+        return tuple(self.spacing_ft * k for k in range(1, n))
+
+    def max_bay_ft(self, length_ft: float) -> float:
+        """Governing unbraced length ``l_b`` = the largest gap between brace
+        points (span ends included)."""
+        pts = (0.0, *self.bay_stations(length_ft), length_ft)
+        return max(b - a for a, b in zip(pts, pts[1:]))
+
+    def _cross_validate(self):
+        if self.stations_ft is not None and not all(
+                isinstance(s, (int, float)) and not isinstance(s, bool)
+                and s > 0 for s in self.stations_ft):
+            return ["stations_ft: entries must be positive numbers"]
+        return []
 
 
 @dataclass(frozen=True)
@@ -1199,7 +1232,9 @@ class SteelGirderRecord(ElementRecord):
     longitudinal_stiffener: LongitudinalStiffenerRecord | None = \
         spec_field(None)
     cross_frame: CrossFrameRecord | None = spec_field(None)
-    splice: FieldSpliceRecord | None = spec_field(None)
+    splices: tuple[FieldSpliceRecord, ...] | None = spec_field(
+        None, desc="bolted field splices — each independent (plate/bolt "
+                   "schedules need not match between splices)")
     standard: str | None = spec_field(None, desc="ODOT standard drawing id")
     standard_year: int | None = spec_field(None, ge=1900)
     provenance: Provenance | None = spec_field(None)
@@ -1223,6 +1258,9 @@ class SteelGirderRecord(ElementRecord):
                         f"plates: gap/overlap between {a1} and {b0} ft")
             if spans and spans[-1][1] - spans[0][0] > self.length_ft + 1e-6:
                 problems.append("plates: schedule runs past length_ft")
+        # tuple-of-record schedules aren't auto-recursed by validate()
+        for i, sp in enumerate(self.splices or ()):
+            problems += [f"splices[{i}].{p}" for p in sp.validate()]
         return problems
 
     def to_bridge_input(self, *, girder_count: int, girder_spacing_ft: float,
@@ -1262,7 +1300,7 @@ def girder_metrics(record: SteelGirderRecord) -> dict:
         "has_bearing_stiffeners": record.bearing_stiffener is not None,
         "has_longitudinal_stiffener":
             record.longitudinal_stiffener is not None,
-        "n_splices": 1 if record.splice is not None else 0,
+        "n_splices": len(record.splices) if record.splices else 0,
     }
     if record.cross_frame is not None:
         m["cross_frame_bays"] = max(
@@ -1290,10 +1328,12 @@ GIRDER_CHECK_INPUTS: dict[str, dict[str, tuple]] = {
         "f_yc": ("field", "section.fyc_ksi"),
         "f_yw": ("field", "section.fyw_ksi"),
     },
-    # lateral-torsional buckling (unbraced length = cross-frame spacing)
+    # lateral-torsional buckling (unbraced length = governing cross-frame bay)
     "6.10.8.2.3": {
-        "l_b": ("derived", ("cross_frame.spacing_ft",),
-                "unbraced length between cross-frames"),
+        "l_b": ("derived", ("cross_frame.stations_ft",
+                            "cross_frame.spacing_ft"),
+                "governing unbraced length = max bay (CrossFrameRecord."
+                "max_bay_ft), from the per-bay stations or uniform spacing"),
         "b_fc": ("derived", ("section.label", "section.top_flange_width_in"),
                  "compression-flange width"),
         "t_fc": ("derived", ("section.label",
@@ -1351,28 +1391,28 @@ GIRDER_CHECK_INPUTS: dict[str, dict[str, tuple]] = {
                                   "cross_frame.member_length_ft"),
                       "K*L/r_y from the section and work length"),
     },
-    # field splice: flange plates
+    # field splice: flange plates (per splice in the schedule)
     "6.13.6.1.3b": {
-        "flange_width_left": ("field", "splice.flange_width_left_in"),
-        "flange_width_right": ("field", "splice.flange_width_right_in"),
-        "flange_thickness": ("field", "splice.flange_thickness_in"),
-        "web_thickness_left": ("field", "splice.web_thickness_left_in"),
-        "web_thickness_right": ("field", "splice.web_thickness_right_in"),
+        "flange_width_left": ("field", "splices.flange_width_left_in"),
+        "flange_width_right": ("field", "splices.flange_width_right_in"),
+        "flange_thickness": ("field", "splices.flange_thickness_in"),
+        "web_thickness_left": ("field", "splices.web_thickness_left_in"),
+        "web_thickness_right": ("field", "splices.web_thickness_right_in"),
     },
     # field splice: web plate
     "6.13.6.1.3c": {
-        "web_depth": ("field", "splice.web_depth_in"),
-        "web_thickness": ("field", "splice.web_thickness_left_in"),
-        "web_thickness_other": ("field", "splice.web_thickness_right_in"),
-        "flange_clearance": ("field", "splice.flange_clearance_in"),
+        "web_depth": ("field", "splices.web_depth_in"),
+        "web_thickness": ("field", "splices.web_thickness_left_in"),
+        "web_thickness_other": ("field", "splices.web_thickness_right_in"),
+        "flange_clearance": ("field", "splices.flange_clearance_in"),
     },
     # field splice: filler plate reduction
     "6.13.6.1.4": {
-        "a_f": ("derived", ("splice.flange_width_left_in",
-                            "splice.flange_thickness_in"),
+        "a_f": ("derived", ("splices.flange_width_left_in",
+                            "splices.flange_thickness_in"),
                 "smaller-side flange area"),
-        "a_p": ("derived", ("splice.flange_width_left_in",
-                            "splice.splice_plate_thickness_in"),
+        "a_p": ("derived", ("splices.flange_width_left_in",
+                            "splices.splice_plate_thickness_in"),
                 "splice plate area"),
     },
 }
