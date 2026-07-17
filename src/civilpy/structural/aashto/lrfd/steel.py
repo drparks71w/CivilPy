@@ -770,6 +770,329 @@ def web_shear_resistance(
     )
 
 
+@article("6.10.11.1.2", "Transverse Stiffener Projecting Width")
+def transverse_stiffener_width(
+    b_t: float,
+    t_p: float,
+    d_web: float,
+    b_f: float,
+) -> CheckResult:
+    """Transverse-stiffener projecting-width limits (6.10.11.1.2):
+    b_t >= 2.0 + D/30 (6.10.11.1.2-1) and 16*t_p >= b_t >= b_f/4
+    (6.10.11.1.2-2), with ``b_f`` the full width of the widest compression
+    flange in the field section.  The governing (minimum) margin is the
+    reported ratio."""
+    lo_depth = 2.0 + d_web / 30.0
+    lo_flange = b_f / 4.0
+    hi = 16.0 * t_p
+    m_lo_depth = b_t / lo_depth
+    m_lo_flange = b_t / lo_flange
+    m_hi = hi / b_t if b_t > 0 else float("inf")
+    governing = min(m_lo_depth, m_lo_flange, m_hi)
+    return CheckResult(
+        article="6.10.11.1.2",
+        name="Transverse Stiffener Projecting Width",
+        capacity=governing,
+        demand=1.0,
+        phi=1.0,
+        details={"b_t_min_depth": lo_depth, "b_t_min_flange": lo_flange,
+                 "b_t_max": hi,
+                 "governing": ("depth" if governing == m_lo_depth else
+                               "flange" if governing == m_lo_flange
+                               else "thickness")},
+    )
+
+
+@article("6.10.11.1.3", "Transverse Stiffener Moment of Inertia")
+def transverse_stiffener_inertia(
+    moment_of_inertia: float,
+    b_t: float,
+    t_p: float,
+    d_web: float,
+    t_w: float,
+    d_o: float,
+    f_yw: float,
+    f_ys: float,
+    tension_field: bool = False,
+) -> CheckResult:
+    """Transverse-stiffener moment-of-inertia requirement (6.10.11.1.3).
+
+    ``moment_of_inertia`` is the provided I_t (in^4; single stiffener taken
+    about the web face, a pair about the web mid-thickness).
+
+    * I_t1 = b * tw^3 * J with b = min(d_o, D) and
+      J = 2.5/(d_o/D)^2 - 2.0 >= 0.5 (6.10.11.1.3-1/-2)
+    * I_t2 = D^4 * rho_t^1.3 / 40 * (Fyw/E)^1.5 (6.10.11.1.3-3), with
+      rho_t = max(Fyw/Fcrs, 1.0) and
+      Fcrs = 0.31 E/(b_t/t_p)^2 <= Fys (6.10.11.1.3-4)
+
+    Web shear buckling only (``tension_field=False``): I_t1 governs.  When the
+    web's postbuckling (tension-field) resistance is relied on and I_t2 > I_t1,
+    the requirement rises toward I_t2 — this implementation conservatively
+    requires I_t2 on that path (the spec permits a shear-demand interpolation);
+    ``validate_against_brr`` is set for the tension-field path."""
+    j = max(2.5 / (d_o / d_web) ** 2 - 2.0, 0.5)
+    i_t1 = min(d_o, d_web) * t_w**3 * j
+    f_crs = min(0.31 * E_STEEL / (b_t / t_p) ** 2, f_ys)
+    rho_t = max(f_yw / f_crs, 1.0)
+    i_t2 = d_web**4 * rho_t**1.3 / 40.0 * (f_yw / E_STEEL) ** 1.5
+
+    required = i_t1
+    if tension_field and i_t2 > i_t1:
+        required = i_t2
+    details = {"I_t1": i_t1, "I_t2": i_t2, "J": j, "Fcrs": f_crs,
+               "rho_t": rho_t, "governing": "I_t2" if required == i_t2
+               and required != i_t1 else "I_t1"}
+    if tension_field:
+        details["validate_against_brr"] = True
+    return CheckResult(
+        article="6.10.11.1.3",
+        name="Transverse Stiffener Moment of Inertia",
+        capacity=moment_of_inertia,
+        demand=required,
+        phi=1.0,
+        details=details,
+    )
+
+
+@article("6.10.11.2.2", "Bearing Stiffener Projecting Width")
+def bearing_stiffener_width(
+    b_t: float,
+    t_p: float,
+    f_ys: float,
+) -> CheckResult:
+    """Bearing-stiffener projecting-width limit (6.10.11.2.2-1):
+    b_t <= 0.48 * t_p * sqrt(E/Fys)."""
+    limit = 0.48 * t_p * math.sqrt(E_STEEL / f_ys)
+    return CheckResult(
+        article="6.10.11.2.2",
+        name="Bearing Stiffener Projecting Width",
+        capacity=limit,
+        demand=b_t,
+        phi=1.0,
+        details={"b_t_max": limit},
+    )
+
+
+@article("6.10.11.2.4", "Bearing Stiffener Effective Column")
+def bearing_stiffener_effective_column(
+    b_t: float,
+    t_p: float,
+    t_w: float,
+    d_web: float,
+    f_ys: float,
+    pairs: int = 1,
+    p_u: float | None = None,
+    design_year: int | None = None,
+) -> CheckResult:
+    """Axial resistance of the bearing-stiffener effective column
+    (6.10.11.2.4): the stiffener plates acting with a web strip extending
+    9*tw to each side, radius of gyration about the web mid-thickness,
+    KL = 0.75*D, resistance per 6.9.4.1.1 (Q = 1.0 — bearing stiffeners
+    are exempt from the slender-element reduction)."""
+    strip_len = 18.0 * t_w + pairs * t_p            # 9tw each side + plates
+    a_g = 2.0 * pairs * b_t * t_p + strip_len * t_w
+    # plates about the web mid-thickness (each at tw/2 + b_t/2 offset)
+    offset = t_w / 2.0 + b_t / 2.0
+    i_plates = 2.0 * pairs * (t_p * b_t**3 / 12.0 + t_p * b_t * offset**2)
+    i_strip = strip_len * t_w**3 / 12.0
+    r = math.sqrt((i_plates + i_strip) / a_g)
+    kl_over_r = 0.75 * d_web / r
+    base = compression_member_resistance(
+        a_g=a_g, f_y=f_ys, kl_over_r=kl_over_r, p_u=p_u,
+        design_year=design_year)
+    return CheckResult(
+        article="6.10.11.2.4",
+        name="Bearing Stiffener Effective Column",
+        capacity=base.capacity,
+        demand=p_u,
+        phi=base.phi,
+        details={**base.details, "Ag": a_g, "r": r, "strip_len": strip_len},
+    )
+
+
+@article("6.10.8.2.1", "Compression Flange Flexural Resistance")
+def compression_flange_resistance(
+    l_b: float,
+    b_fc: float,
+    t_fc: float,
+    d_c: float,
+    t_w: float,
+    f_yc: float,
+    f_yw: float,
+    c_b: float = 1.0,
+    f_bu: float | None = None,
+    r_b: float = 1.0,
+    r_h: float = 1.0,
+) -> CheckResult:
+    """Compression-flange flexural resistance Fnc (6.10.8.2.1-1): the
+    smaller of local buckling (6.10.8.2.2) and lateral-torsional buckling
+    (6.10.8.2.3)."""
+    flb = flange_local_buckling_resistance(
+        b_fc=b_fc, t_fc=t_fc, f_yc=f_yc, f_yw=f_yw, r_b=r_b, r_h=r_h)
+    ltb = lateral_torsional_buckling_resistance(
+        l_b=l_b, b_fc=b_fc, t_fc=t_fc, d_c=d_c, t_w=t_w, f_yc=f_yc,
+        f_yw=f_yw, c_b=c_b, r_b=r_b, r_h=r_h)
+    f_nc = min(flb.capacity, ltb.capacity)
+    return CheckResult(
+        article="6.10.8.2.1",
+        name="Compression Flange Flexural Resistance",
+        capacity=f_nc,
+        demand=f_bu,
+        phi=PHI_F,
+        details={"Fnc_FLB": flb.capacity, "Fnc_LTB": ltb.capacity,
+                 "governing": "FLB" if flb.capacity <= ltb.capacity
+                 else "LTB"},
+    )
+
+
+@article("6.10.8.1.1", "Discretely Braced Compression Flange")
+def discretely_braced_compression_flange(
+    f_nc: float,
+    f_bu: float,
+    f_l: float = 0.0,
+    f_yf: float | None = None,
+) -> CheckResult:
+    """Discretely braced compression-flange check (6.10.8.1.1-1):
+    f_bu + f_l/3 <= phi_f * Fnc, with ``f_nc`` from 6.10.8.2.1 and ``f_l``
+    the flange lateral bending stress.  When ``f_yf`` is given the 6.10.1.6
+    limit f_l <= 0.6*Fyf is also verified (reported in details)."""
+    demand = f_bu + f_l / 3.0
+    details = {"fl": f_l}
+    if f_yf is not None:
+        details["fl_limit"] = 0.6 * f_yf
+        details["fl_ok"] = f_l <= 0.6 * f_yf
+    return CheckResult(
+        article="6.10.8.1.1",
+        name="Discretely Braced Compression Flange",
+        capacity=f_nc,
+        demand=demand,
+        phi=PHI_F,
+        details=details,
+    )
+
+
+@article("6.10.8.1.3", "Continuously Braced Flanges")
+def continuously_braced_flange(
+    f_yf: float,
+    f_bu: float | None = None,
+    r_h: float = 1.0,
+) -> CheckResult:
+    """Continuously braced flange in tension or compression
+    (6.10.8.1.3-1): f_bu <= phi_f * Rh * Fyf (no lateral-bending term — the
+    deck braces the flange continuously)."""
+    return CheckResult(
+        article="6.10.8.1.3",
+        name="Continuously Braced Flanges",
+        capacity=r_h * f_yf,
+        demand=f_bu,
+        phi=PHI_F,
+        details={"Rh": r_h},
+    )
+
+
+@article("6.10.10.2", "Shear Connector Fatigue Resistance")
+def shear_connector_fatigue_resistance(
+    d_stud: float,
+    n_cycles: float | None = None,
+) -> CheckResult:
+    """Fatigue shear resistance of one stud (6.10.10.2): Fatigue I
+    (infinite life, ``n_cycles=None``): Zr = 5.5*d^2/2.  Fatigue II:
+    Zr = alpha*d^2 with alpha = 34.5 - 4.28*log10(N)."""
+    if n_cycles is None:
+        z_r = 5.5 * d_stud**2 / 2.0
+        details = {"combination": "Fatigue I"}
+    else:
+        alpha = 34.5 - 4.28 * math.log10(n_cycles)
+        z_r = alpha * d_stud**2
+        details = {"combination": "Fatigue II", "alpha": alpha}
+    return CheckResult(
+        article="6.10.10.2",
+        name="Shear Connector Fatigue Resistance",
+        capacity=z_r,
+        phi=1.0,
+        details=details,
+    )
+
+
+@article("6.10.10.3", "Shear Connector Transverse Spacing")
+def shear_connector_transverse_spacing(
+    d_stud: float,
+    n_per_row: int,
+    gauge_in: float,
+    flange_width_in: float,
+) -> CheckResult:
+    """Transverse spacing limits for stud rows (6.10.10.3): center-to-center
+    >= 4 stud diameters, and clear distance from the flange edge to the
+    nearest stud >= 1.0 in.  The governing margin is the reported ratio."""
+    m_gauge = (gauge_in / (4.0 * d_stud)) if n_per_row > 1 else float("inf")
+    edge_clear = (flange_width_in - (n_per_row - 1) * gauge_in - d_stud) / 2.0
+    m_edge = edge_clear / 1.0
+    governing = min(m_gauge, m_edge)
+    return CheckResult(
+        article="6.10.10.3",
+        name="Shear Connector Transverse Spacing",
+        capacity=governing,
+        demand=1.0,
+        phi=1.0,
+        details={"gauge_min": 4.0 * d_stud, "edge_clear": edge_clear,
+                 "governing": "gauge" if governing == m_gauge else "edge"},
+    )
+
+
+@article("6.9.4.2.1", "Nonslender Element Width-Thickness Limit")
+def nonslender_element_limit(
+    b: float,
+    t: float,
+    f_y: float,
+    k: float = 0.45,
+) -> CheckResult:
+    """Plate width-to-thickness limit for a nonslender compression element
+    (6.9.4.2.1-1): b/t <= k*sqrt(E/Fy).  ``k`` per Table 6.9.4.2.1-1 (0.45
+    outstanding angle legs / plates supported on one edge, 0.56 rolled-shape
+    flanges, 1.49 stiffened webs).  Exceeding the limit means the member
+    needs the slender-element Q reduction (6.9.4.2.2)."""
+    limit = k * math.sqrt(E_STEEL / f_y)
+    return CheckResult(
+        article="6.9.4.2.1",
+        name="Nonslender Element Width-Thickness Limit",
+        capacity=limit,
+        demand=b / t,
+        phi=1.0,
+        details={"k": k, "b_over_t": b / t},
+    )
+
+
+@article("6.13.5.3", "Connection Element Shear Resistance")
+def connection_element_shear(
+    a_vg: float,
+    f_y: float,
+    a_vn: float | None = None,
+    f_u: float | None = None,
+    v_u: float | None = None,
+) -> CheckResult:
+    """Shear resistance of a connection element — splice/gusset plate
+    (6.13.5.3): gross-section yielding Rr = phi_v*0.58*Fy*Avg (phi = 1.0);
+    net-section rupture Rr = phi_vu*0.58*Fu*Avn (phi = 0.80) when the net
+    path is given.  The governing factored resistance is reported."""
+    r_gross = 1.0 * 0.58 * f_y * a_vg
+    details = {"R_gross": r_gross}
+    r_gov = r_gross
+    if a_vn is not None and f_u is not None:
+        r_net = 0.80 * 0.58 * f_u * a_vn
+        details["R_net"] = r_net
+        r_gov = min(r_gross, r_net)
+        details["governing"] = "gross" if r_gov == r_gross else "net"
+    return CheckResult(
+        article="6.13.5.3",
+        name="Connection Element Shear Resistance",
+        capacity=r_gov,
+        demand=v_u,
+        phi=1.0,
+        details=details,
+    )
+
+
 @article("6.10.11.3", "Longitudinal Stiffener Proportions")
 def longitudinal_stiffener_proportions(
     proj_width: float,

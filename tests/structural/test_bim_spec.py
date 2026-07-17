@@ -646,13 +646,18 @@ def test_girder_field_metadata_rides_on_the_field():
 #: (cross-frame spacing) and 6.10.11.3 (longitudinal stiffener) are absent by
 #: design -- not yet in the ported library, so their fields are quantity space.
 GIRDER_CHECKS = (
-    "6.10.8.2.2", "6.10.8.2.3", "6.10.9",          # section: flange/LTB/web
-    "6.10.10.1.2", "6.10.10.4",                    # composite studs
-    "6.10.11.2.3",                                 # bearing stiffener
+    "6.10.8.2.1", "6.10.8.2.2", "6.10.8.2.3",      # compression flange Fnc
+    "6.10.8.1.1", "6.10.8.1.3",                    # flange combo checks
+    "6.10.9",                                      # web shear
+    "6.10.10.1.2", "6.10.10.2", "6.10.10.3",       # composite studs
+    "6.10.10.4",
+    "6.10.11.1.2", "6.10.11.1.3",                  # transverse stiffener
+    "6.10.11.2.2", "6.10.11.2.3", "6.10.11.2.4",   # bearing stiffener
     "6.10.11.3",                                   # longitudinal stiffener
-    "6.8.2.1", "6.9.4.1.1",                        # cross-frame members
+    "6.8.2.1", "6.9.4.1.1", "6.9.4.2.1",           # cross-frame members
     "6.7.4.2.2",                                   # cross-frame stability brace
     "6.13.6.1.3b", "6.13.6.1.3c", "6.13.6.1.4",    # field splice
+    "6.13.5.3",                                    # splice plate shear
 )
 
 

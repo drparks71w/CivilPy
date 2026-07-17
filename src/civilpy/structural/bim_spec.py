@@ -1071,9 +1071,14 @@ class CompositeRecord(SpecRecord):
     were emit-time stud arguments into stored fields so a bridge round-trips
     them.  Consuming checks 6.10.10 (fatigue pitch, stud strength)."""
 
-    stud_diameter_in: float = spec_field(0.875, unit="in", gt=0.0,
-                                         checks=("6.10.10.1.2", "6.10.10.4"))
-    studs_per_row: int = spec_field(3, ge=1, checks=("6.10.10.1.2",))
+    stud_diameter_in: float = spec_field(
+        0.875, unit="in", gt=0.0,
+        checks=("6.10.10.1.2", "6.10.10.4", "6.10.10.2", "6.10.10.3"))
+    studs_per_row: int = spec_field(3, ge=1,
+                                    checks=("6.10.10.1.2", "6.10.10.3"))
+    stud_gauge_in: float = spec_field(3.0, unit="in", gt=0.0,
+                                      checks=("6.10.10.3",),
+                                      desc="transverse c/c between studs")
     pitch_in: float = spec_field(12.0, unit="in", gt=0.0,
                                  checks=("6.10.10.1.2",),
                                  desc="longitudinal stud pitch, governing zone")
@@ -1093,11 +1098,16 @@ class TransverseStiffenerRecord(SpecRecord):
     The record's presence means a stiffened web (absent = the unstiffened
     default)."""
 
-    plate_width_in: float = spec_field(unit="in", gt=0.0)
-    plate_thickness_in: float = spec_field(unit="in", gt=0.0)
+    plate_width_in: float = spec_field(unit="in", gt=0.0,
+                                       checks=("6.10.11.1.2", "6.10.11.1.3"))
+    plate_thickness_in: float = spec_field(
+        unit="in", gt=0.0, checks=("6.10.11.1.2", "6.10.11.1.3"))
     spacing_in: float = spec_field(unit="in", gt=0.0,
+                                   checks=("6.10.11.1.3",),
                                    desc="panel length d_o (feeds 6.10.9)")
     single_sided: bool = spec_field(False)
+    fy_ksi: float = spec_field(50.0, unit="ksi", gt=0.0,
+                               checks=("6.10.11.1.3",))
 
 
 @dataclass(frozen=True)
@@ -1414,6 +1424,112 @@ GIRDER_CHECK_INPUTS: dict[str, dict[str, tuple]] = {
         "a_p": ("derived", ("splices.flange_width_left_in",
                             "splices.splice_plate_thickness_in"),
                 "splice plate area"),
+    },
+    # transverse stiffener proportions (ported 2026-07-17)
+    "6.10.11.1.2": {
+        "b_t": ("field", "transverse_stiffener.plate_width_in"),
+        "t_p": ("field", "transverse_stiffener.plate_thickness_in"),
+        "d_web": ("derived", ("section.label", "section.web_depth_in"),
+                  "web depth"),
+        "b_f": ("derived", ("section.label", "section.top_flange_width_in"),
+                "widest compression flange in the field section"),
+    },
+    "6.10.11.1.3": {
+        "moment_of_inertia": ("derived",
+                              ("transverse_stiffener.plate_width_in",
+                               "transverse_stiffener.plate_thickness_in",
+                               "transverse_stiffener.single_sided"),
+                              "I_t about the web face (single) or "
+                              "mid-thickness (pair)"),
+        "b_t": ("field", "transverse_stiffener.plate_width_in"),
+        "t_p": ("field", "transverse_stiffener.plate_thickness_in"),
+        "d_web": ("derived", ("section.label", "section.web_depth_in"),
+                  "web depth"),
+        "t_w": ("derived", ("section.label", "section.web_thickness_in"),
+                "web thickness"),
+        "d_o": ("field", "transverse_stiffener.spacing_in"),
+        "f_yw": ("field", "section.fyw_ksi"),
+        "f_ys": ("field", "transverse_stiffener.fy_ksi"),
+    },
+    # bearing stiffener proportions + effective column (ported 2026-07-17)
+    "6.10.11.2.2": {
+        "b_t": ("field", "bearing_stiffener.plate_width_in"),
+        "t_p": ("field", "bearing_stiffener.plate_thickness_in"),
+        "f_ys": ("field", "bearing_stiffener.fy_ksi"),
+    },
+    "6.10.11.2.4": {
+        "b_t": ("field", "bearing_stiffener.plate_width_in"),
+        "t_p": ("field", "bearing_stiffener.plate_thickness_in"),
+        "t_w": ("derived", ("section.label", "section.web_thickness_in"),
+                "web thickness"),
+        "d_web": ("derived", ("section.label", "section.web_depth_in"),
+                  "web depth"),
+        "f_ys": ("field", "bearing_stiffener.fy_ksi"),
+        "pairs": ("field", "bearing_stiffener.pairs"),
+        "p_u": ("loads", "factored bearing reaction"),
+    },
+    # compression-flange resistance family (ported 2026-07-17)
+    "6.10.8.2.1": {
+        "l_b": ("derived", ("cross_frame.stations_ft",
+                            "cross_frame.spacing_ft"),
+                "governing unbraced length (max bay)"),
+        "b_fc": ("derived", ("section.label", "section.top_flange_width_in"),
+                 "compression-flange width"),
+        "t_fc": ("derived", ("section.label",
+                             "section.top_flange_thickness_in"),
+                 "compression-flange thickness"),
+        "d_c": ("derived", ("section.label", "section.web_depth_in"),
+                "depth of web in compression"),
+        "t_w": ("derived", ("section.label", "section.web_thickness_in"),
+                "web thickness"),
+        "f_yc": ("field", "section.fyc_ksi"),
+        "f_yw": ("field", "section.fyw_ksi"),
+    },
+    "6.10.8.1.1": {
+        "f_nc": ("derived", ("section.label", "section.top_flange_width_in",
+                             "section.top_flange_thickness_in",
+                             "cross_frame.spacing_ft"),
+                 "Fnc from 6.10.8.2.1"),
+        "f_bu": ("loads", "factored flange stress"),
+        "f_l": ("loads", "flange lateral bending stress"),
+    },
+    "6.10.8.1.3": {
+        "f_yf": ("field", "section.fyc_ksi"),
+        "f_bu": ("loads", "factored flange stress"),
+    },
+    # shear connector fatigue + transverse spacing (ported 2026-07-17)
+    "6.10.10.2": {
+        "d_stud": ("field", "composite.stud_diameter_in"),
+        "n_cycles": ("loads", "design fatigue cycles N (None = Fatigue I)"),
+    },
+    "6.10.10.3": {
+        "d_stud": ("field", "composite.stud_diameter_in"),
+        "n_per_row": ("field", "composite.studs_per_row"),
+        "gauge_in": ("field", "composite.stud_gauge_in"),
+        "flange_width_in": ("derived", ("section.label",
+                                        "section.top_flange_width_in"),
+                            "top flange width"),
+    },
+    # cross-frame member plate slenderness (ported 2026-07-17)
+    "6.9.4.2.1": {
+        "b": ("derived", ("cross_frame.member_shape",),
+              "outstanding leg width from the AISC label"),
+        "t": ("derived", ("cross_frame.member_shape",),
+              "leg thickness from the AISC label"),
+        "f_y": ("field", "cross_frame.fy_ksi"),
+    },
+    # splice plate shear (ported 2026-07-17)
+    "6.13.5.3": {
+        "a_vg": ("derived", ("splices.web_depth_in",
+                             "splices.splice_plate_thickness_in"),
+                 "gross shear area of the web splice plate"),
+        "a_vn": ("derived", ("splices.web_depth_in",
+                             "splices.splice_plate_thickness_in",
+                             "splices.bolt_diameter_in",
+                             "splices.bolt_rows"),
+                 "net shear area through the bolt line"),
+        "f_y": ("field", "splices.plate_fy_ksi"),
+        "f_u": ("field", "splices.plate_fu_ksi"),
     },
     # longitudinal web stiffener proportions (now ported, Dane 2026-07-17)
     "6.10.11.3": {

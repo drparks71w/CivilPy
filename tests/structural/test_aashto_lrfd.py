@@ -169,6 +169,147 @@ class TestStabilityBracing:
                 is lrfd.stability_bracing_torsional)
 
 
+class TestTransverseStiffener:
+    def test_projecting_width_margins(self):
+        # D=96: b_t >= 2+96/30=5.2; b_t <= 16*0.5=8; b_t >= 16/4=4
+        r = lrfd.transverse_stiffener_width(b_t=6.0, t_p=0.5, d_web=96.0,
+                                            b_f=16.0)
+        assert r.details["b_t_min_depth"] == pytest.approx(5.2)
+        assert r.details["b_t_max"] == pytest.approx(8.0)
+        assert r.ok is True
+        assert r.ratio == pytest.approx(6.0 / 5.2)      # depth limit governs
+        assert r.details["governing"] == "depth"
+        # too narrow fails
+        assert lrfd.transverse_stiffener_width(
+            b_t=3.5, t_p=0.5, d_web=96.0, b_f=16.0).ok is False
+
+    def test_moment_of_inertia_buckling_path(self):
+        # do=D=96: J = 2.5/1 - 2 = 0.5; I_t1 = 96*0.5^3*0.5 = 6.0
+        r = lrfd.transverse_stiffener_inertia(
+            moment_of_inertia=36.0, b_t=6.0, t_p=0.5, d_web=96.0, t_w=0.5,
+            d_o=96.0, f_yw=50.0, f_ys=50.0)
+        assert r.details["J"] == pytest.approx(0.5)
+        assert r.details["I_t1"] == pytest.approx(6.0)
+        # Fcrs = 0.31E/(12)^2 = 62.4 -> capped at Fys=50 -> rho_t = 1.0
+        assert r.details["Fcrs"] == pytest.approx(50.0)
+        assert r.details["rho_t"] == pytest.approx(1.0)
+        assert r.demand == pytest.approx(6.0) and r.ok is True
+
+    def test_moment_of_inertia_tension_field_conservative(self):
+        r = lrfd.transverse_stiffener_inertia(
+            moment_of_inertia=36.0, b_t=6.0, t_p=0.5, d_web=96.0, t_w=0.5,
+            d_o=96.0, f_yw=50.0, f_ys=50.0, tension_field=True)
+        i_t2 = 96.0**4 / 40.0 * (50.0 / 29000.0) ** 1.5
+        assert r.details["I_t2"] == pytest.approx(i_t2, rel=1e-6)
+        assert r.demand == pytest.approx(i_t2, rel=1e-6)   # I_t2 governs
+        assert r.ok is False                               # 36 < ~152
+        assert r.details["validate_against_brr"] is True
+
+
+class TestBearingStiffenerDetails:
+    def test_projecting_width(self):
+        # limit = 0.48*0.625*sqrt(29000/50) = 7.225
+        r = lrfd.bearing_stiffener_width(b_t=7.0, t_p=0.625, f_ys=50.0)
+        assert r.capacity == pytest.approx(
+            0.48 * 0.625 * math.sqrt(29000.0 / 50.0))
+        assert r.ok is True
+        assert lrfd.bearing_stiffener_width(
+            b_t=7.5, t_p=0.625, f_ys=50.0).ok is False
+
+    def test_effective_column(self):
+        r = lrfd.bearing_stiffener_effective_column(
+            b_t=7.0, t_p=0.625, t_w=0.5625, d_web=96.0, f_ys=50.0,
+            p_u=300.0)
+        # recompute the effective section by hand
+        strip = 18.0 * 0.5625 + 0.625
+        a_g = 2 * 7.0 * 0.625 + strip * 0.5625
+        off = 0.5625 / 2 + 3.5
+        i = 2 * (0.625 * 7.0**3 / 12 + 0.625 * 7.0 * off**2) \
+            + strip * 0.5625**3 / 12
+        assert r.details["Ag"] == pytest.approx(a_g)
+        assert r.details["r"] == pytest.approx(math.sqrt(i / a_g))
+        assert r.details["KL/r"] == pytest.approx(
+            0.75 * 96.0 / math.sqrt(i / a_g))
+        assert r.phi == 0.95 and r.capacity > 0.0 and r.ok is True
+
+
+class TestFlangeResistanceFamily:
+    def test_fnc_wrapper_takes_the_minimum(self):
+        r = lrfd.compression_flange_resistance(
+            l_b=240.0, b_fc=16.0, t_fc=1.5, d_c=48.0, t_w=0.5625,
+            f_yc=50.0, f_yw=50.0)
+        assert r.capacity == pytest.approx(
+            min(r.details["Fnc_FLB"], r.details["Fnc_LTB"]))
+        assert r.details["governing"] in ("FLB", "LTB")
+        # a compact flange with a short unbraced length reaches Rb*Rh*Fyc
+        r2 = lrfd.compression_flange_resistance(
+            l_b=60.0, b_fc=16.0, t_fc=1.5, d_c=48.0, t_w=0.5625,
+            f_yc=50.0, f_yw=50.0)
+        assert r2.capacity == pytest.approx(50.0)
+
+    def test_discretely_braced_combo(self):
+        r = lrfd.discretely_braced_compression_flange(
+            f_nc=45.0, f_bu=30.0, f_l=9.0, f_yf=50.0)
+        assert r.demand == pytest.approx(33.0)          # fbu + fl/3
+        assert r.ratio == pytest.approx(45.0 / 33.0)
+        assert r.details["fl_ok"] is True               # 9 <= 0.6*50
+
+    def test_continuously_braced(self):
+        r = lrfd.continuously_braced_flange(f_yf=50.0, f_bu=42.0)
+        assert r.capacity == pytest.approx(50.0)
+        assert r.ok is True
+
+
+class TestShearConnectorDetails:
+    def test_fatigue_resistance_infinite_life(self):
+        r = lrfd.shear_connector_fatigue_resistance(d_stud=0.875)
+        assert r.capacity == pytest.approx(5.5 * 0.875**2 / 2.0)
+        assert r.details["combination"] == "Fatigue I"
+
+    def test_fatigue_resistance_finite_life(self):
+        r = lrfd.shear_connector_fatigue_resistance(d_stud=0.875,
+                                                    n_cycles=2.0e6)
+        alpha = 34.5 - 4.28 * math.log10(2.0e6)
+        assert r.details["alpha"] == pytest.approx(alpha)
+        assert r.capacity == pytest.approx(alpha * 0.875**2)
+
+    def test_transverse_spacing(self):
+        # gauge 3.0 < 4d = 3.5 -> fails on gauge
+        bad = lrfd.shear_connector_transverse_spacing(
+            d_stud=0.875, n_per_row=3, gauge_in=3.0, flange_width_in=12.0)
+        assert bad.ok is False and bad.details["governing"] == "gauge"
+        # gauge 4.0 passes; edge clear = (12 - 8 - 0.875)/2 = 1.5625
+        good = lrfd.shear_connector_transverse_spacing(
+            d_stud=0.875, n_per_row=3, gauge_in=4.0, flange_width_in=12.0)
+        assert good.details["edge_clear"] == pytest.approx(1.5625)
+        assert good.ok is True
+
+
+class TestNonslenderElement:
+    def test_angle_leg(self):
+        # L4x4x1/2: b/t = 8; limit 0.45*sqrt(580) = 10.84
+        r = lrfd.nonslender_element_limit(b=4.0, t=0.5, f_y=50.0)
+        assert r.capacity == pytest.approx(0.45 * math.sqrt(29000.0 / 50.0))
+        assert r.demand == pytest.approx(8.0)
+        assert r.ok is True
+
+
+class TestConnectionElementShear:
+    def test_gross_and_net(self):
+        r = lrfd.connection_element_shear(a_vg=20.0, f_y=50.0, a_vn=16.0,
+                                          f_u=65.0)
+        assert r.details["R_gross"] == pytest.approx(0.58 * 50.0 * 20.0)
+        assert r.details["R_net"] == pytest.approx(0.8 * 0.58 * 65.0 * 16.0)
+        assert r.capacity == pytest.approx(
+            min(r.details["R_gross"], r.details["R_net"]))
+        assert r.details["governing"] == "net"
+
+    def test_gross_only(self):
+        r = lrfd.connection_element_shear(a_vg=20.0, f_y=50.0, v_u=500.0)
+        assert r.capacity == pytest.approx(580.0)
+        assert r.ok is True
+
+
 class TestRCFlexure:
     def test_singly_reinforced_rectangular(self):
         # As = 3.0 in^2, fy = 60, f'c = 4, b = 12, ds = 21.5
