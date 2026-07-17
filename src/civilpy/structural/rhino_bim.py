@@ -81,6 +81,7 @@ from civilpy.structural.rhino_layers import (
     LAYER_LOAD_PLATES,
     LAYER_REBAR,
     LAYER_SHEAR_STUDS,
+    LAYER_SPLICES,
     LAYER_SUB_BACKWALLS,
     LAYER_SUB_CAPS,
     LAYER_SUB_COLUMNS,
@@ -443,6 +444,215 @@ def girder_bridge_emit(inp: BridgeInput, *,
 
     return BridgeEmit(inputs=inp, layout=layout, objects=tuple(objects),
                       doc_tags=doc_tags)
+
+
+# ── §3a beam customizations: cross-frames, stiffeners, field splices ───────
+#
+# The stored SteelGirderRecord (civilpy.structural.bim_spec) carries these
+# details; here they become tagged .3dm geometry appended to a bridge emit —
+# the "emit record" half of build-plan §3a, mirroring add_substructure().
+# Placement rides on the layout's already-solved girder lines and bearings;
+# each plate/member is a simple prism/polyline so the mesh flavor tessellates
+# it, stamped with bim.* + pay.* so the viewer takeoff and read-back include
+# it.  The record is accessed duck-typed to avoid a bim_spec import cycle.
+
+STEEL_UNIT_WT_PCF = 490.0        #: structural steel unit weight, lb/ft^3
+
+
+def _steel_lb(volume_cf: float) -> float:
+    return volume_cf * STEEL_UNIT_WT_PCF
+
+
+def _vplate(x: float, y_lo: float, y_hi: float, z_bot: float, z_top: float,
+            thickness_ft: float, layer: str, tags: dict) -> EmitObject:
+    """A transverse plate at station ``x`` (a Y-Z rectangle extruded a small
+    ``thickness`` along the bridge axis) — web/bearing stiffeners, splice
+    plates."""
+    loop = ((x, y_lo, z_bot), (x, y_hi, z_bot),
+            (x, y_hi, z_top), (x, y_lo, z_top))
+    return EmitObject(kind="prism", layer=layer, points=loop,
+                      vector=(thickness_ft, 0.0, 0.0), tags=tags)
+
+
+def _transverse_stiffeners(lines, ts, d_ft, grade):
+    out = []
+    spacing_ft = ts.spacing_in / 12.0
+    w_ft = ts.plate_width_in / 12.0
+    t_ft = ts.plate_thickness_in / 12.0
+    for g in lines:
+        z_top = g.start[2]
+        z_bot = z_top - d_ft
+        y = g.start[1]
+        x = g.start[0] + spacing_ft
+        n = 0
+        while x < g.end[0] - 1e-6:
+            n += 1
+            y_lo = y if ts.single_sided else y - w_ft
+            y_hi = y + w_ft
+            vol = (y_hi - y_lo) * d_ft * t_ft
+            out.append(_vplate(
+                x - t_ft / 2.0, y_lo, y_hi, z_bot, z_top, t_ft,
+                LAYER_GIRDERS,
+                bim.stiffener_tags(f"TS-G{g.line_no}-{n}", kind="transverse",
+                                   thickness_in=ts.plate_thickness_in,
+                                   grade=grade, weight_lb=_steel_lb(vol))))
+            x += spacing_ft
+    return out
+
+
+def _bearing_stiffeners(layout, lines, bs, d_ft, grade):
+    out = []
+    by_line = {g.line_no: g for g in lines}
+    w_ft = bs.plate_width_in / 12.0
+    t_ft = bs.plate_thickness_in / 12.0
+    for bp in layout.bearings:
+        g = by_line.get(bp.line_no)
+        if g is None:
+            continue
+        z_top = g.start[2]
+        z_bot = z_top - d_ft
+        x, y = bp.location[0], bp.location[1]
+        for p in range(bs.pairs):
+            for sign, tag in ((-1.0, "L"), (1.0, "R")):
+                y_lo, y_hi = sorted((y, y + sign * w_ft))
+                vol = w_ft * d_ft * t_ft
+                out.append(_vplate(
+                    x - t_ft / 2.0, y_lo, y_hi, z_bot, z_top, t_ft,
+                    LAYER_GIRDERS,
+                    bim.stiffener_tags(
+                        f"BS-G{g.line_no}-{bp.station_index}-{p + 1}{tag}",
+                        kind="bearing", thickness_in=bs.plate_thickness_in,
+                        grade=grade, weight_lb=_steel_lb(vol))))
+    return out
+
+
+def _longitudinal_stiffeners(lines, ls, d_ft, grade, L):
+    out = []
+    w_ft = ls.plate_width_in / 12.0
+    t_ft = ls.plate_thickness_in / 12.0
+    for g in lines:
+        z = g.start[2] - ls.location_from_top_flange_in / 12.0
+        y, x0 = g.start[1], g.start[0]
+        loop = ((x0, y, z), (x0, y + w_ft, z),
+                (x0, y + w_ft, z - t_ft), (x0, y, z - t_ft))
+        out.append(EmitObject(
+            kind="prism", layer=LAYER_GIRDERS, points=loop,
+            vector=(L, 0.0, 0.0),
+            tags=bim.stiffener_tags(
+                f"LS-G{g.line_no}", kind="longitudinal",
+                thickness_in=ls.plate_thickness_in, grade=grade,
+                weight_lb=_steel_lb(w_ft * t_ft * L))))
+    return out
+
+
+def _cross_frames(lines, cf, d_ft, grade, L):
+    out = []
+    try:
+        from civilpy.structural.steel import SteelSection
+        area_in2 = float(SteelSection(cf.member_shape).area.magnitude)
+    except Exception:                                 # noqa: BLE001
+        area_in2 = 4.0
+    a_ft2 = area_in2 / 144.0
+    ordered = sorted(lines, key=lambda g: g.line_no)
+    spacing_ft = cf.spacing_ft
+    for g1, g2 in zip(ordered, ordered[1:]):
+        z_top = g1.start[2]
+        z_bot = z_top - d_ft
+        y1, y2 = g1.start[1], g2.start[1]
+        x, n = spacing_ft, 0
+        while x < L - 1e-6:
+            n += 1
+            members = []
+            if cf.frame_type in ("X", "K"):
+                members += [((x, y1, z_bot), (x, y2, z_top)),
+                            ((x, y1, z_top), (x, y2, z_bot))]
+            if cf.frame_type in ("K", "bent_plate"):
+                members.append(((x, y1, z_bot), (x, y2, z_bot)))
+            for mi, (a, b) in enumerate(members):
+                length_ft = math.dist(a, b)
+                out.append(EmitObject(
+                    kind="polyline", layer=LAYER_DIAPHRAGMS, points=(a, b),
+                    tags=bim.cross_frame_tags(
+                        f"CF-{g1.line_no}{g2.line_no}-{n}-{mi + 1}",
+                        frame_type=cf.frame_type, member_shape=cf.member_shape,
+                        grade=grade, weight_lb=_steel_lb(a_ft2 * length_ft))))
+            x += spacing_ft
+    return out
+
+
+def _field_splice(lines, sp, d_ft, grade, *, splice_len_ft=2.0):
+    out = []
+    bolts = sp.bolt_rows * sp.bolt_cols * 2          # both sides of the joint
+    t_ft = sp.splice_plate_thickness_in / 12.0
+    x0 = sp.station_ft - splice_len_ft / 2.0
+    for g in lines:
+        z_top = g.start[2]
+        z_bot = z_top - d_ft
+        y = g.start[1]
+        bf_ft = sp.flange_width_left_in / 12.0
+        # web plate (thin in Y, full depth) + top/bottom flange plates
+        web = EmitObject(
+            kind="prism", layer=LAYER_SPLICES,
+            points=((x0, y, z_bot), (x0, y + t_ft, z_bot),
+                    (x0, y + t_ft, z_top), (x0, y, z_top)),
+            vector=(splice_len_ft, 0.0, 0.0),
+            tags=bim.field_splice_tags(f"SPL-G{g.line_no}-web",
+                                       bolt_count=bolts, grade=grade,
+                                       weight_lb=_steel_lb(t_ft * d_ft
+                                                           * splice_len_ft)))
+        out.append(web)
+        for zf, tag in ((z_top, "top"), (z_bot, "bot")):
+            out.append(EmitObject(
+                kind="prism", layer=LAYER_SPLICES,
+                points=((x0, y - bf_ft / 2.0, zf), (x0, y + bf_ft / 2.0, zf),
+                        (x0, y + bf_ft / 2.0, zf - t_ft),
+                        (x0, y - bf_ft / 2.0, zf - t_ft)),
+                vector=(splice_len_ft, 0.0, 0.0),
+                tags=bim.field_splice_tags(
+                    f"SPL-G{g.line_no}-{tag}", bolt_count=bolts, grade=grade,
+                    weight_lb=_steel_lb(bf_ft * t_ft * splice_len_ft))))
+    return out
+
+
+def add_girder_details(emit: BridgeEmit, record, *,
+                       apply_to=None) -> BridgeEmit:
+    """A new :class:`BridgeEmit` with one :class:`SteelGirderRecord`'s §3a
+    customizations (cross-frames, transverse/bearing/longitudinal stiffeners,
+    and a field splice) appended as tagged geometry — mirroring
+    :func:`add_substructure`, so the merged emit still round-trips through
+    :func:`emit_to_json`, :func:`read_bim_tags`, and the quantity rollup.
+
+    Placement uses the emit's solved girder lines; ``apply_to`` restricts it to
+    those ``line_no`` (default: every line).  The girder depth comes from the
+    record's controlling section (catalog or plate).  Only the details present
+    on the record are emitted.
+    """
+    layout = emit.layout
+    L = layout.total_length_ft
+    d_in, _t_w, _b_fc, _t_fc = record.section.resolve()
+    d_ft = d_in / 12.0
+    grade = record.grade.replace("Grade ", "")
+    lines = [g for g in layout.girders
+             if apply_to is None or g.line_no in apply_to]
+
+    extra: list[EmitObject] = []
+    if record.transverse_stiffener is not None:
+        extra += _transverse_stiffeners(lines, record.transverse_stiffener,
+                                        d_ft, grade)
+    if record.bearing_stiffener is not None:
+        extra += _bearing_stiffeners(layout, lines, record.bearing_stiffener,
+                                     d_ft, grade)
+    if record.longitudinal_stiffener is not None:
+        extra += _longitudinal_stiffeners(lines, record.longitudinal_stiffener,
+                                          d_ft, grade, L)
+    if record.cross_frame is not None:
+        extra += _cross_frames(lines, record.cross_frame, d_ft, grade, L)
+    if record.splice is not None:
+        extra += _field_splice(lines, record.splice, d_ft, grade)
+
+    return BridgeEmit(inputs=emit.inputs, layout=layout,
+                      objects=emit.objects + tuple(extra),
+                      doc_tags=emit.doc_tags)
 
 
 def _sbr1_cage(br, s: float, B: float, T: float, H: float, L: float,

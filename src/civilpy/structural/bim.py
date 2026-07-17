@@ -427,6 +427,34 @@ def diaphragm_tags(bid: str, *, thickness_in: float, fc_psi: float = 4500.0,
     return tags
 
 
+def cross_frame_tags(bid: str, *, frame_type: str, member_shape: str,
+                     grade: str = "50", weight_lb: float | None = None) -> dict:
+    """Intermediate cross-frame / steel diaphragm bay (build plan §3a).  Its
+    members are fabricated structural steel measured by weight into the 513
+    item like the girders."""
+    return {**_base("cross_frame", bid), "cross_frame.type": frame_type,
+            "cross_frame.member": member_shape, **steel_mat(grade=grade),
+            **_pay_tags("513E10220", weight_lb)}
+
+
+def stiffener_tags(bid: str, *, kind: str, thickness_in: float,
+                   grade: str = "50", weight_lb: float | None = None) -> dict:
+    """Web/bearing/longitudinal stiffener plate (§3a).  ``kind`` is
+    ``transverse`` / ``bearing`` / ``longitudinal``; measured by weight into
+    the 513 structural-steel item."""
+    return {**_base("stiffener", bid), "stiffener.kind": kind,
+            "stiffener.thickness_in": f"{thickness_in:g}",
+            **steel_mat(grade=grade), **_pay_tags("513E10220", weight_lb)}
+
+
+def field_splice_tags(bid: str, *, bolt_count: int, grade: str = "50",
+                      weight_lb: float | None = None) -> dict:
+    """Bolted field splice (§3a): the splice plates are structural steel by
+    weight (513); the high-strength bolts are incidental, carried as a count."""
+    return {**_base("field_splice", bid), "field_splice.bolts": str(bolt_count),
+            **steel_mat(grade=grade), **_pay_tags("513E10220", weight_lb)}
+
+
 def pile_tags(bid: str, *, shape: str, length_ft: float, grade: str = "50",
               spec: str = "ASTM A572") -> dict:
     """Driven steel HP pile: pay quantity is the furnished+driven length

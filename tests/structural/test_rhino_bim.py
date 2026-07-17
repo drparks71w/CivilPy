@@ -184,6 +184,86 @@ def test_sbr1_parapet_cage(emit):
     assert float(b.tags["pay.qty"]) > 0
 
 
+# ── §3a beam customizations: add_girder_details ────────────────────────────
+
+def _girder_record():
+    from civilpy.structural.bim_spec import (
+        BearingStiffenerRecord, CrossFrameRecord, FieldSpliceRecord,
+        GirderSectionRecord, LongitudinalStiffenerRecord, SteelGirderRecord,
+        TransverseStiffenerRecord)
+    return SteelGirderRecord(
+        section=GirderSectionRecord(label="W36X150"),
+        length_ft=230.0, grade="Grade 50W",
+        transverse_stiffener=TransverseStiffenerRecord(
+            plate_width_in=6.0, plate_thickness_in=0.5, spacing_in=90.0),
+        bearing_stiffener=BearingStiffenerRecord(
+            plate_width_in=7.0, plate_thickness_in=0.625, pairs=1),
+        longitudinal_stiffener=LongitudinalStiffenerRecord(
+            plate_width_in=5.0, plate_thickness_in=0.5,
+            location_from_top_flange_in=12.0),
+        cross_frame=CrossFrameRecord(member_shape="L4X4X1/2",
+                                     member_length_ft=8.0, spacing_ft=23.0),
+        splice=FieldSpliceRecord(
+            station_ft=70.0, flange_width_left_in=12.0,
+            flange_width_right_in=12.0, flange_thickness_in=0.94,
+            web_depth_in=35.9, web_thickness_left_in=0.625,
+            web_thickness_right_in=0.625))
+
+
+def test_add_girder_details_appends_tagged_geometry(emit):
+    from civilpy.structural.rhino_bim import add_girder_details
+
+    e2 = add_girder_details(emit, _girder_record())
+    assert len(e2.objects) > len(emit.objects)
+    assert emit.objects == e2.objects[:len(emit.objects)]   # originals kept
+    for t in ("stiffener", "cross_frame", "field_splice"):
+        assert e2.of_type(t), t
+    kinds = {o.tags.get("stiffener.kind") for o in e2.of_type("stiffener")}
+    assert {"transverse", "bearing", "longitudinal"} <= kinds
+    # a field splice = web + top + bottom plate on each of the 5 lines
+    assert len(e2.of_type("field_splice")) == 15
+    ids = [o.tags["bim.id"] for o in e2.objects if "bim.type" in o.tags]
+    assert len(ids) == len(set(ids)), "bim.id values must stay unique"
+
+
+def test_add_girder_details_apply_to_subset(emit):
+    from civilpy.structural.rhino_bim import add_girder_details
+
+    e2 = add_girder_details(emit, _girder_record(), apply_to=[1])
+    assert len(e2.of_type("field_splice")) == 3            # one line only
+    assert all("-G1-" in o.tags["bim.id"] for o in e2.of_type("field_splice"))
+
+
+def test_add_girder_details_only_present_features(emit):
+    from civilpy.structural.rhino_bim import add_girder_details
+    from civilpy.structural.bim_spec import (
+        CrossFrameRecord, GirderSectionRecord, SteelGirderRecord)
+
+    rec = SteelGirderRecord(
+        section=GirderSectionRecord(label="W36X150"), length_ft=230.0,
+        cross_frame=CrossFrameRecord(member_shape="L4X4X1/2",
+                                     member_length_ft=8.0, spacing_ft=40.0))
+    e2 = add_girder_details(emit, rec)
+    assert e2.of_type("cross_frame")
+    assert not e2.of_type("stiffener") and not e2.of_type("field_splice")
+
+
+def test_girder_details_pay_and_readback(tmp_path, emit):
+    pytest.importorskip("rhino3dm")
+    from civilpy.structural.rhino_bim import (
+        add_girder_details, emit_to_3dm, read_bim_tags)
+
+    e2 = add_girder_details(emit, _girder_record())
+    # the details' weight lands in the 513 structural-steel item
+    q = pay_item_quantities(e2)
+    assert q["513E10220"]["qty"] > pay_item_quantities(emit)["513E10220"]["qty"]
+
+    emit_to_3dm(e2, tmp_path / "details.3dm", mesh=True)
+    types = {t.get("bim.type")
+             for t in read_bim_tags(tmp_path / "details.3dm")["components"]}
+    assert {"stiffener", "cross_frame", "field_splice"} <= types
+
+
 def test_pay_item_rollup(emit):
     q = pay_item_quantities(emit)
     # structural steel: 5 girders x 230 ft x 150 plf + 20 load plates
