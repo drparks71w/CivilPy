@@ -1415,6 +1415,42 @@ GIRDER_CHECK_INPUTS: dict[str, dict[str, tuple]] = {
                             "splices.splice_plate_thickness_in"),
                 "splice plate area"),
     },
+    # longitudinal web stiffener proportions (now ported, Dane 2026-07-17)
+    "6.10.11.3": {
+        "proj_width": ("field", "longitudinal_stiffener.plate_width_in"),
+        "t_s": ("field", "longitudinal_stiffener.plate_thickness_in"),
+        "moment_of_inertia": ("derived",
+                              ("longitudinal_stiffener.plate_width_in",
+                               "longitudinal_stiffener.plate_thickness_in"),
+                              "I_l of the plate about the web face"),
+        "radius_of_gyration": ("derived",
+                               ("longitudinal_stiffener.plate_width_in",
+                                "longitudinal_stiffener.plate_thickness_in"),
+                               "r = sqrt(I_l/A) of the stiffener"),
+        "d_web": ("derived", ("section.label", "section.web_depth_in"),
+                  "web depth"),
+        "t_w": ("derived", ("section.label", "section.web_thickness_in"),
+                "web thickness"),
+        "d_o": ("derived", ("transverse_stiffener.spacing_in",),
+                "panel spacing (uniform default if no transverse stiffener)"),
+        "f_ys": ("field", "longitudinal_stiffener.fy_ksi"),
+        "f_yc": ("field", "section.fyc_ksi"),
+    },
+    # cross-frame / diaphragm stability bracing (now ported)
+    "6.7.4.2.2": {
+        "m_r": ("loads", "required flexural strength Mr at the brace"),
+        "l_span": ("derived", ("length_ft",), "girder span/length"),
+        "n_braces": ("derived", ("cross_frame.stations_ft",
+                                 "cross_frame.spacing_ft"),
+                     "number of intermediate brace points"),
+        "i_eff": ("derived", ("section.label", "section.top_flange_width_in",
+                             "section.top_flange_thickness_in"),
+                  "effective lateral moment of inertia"),
+        "brace_stiffness": ("derived", ("cross_frame.member_shape",
+                                        "cross_frame.member_length_ft",
+                                        "cross_frame.connection_plate_thickness_in"),
+                            "provided cross-frame torsional stiffness"),
+    },
 }
 
 

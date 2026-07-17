@@ -120,6 +120,55 @@ class TestWebShear:
             )
 
 
+class TestLongitudinalStiffener:
+    def test_governing_limit_is_moment_of_inertia(self):
+        r = lrfd.longitudinal_stiffener_proportions(
+            proj_width=4.0, t_s=0.5, moment_of_inertia=25.0,
+            radius_of_gyration=1.5, d_web=96.0, t_w=0.5, d_o=96.0,
+            f_ys=50.0, f_yc=50.0)
+        # b_l_max = 0.48*0.5*sqrt(29000/50)
+        assert r.details["b_l_max"] == pytest.approx(
+            0.48 * 0.5 * math.sqrt(29000.0 / 50.0))
+        # I_l_req = 96*0.5^3*(2.4*1 - 0.13) = 27.24
+        assert r.details["I_l_req"] == pytest.approx(27.24, rel=1e-3)
+        assert r.details["width_ok"] and r.details["r_ok"]
+        assert r.details["governing"] == "I_l"
+        assert r.ok is False                      # 25 < 27.24 required
+        assert r.ratio == pytest.approx(25.0 / 27.24, rel=1e-3)
+
+    def test_adequate_stiffener_passes(self):
+        r = lrfd.longitudinal_stiffener_proportions(
+            proj_width=4.0, t_s=0.5, moment_of_inertia=40.0,
+            radius_of_gyration=1.5, d_web=96.0, t_w=0.5, d_o=96.0,
+            f_ys=50.0, f_yc=50.0)
+        assert r.ok is True and r.ratio >= 1.0
+
+    def test_registered_in_articles(self):
+        assert (lrfd.ARTICLES["6.10.11.3"]
+                is lrfd.longitudinal_stiffener_proportions)
+
+
+class TestStabilityBracing:
+    def test_stiffness_and_strength(self):
+        r = lrfd.stability_bracing_torsional(
+            m_r=6000.0, l_span=1200.0, n_braces=5, i_eff=200.0,
+            brace_stiffness=5.0e5, c_b=1.0)
+        # beta_T_req = 2.4*L*Mr^2 / (phi*n*E*Ieff*Cb^2)
+        expected = (2.4 * 1200.0 * 6000.0**2
+                    / (0.75 * 5 * 29000.0 * 200.0 * 1.0**2))
+        assert r.details["beta_T_req"] == pytest.approx(expected)
+        # M_br = 0.024*Mr*L/(n*Cb*L_b), L_b default = L/(n+1) = 200
+        assert r.details["L_b"] == pytest.approx(200.0)
+        assert r.details["M_br_req"] == pytest.approx(
+            0.024 * 6000.0 * 1200.0 / (5 * 1.0 * 200.0))
+        assert r.ok is True                       # provided 5e5 > required
+        assert r.details["validate_against_brr"] is True
+
+    def test_registered_in_articles(self):
+        assert (lrfd.ARTICLES["6.7.4.2.2"]
+                is lrfd.stability_bracing_torsional)
+
+
 class TestRCFlexure:
     def test_singly_reinforced_rectangular(self):
         # As = 3.0 in^2, fy = 60, f'c = 4, b = 12, ds = 21.5

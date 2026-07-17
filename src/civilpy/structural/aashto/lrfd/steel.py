@@ -768,3 +768,115 @@ def web_shear_resistance(
         phi=PHI_V,
         details=details,
     )
+
+
+@article("6.10.11.3", "Longitudinal Stiffener Proportions")
+def longitudinal_stiffener_proportions(
+    proj_width: float,
+    t_s: float,
+    moment_of_inertia: float,
+    radius_of_gyration: float,
+    d_web: float,
+    t_w: float,
+    d_o: float,
+    f_ys: float,
+    f_yc: float,
+    r_h: float = 1.0,
+    beta: float = 1.0,
+) -> CheckResult:
+    """Longitudinal web-stiffener proportioning limits (6.10.11.3).
+
+    Three requirements, all expressed as provided/required margins; the
+    governing (minimum) margin is the reported ``ratio`` (>= 1.0 passes):
+
+    * projecting width (6.10.11.3.2-1): ``proj_width`` <= 0.48 t_s sqrt(E/Fys)
+    * moment of inertia (6.10.11.3.3-1):
+      ``I_l`` >= D tw^3 [2.4 (do/D)^2 - 0.13] beta
+    * radius of gyration (6.10.11.3.3-4):
+      ``r`` >= 0.16 do sqrt(Fys/E) / sqrt(1 - 0.6 Fyc/(Rh Fys))
+
+    ``proj_width`` is the stiffener projecting width b_l (in), ``t_s`` its
+    thickness (in), ``moment_of_inertia`` I_l about the web face (in^4),
+    ``radius_of_gyration`` r (in), ``d_web`` the web depth D (in), ``d_o`` the
+    transverse-stiffener/panel spacing (in), ``beta`` the curvature factor (1.0
+    for straight girders, 6.10.11.3.3-2 for curved).  ``capacity``/``demand``
+    carry the I_l pair (the sizing driver); the width and r margins are in
+    ``details``.
+    """
+    width_limit = 0.48 * t_s * math.sqrt(E_STEEL / f_ys)          # 6.10.11.3.2-1
+    i_required = d_web * t_w**3 * (2.4 * (d_o / d_web) ** 2 - 0.13) * beta
+    r_required = (0.16 * d_o * math.sqrt(f_ys / E_STEEL)
+                  / math.sqrt(1.0 - 0.6 * f_yc / (r_h * f_ys)))   # 6.10.11.3.3-4
+
+    m_width = width_limit / proj_width if proj_width > 0 else float("inf")
+    m_i = moment_of_inertia / i_required if i_required > 0 else float("inf")
+    m_r = radius_of_gyration / r_required if r_required > 0 else float("inf")
+    governing = min(m_width, m_i, m_r)
+
+    # capacity/demand carry the governing margin so ratio/ok reflect the most
+    # critical of the three limits; the dimensional values are in details.
+    return CheckResult(
+        article="6.10.11.3",
+        name="Longitudinal Stiffener Proportions",
+        capacity=governing,
+        demand=1.0,
+        phi=1.0,
+        details={
+            "b_l_max": width_limit, "width_ok": m_width >= 1.0,
+            "width_margin": m_width,
+            "I_l_req": i_required, "I_l_ok": m_i >= 1.0, "I_l_margin": m_i,
+            "r_req": r_required, "r_ok": m_r >= 1.0, "r_margin": m_r,
+            "governing": ("width" if governing == m_width
+                          else "I_l" if governing == m_i else "r"),
+        },
+    )
+
+
+@article("6.7.4.2.2", "Cross-Frame / Diaphragm Stability Bracing")
+def stability_bracing_torsional(
+    m_r: float,
+    l_span: float,
+    n_braces: int,
+    i_eff: float,
+    brace_stiffness: float,
+    c_b: float = 1.0,
+    l_b: float | None = None,
+    phi: float = 0.75,
+) -> CheckResult:
+    """Torsional stability-bracing stiffness + strength for cross-frames /
+    diaphragms (6.7.4.2.2, 10th Edition), the adopted Yura provisions.
+
+    * Required torsional brace stiffness (stiffness limit):
+      beta_Treq = 2.4 L Mr^2 / (phi n E I_eff C_b^2)
+    * Required brace strength (moment):
+      M_br = 0.024 Mr L / (n C_b L_b)
+
+    ``m_r`` is the required flexural strength Mr (kip-in), ``l_span`` the span L
+    (in), ``n_braces`` the number of intermediate brace points, ``i_eff`` the
+    effective lateral moment of inertia I_eff (in^4), ``brace_stiffness`` the
+    provided torsional stiffness beta_T (kip-in/rad), ``c_b`` the moment
+    gradient, ``l_b`` the unbraced length (in, defaults to L/(n+1)).  The
+    reported ``ratio`` is the provided/required *stiffness* margin; the required
+    brace moment is in ``details``.
+
+    NOTE: coefficients follow the adopted torsional-bracing model; validate
+    against BrR (``ALRFD_10E_06_07_04_02_02_Stiffness``/``_Strength``) before
+    relying on this for production ratings — flagged in the build plan.
+    """
+    if l_b is None:
+        l_b = l_span / (n_braces + 1)
+    beta_t_req = (2.4 * l_span * m_r**2
+                  / (phi * n_braces * E_STEEL * i_eff * c_b**2))
+    m_br = 0.024 * m_r * l_span / (n_braces * c_b * l_b)
+
+    return CheckResult(
+        article="6.7.4.2.2",
+        name="Cross-Frame / Diaphragm Stability Bracing",
+        capacity=brace_stiffness,
+        demand=beta_t_req,
+        phi=1.0,
+        details={
+            "beta_T_req": beta_t_req, "M_br_req": m_br, "L_b": l_b,
+            "validate_against_brr": True,
+        },
+    )

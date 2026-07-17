@@ -43,6 +43,8 @@ from civilpy.structural.aashto.lrfd.steel import (
     shear_connector_fatigue_pitch,
     block_shear_resistance,
     fillet_weld_resistance,
+    longitudinal_stiffener_proportions,
+    stability_bracing_torsional,
 )
 from civilpy.structural.aashto.lrfd.concrete import (
     rc_rectangular_flexural_resistance,
@@ -344,6 +346,8 @@ __all__ = [
     "a6_tension_flange_yielding",
     "ps_anchorage_set_loss",
     "bearing_stiffener_resistance",
+    "longitudinal_stiffener_proportions",
+    "stability_bracing_torsional",
     "web_bend_buckling",
     "constructibility_compression_flange",
     "shear_connector_strength",
