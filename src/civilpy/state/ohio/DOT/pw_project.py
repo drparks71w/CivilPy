@@ -46,6 +46,10 @@ from civilpy.state.ohio.DOT.projectwise import (
     ACTIVE_SHEET_GRAMMAR,
     DATASOURCE_ACTIVE,
 )
+from civilpy.state.ohio.DOT.sheet_taxonomy import (
+    SHEET_ACCESSORS,
+    classify_filename,
+)
 
 #: L&D Vol. 3 deliverables -> folder-name patterns (case-insensitive regex,
 #: matched against folder names breadth-first through the project tree).
@@ -171,6 +175,24 @@ class ProjectWiseSFN:
             return mine or docs
         return docs
 
+    def sheet_set(self, name):
+        """This bridge's documents for a named structure-scope sheet type
+        (see ``sheet_taxonomy.SHEET_ACCESSORS``): the project-wide sheets of
+        that code, filtered to this SFN by the naming convention."""
+        spec = SHEET_ACCESSORS.get(name)
+        if spec is None or spec["scope"] != "structure":
+            raise KeyError(f"{name!r} is not a structure-scope sheet set")
+        return [d for d in self.project.sheet_set(name)
+                if (c := classify_filename(d.get("filename")))
+                and c.get("sfn") == self.sfn]
+
+    def __getattr__(self, name):
+        if not name.startswith("_"):
+            spec = SHEET_ACCESSORS.get(name)
+            if spec is not None and spec["scope"] == "structure":
+                return self.sheet_set(name)
+        raise AttributeError(name)
+
     def pull(self, dest_dir):
         """Copy every sheet in this bridge's folder to ``dest_dir``."""
         return [self.project._client.copy_out(d["folder_id"], d["doc_id"],
@@ -259,6 +281,39 @@ class ProjectWiseProject:
             raise LookupError(
                 f"no Structures folder under {self.project_path!r}")
 
+    # -- sheets (L&D Vol. 3 file-code taxonomy) --------------------------------
+    def documents(self, max_depth=6, budget=1500, refresh=False):
+        """Every document in the project tree (budgeted walk, cached).
+
+        Each dict gains a ``sheet`` key with :func:`classify_filename`'s
+        parse (or ``None`` for non-conforming names).
+        """
+        if refresh or getattr(self, "_all_docs", None) is None:
+            docs, stack = [], [(self.root, 0)]
+            remaining = budget
+            while stack and remaining > 0:
+                node, depth = stack.pop()
+                remaining -= 1
+                for d in node.documents:
+                    docs.append(dict(d, folder=node.path or node.name,
+                                     sheet=classify_filename(d.get("filename"))))
+                if depth + 1 <= max_depth:
+                    stack.extend((c, depth + 1) for c in node.children)
+            self._all_docs = docs
+        return self._all_docs
+
+    def sheet_set(self, name):
+        """Documents for a named sheet type (``sheet_taxonomy
+        .SHEET_ACCESSORS``), matched by the L&D filename code anywhere in
+        the project tree."""
+        spec = SHEET_ACCESSORS.get(name)
+        if spec is None:
+            raise KeyError(f"unknown sheet set {name!r}; known: "
+                           f"{sorted(SHEET_ACCESSORS)}")
+        codes = set(spec["codes"])
+        return [d for d in self.documents()
+                if d["sheet"] and d["sheet"]["code"] in codes]
+
     # -- deliverables ----------------------------------------------------------
     def deliverable(self, name):
         """Documents for a named deliverable (see :data:`DELIVERABLES`)."""
@@ -281,6 +336,11 @@ class ProjectWiseProject:
             raise AttributeError(name)
         if name in registry:
             return self.deliverable(name)
+        spec = SHEET_ACCESSORS.get(name)
+        if spec is not None:
+            # structure-scope sets are meaningful per-SFN, but on the project
+            # they return the union across all its structures
+            return self.sheet_set(name)
         raise AttributeError(name)
 
     @property
