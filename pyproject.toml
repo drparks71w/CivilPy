@@ -132,5 +132,4 @@ omit = [
     "*/general/photos.py",
     "*/general/jupyter.py",
 ]
-timid = true
 parallel = true

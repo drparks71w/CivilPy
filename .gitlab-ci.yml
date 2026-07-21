@@ -20,14 +20,26 @@ cache:
   paths:
     - .uv_cache/
 
-# --- TEMPLATE (Does not run, just holds the script) ---
-.test_logic:
+# --- TEMPLATES (Do not run, just hold the scripts) ---
+.install_deps:
   script:
     - pip install uv
     - uv venv --clear venv   # --clear: stale venv/ can arrive via the pre-uv branch cache
     - source venv/bin/activate
-    - uv pip install setuptools -e ".[db,geo,web,jupyter,validation]" pytest pytest-cov
-    - python -m pytest --cov --cov-report term --cov-report xml:coverage.xml
+    - uv pip install setuptools -e ".[db,geo,web,jupyter,validation]" pytest pytest-cov pytest-xdist
+
+# matrix jobs: no coverage — the smoke job already measures it, and the
+# tracer is the expensive part of the suite
+.test_logic:
+  script:
+    - !reference [.install_deps, script]
+    - python -m pytest -n auto
+
+# smoke job: coverage for the GitLab widget + MR annotations
+.test_logic_cov:
+  script:
+    - !reference [.install_deps, script]
+    - python -m pytest -n auto --cov --cov-report term --cov-report xml:coverage.xml
   coverage: '/TOTAL.*\s+(\d+\%)/'
   artifacts:
     reports:
@@ -40,7 +52,7 @@ cache:
 # Skip with: git tag docs && git push --tags
 #        or: -no_tests in commit title
 smoke-test-3.11:
-  extends: .test_logic
+  extends: .test_logic_cov
   stage: sanity
   image: python:3.11
   rules:
