@@ -159,8 +159,7 @@ def _read_gdr_raw(path):
         g = obj.Geometry
         if kind == "bridge":
             # bridge-wide parameters ride on a dedicated marker object's user
-            # text -- NOT RhinoDoc.Strings, which rhino3dm cannot read (see the
-            # G4 contract note in docs/Rhino Design Philosophy.md).
+            # text -- NOT RhinoDoc.Strings, which rhino3dm cannot read.
             doc.update(us)
             continue
         if kind == "girder":

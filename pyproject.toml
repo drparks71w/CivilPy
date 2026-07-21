@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "civilpy"
-version = "0.4.1"
+version = "0.4.2"
 description = "Civil Engineering Tools in Python"
 readme = "README.md"
 license = { text = "MIT" }
@@ -40,6 +40,7 @@ dependencies = [
     "termcolor>=1.1",
     "natsort>=8.2",
     "rich>=13.0",
+    "prompt_toolkit>=3.0",
     "typing_extensions>=4.0",
     "ezdxf>=1.1",
 ]
@@ -103,14 +104,14 @@ Documentation = "https://dane.daneparks.com/civilpy"
 Repository = "https://daneparks.com/Dane/civilpy"
 
 [project.scripts]
-civilpy = "civilpy.CLI:civilpy_cli"
+civilpy = "civilpy.cli:civilpy_cli"
 
 [tool.setuptools.packages.find]
 where = ["src"]
 exclude = ["tests*", "Notebooks*", "secrets*", "docs*", "res*"]
 
 [tool.setuptools.package-data]
-civilpy = ["structural/res/*.csv", "structural/odot/res/*.csv"]
+civilpy = ["structural/res/*.csv", "structural/odot/res/*.csv", "structural/spanwire/res/*.xml"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -130,7 +131,6 @@ omit = [
     "*/general/database_tools.py",
     "*/general/photos.py",
     "*/general/jupyter.py",
-    "*/structural/steel_db_temp.py",
 ]
 timid = true
 parallel = true

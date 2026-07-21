@@ -165,7 +165,7 @@ tags" a single step, e.g.:
 - `STMLoad` → pick the node, drag direction, type kips → draws the arrow and
   writes `stm.kips`.
 
-These run in Rhino's script editor with no AI agent at runtime, so they are
+These run in Rhino's script editor standalone, so they are
 compatible with the ODOT environment (see constraints).
 
 ## The analysis bridge
@@ -196,12 +196,11 @@ adds force labels for review in Rhino.
 
 ## Constraints
 
-- **ODOT / AI policy:** AI tools (Claude) are prohibited on ODOT machines. The
+- **ODOT / AI policy:** AI tools are prohibited on ODOT machines. The
   constraint is therefore that everything we build must be **self-contained and
-  runnable by the user with no AI agent at runtime**, with dependencies tame
+  runnable by the user with no AI tooling at runtime**, with dependencies tame
   enough for IT approval. It is *not* a statement about Rhino — Rhino is expected
-  to be available in the ODOT environment. (This corrects an earlier assumption
-  that conflated "no Claude at ODOT" with "no Rhino at ODOT".)
+  to be available in the ODOT environment.
 - **Dependencies:** `rhino3dm` is a small pip package (`pip install
   civilpy[rhino]`); `numpy`/`matplotlib`/`scipy` already in use. The
   topology-optimization pipeline's heavier libraries (`pygmsh`, `scikit-fem`,
@@ -627,18 +626,17 @@ green. Stop-anywhere ordering:
 
 ## Roadmap and separation of responsibilities
 
-Two codebases are now developed **in parallel** by two agents:
+Two codebases are now developed **in parallel**:
 
-- **Python (this repo, `civilpy`)** — the analysis + file-bridge side. Owner: the
-  Python agent.
+- **Python (this repo, `civilpy`)** — the analysis + file-bridge side.
 - **C# / .NET RhinoCommon plugin (separate solution, built in Rider)** — the
-  authoring + UI side, distributed via Yak. Owner: the C# agent.
+  authoring + UI side, distributed via Yak.
 
 They **never call each other.** The only thing they share is the **tag schema +
 file format contract** below. Treat that contract as the API between the two
 projects: neither side may change a tag name, value encoding, units convention,
 or plane mapping without updating §"Shared contract" *and* notifying the other
-agent. This is the whole reason the file-round-trip architecture was chosen — it
+side. This is the whole reason the file-round-trip architecture was chosen — it
 lets the two languages ship and version independently.
 
 ```
@@ -1034,7 +1032,7 @@ TODO above; verified against the civilpy source):
   line-girder envelope for quick studies.
 
 The chain in dependency order (G-stages). C# items are built here; Python
-items are coordination requests for the civilpy agent — do not build them in
+items are coordination requests for the civilpy side — do not build them in
 this repo:
 
 - [~] **G1 (joint) — freeze the `gdr.*` contract** (see the open contract
@@ -1044,7 +1042,7 @@ this repo:
   (newline-separated `article|check|actual|allowable|verdict` records) that
   G8 writes and G9 reads, and a plan-view plane convention (X = stations,
   Y = transverse, Z up, lengths authored in feet and scaled to the model's
-  unit system). **Still open:** reconciliation with the Python agent — the
+  unit system). **Still open:** reconciliation with the civilpy side — the
   keys are not frozen until the civilpy side signs off:
   - `gdr.kind=girder` on the girder-line curve; `gdr.shape=<AISC label>`
     (exact manual label, e.g. `W24X104`;

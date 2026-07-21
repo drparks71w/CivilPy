@@ -76,11 +76,84 @@ PAY_ITEMS: dict[str, PayItem] = {
     "515E30000": PayItem("515E30000",
                          "Intermediate diaphragms [CONFIRM]",
                          "ea", "515", 1),
+    "526E10000": PayItem("526E10000",
+                         "Reinforced concrete approach slabs [CONFIRM]",
+                         "sy", "526", 1),
 }
 
 
 def pay_item(code: str) -> PayItem:
     return PAY_ITEMS[code]
+
+
+#: Planning-level unit prices ($ per pay-item unit) for the seed catalog —
+#: round numbers in the range of recent ODOT bid tabulations, meant to rank
+#: alternatives and sanity-check a budget, **not** to replace a district
+#: estimate.  Override any entry (or add items) through the ``prices``
+#: argument of :func:`cost_estimate`.
+DEFAULT_UNIT_PRICES: dict[str, float] = {
+    "513E10220": 2.25,       # structural steel, fabricated + erected, $/lb
+    "513E20000": 10.0,       # welded shear stud, $/ea
+    "509E00200": 1.60,       # epoxy coated reinforcing, $/lb
+    "509E00100": 1.40,       # black reinforcing, $/lb
+    "509E00300": 3.00,       # GFRP deformed bar, $/lb
+    "511E12100": 950.0,      # QC2 superstructure (deck) concrete, $/cy
+    "511E40000": 850.0,      # QC1 substructure concrete, $/cy
+    "512E10000": 1200.0,     # parapet/railing concrete, $/cy
+    "516E10000": 2000.0,     # elastomeric bearing, $/ea
+    "507E10000": 75.0,       # HP pile furnished + driven, $/ft
+    "515E10000": 22000.0,    # PS box beam member, $/ea
+    "515E20000": 30000.0,    # PS I-beam member, $/ea
+    "515E30000": 1500.0,     # PS intermediate diaphragm, $/ea
+    "526E10000": 120.0,      # RC approach slab, $/sy
+}
+
+
+@dataclass(frozen=True)
+class CostEstimate:
+    """A priced pay-item rollup.  ``rows`` extends the quantity records
+    (``{"desc", "unit", "qty", "objects"}``) with ``unit_price`` and
+    ``cost``; items the price book doesn't know are listed in ``unpriced``
+    (their ``cost`` is ``None``) and excluded from ``total``."""
+
+    rows: dict[str, dict]
+    total: float
+    unpriced: tuple[str, ...] = ()
+
+    def __str__(self) -> str:
+        lines = [f"{'item':<12}{'qty':>14} {'unit':<5}{'unit $':>10}"
+                 f"{'cost $':>14}  description"]
+        for item, r in self.rows.items():
+            up = f"{r['unit_price']:,.2f}" if r["unit_price"] is not None else "--"
+            c = f"{r['cost']:,.0f}" if r["cost"] is not None else "--"
+            lines.append(f"{item:<12}{r['qty']:>14,.1f} {r['unit']:<5}"
+                         f"{up:>10}{c:>14}  {r['desc']}")
+        lines.append(f"{'total':<12}{'':>14} {'':<5}{'':>10}"
+                     f"{self.total:>14,.0f}")
+        return "\n".join(lines)
+
+
+def cost_estimate(quantities: dict[str, dict],
+                  prices: dict[str, float] | None = None) -> CostEstimate:
+    """Price a quantity rollup (the ``{item: {"desc", "unit", "qty", ...}}``
+    dict that ``pay_item_quantities`` / ``read_bim_quantities`` produce).
+
+    Unit prices come from :data:`DEFAULT_UNIT_PRICES` updated with
+    ``prices``; see the caveat there — these are planning numbers."""
+    book = {**DEFAULT_UNIT_PRICES, **(prices or {})}
+    rows: dict[str, dict] = {}
+    total = 0.0
+    unpriced: list[str] = []
+    for item, rec in sorted(quantities.items()):
+        up = book.get(item)
+        cost = None if up is None else round(rec["qty"] * up, 2)
+        if cost is None:
+            unpriced.append(item)
+        else:
+            total += cost
+        rows[item] = {**rec, "unit_price": up, "cost": cost}
+    return CostEstimate(rows=rows, total=round(total, 2),
+                        unpriced=tuple(unpriced))
 
 
 def _pay_tags(code: str | None, quantity: float | None = None) -> dict:
@@ -188,6 +261,23 @@ def parapet_tags(bid: str, scd: str, *, scd_year: str | int | None = None,
     return tags
 
 
+def approach_slab_tags(bid: str, scd: str = "AS-1-15", *,
+                       scd_year: str | int | None = None,
+                       length_ft: float, width_ft: float,
+                       thickness_in: float, skew_deg: float = 0.0,
+                       fc_psi: float = 4500.0,
+                       area_sy: float | None = None) -> dict:
+    """Approach slab concrete.  ITEM 526 measures the plan **area** (sy)
+    and includes the slab reinforcing (anchor bars into the abutment are
+    the exception — they measure under the ITEM 509 reinforcing items)."""
+    return {**_base("approach_slab", bid, scd=scd, scd_year=scd_year),
+            "approach_slab.length_ft": f"{length_ft:g}",
+            "approach_slab.width_ft": f"{width_ft:g}",
+            "approach_slab.thickness_in": f"{thickness_in:g}",
+            "approach_slab.skew_deg": f"{skew_deg:g}",
+            **concrete_mat(fc_psi, "QC1"), **_pay_tags("526E10000", area_sy)}
+
+
 def bearing_tags(bid: str, *, fixity: str, kind: str = "elastomeric",
                  plies: int | None = None, ply_thickness_in: float | None = None,
                  total_thickness_in: float | None = None) -> dict:
@@ -223,7 +313,7 @@ def haunch_tags(bid: str, *, depth_in: float, width_in: float,
 #: Substructure concrete component types (one Rhino layer each).
 SUBSTRUCTURE_CONCRETE_TYPES = (
     "pier_cap", "abutment_cap", "beam_seat", "column", "footing",
-    "backwall", "wingwall")
+    "backwall", "wingwall", "foreslope_wall", "cutoff_wall")
 
 
 def substructure_concrete_tags(btype: str, bid: str, *,
@@ -335,6 +425,34 @@ def diaphragm_tags(bid: str, *, thickness_in: float, fc_psi: float = 4500.0,
         tags.update(_pay_tags(item, count if count is not None
                               else volume_cy))
     return tags
+
+
+def cross_frame_tags(bid: str, *, frame_type: str, member_shape: str,
+                     grade: str = "50", weight_lb: float | None = None) -> dict:
+    """Intermediate cross-frame / steel diaphragm bay (build plan §3a).  Its
+    members are fabricated structural steel measured by weight into the 513
+    item like the girders."""
+    return {**_base("cross_frame", bid), "cross_frame.type": frame_type,
+            "cross_frame.member": member_shape, **steel_mat(grade=grade),
+            **_pay_tags("513E10220", weight_lb)}
+
+
+def stiffener_tags(bid: str, *, kind: str, thickness_in: float,
+                   grade: str = "50", weight_lb: float | None = None) -> dict:
+    """Web/bearing/longitudinal stiffener plate (§3a).  ``kind`` is
+    ``transverse`` / ``bearing`` / ``longitudinal``; measured by weight into
+    the 513 structural-steel item."""
+    return {**_base("stiffener", bid), "stiffener.kind": kind,
+            "stiffener.thickness_in": f"{thickness_in:g}",
+            **steel_mat(grade=grade), **_pay_tags("513E10220", weight_lb)}
+
+
+def field_splice_tags(bid: str, *, bolt_count: int, grade: str = "50",
+                      weight_lb: float | None = None) -> dict:
+    """Bolted field splice (§3a): the splice plates are structural steel by
+    weight (513); the high-strength bolts are incidental, carried as a count."""
+    return {**_base("field_splice", bid), "field_splice.bolts": str(bolt_count),
+            **steel_mat(grade=grade), **_pay_tags("513E10220", weight_lb)}
 
 
 def pile_tags(bid: str, *, shape: str, length_ft: float, grade: str = "50",

@@ -4,58 +4,112 @@ CPython 3) source.
 Drop-in Grasshopper component for SCD AS-1-15 (rev. 01-20-2023).  All
 engineering content (the reinforcing-steel table, bar counts/lengths,
 section geometry, anchor-bar rules) comes from
-``civilpy.structural.odot.approach_slab``; this script only draws.
+``civilpy.structural.odot.approach_slab``; placement, layers, and the
+``bim.*``/``pay.*``/``rebar.*`` tagging come from
+``civilpy.structural.rhino_approach_slab.approach_slab_emit``; this
+script only draws.
 
-Component inputs (Type Hint / Access in parentheses):
-    length     (float, Item)  approach slab length L, ft (15/20/25/30)
-    width      (float, Item)  approach slab width W, ft (see the sheet's
-                              width-dimension figure)
-    skew       (float, Item)  skew angle, degrees (optional, 0)
-    end_thickness (float, Item)  X at the abutment end, in (optional, = T;
-                              never less than T)
+NOTE on ``# r: civilpy``: intentionally absent.  That directive
+pip-installs civilpy from PyPI into Rhino's ``site-envs`` cache, which
+shadows the editable dev install.  While tracking the development
+branch, install civilpy editable into Rhino's CPython instead; the
+dev-reload block below makes a ``git pull`` take effect on the next
+recompute.  Reinstate ``# r: civilpy>=X.Y.Z`` only for a pinned release.
+
+Component inputs (Type Hint / Access, and the GH widget each wants):
+    length     (float, Item)  slab length L, ft — the sheet tabulates
+                              exactly 15/20/25/30, so feed from a
+                              **Value List** (dropdown), not a slider
+    width      (float, Item)  slab width W, ft (see the sheet's
+                              width-dimension figure) — **Number Slider**
+    skew       (float, Item)  skew, deg (optional, 0; < 60) — **Number
+                              Slider**
+    side       (str, Item)    "near" | "far" abutment (optional, near).
+                              near = low-station end (slab runs
+                              down-station from the bridge limit); far =
+                              high-station end.  **Value List**
+    alignment  (No Type Hint, Item)  optional
+                              civilpy.transportation.alignment.Alignment
+                              from an upstream component; places the slab
+                              on the roadway centerline in world
+                              coordinates
+    station    (float, Item)  bridge-limit station, ft (required with
+                              alignment) — **Number Slider / Panel**
+    offset     (float, Item)  slab-center offset from the centerline, ft
+                              right-positive (optional, 0; the width
+                              always builds symmetrically about this
+                              center) — **Number Slider**
+    end_thickness (float, Item)  X at the abutment end, in (optional,
+                              = T; never less than T) — **Number Slider**
     seat_length   (float, Item)  bearing on seat/backwall, in (optional,
-                              9; sheet allows 6 to 12)
+                              9; sheet allows 6 to 12) — **Number Slider**
     backwall      (float, Item)  backwall thickness, in (optional, 14;
-                              selects D801 vs D802 anchor bars)
-    bake       (bool, Item)   True = write display geometry to the
-                              Site::AS-1-15 layer in the active document
+                              selects D801 vs D802 anchor bars) —
+                              **Number Slider**
+    bake       (bool, Item)   write tagged geometry to the
+                              Deck::Approach Slab layers — **Button**
 Outputs:
-    slab    (Brep, Item)   the approach slab solid
-    rebar   (Curve, List)  every bar (A, B501, C, D801/D802)
-    outline (Curve, Item)  plan outline at the top of slab
-    report  (str)
+    slab    (Brep)        the approach slab solid
+    rebar   (Curve list)  every bar centerline (A, B501, C, D801/D802)
+    outline (Curve)       plan outline at the top of slab
+    preview (Mesh list)   vertex-colored preview: the slab shaded light
+                          blue, every bar an orange pipe at its true
+                          tagged diameter (``rebar.dia_in``)
+    report  (str)         design summary + pay-item rollup
 
-Baked geometry is display-only and carries no gdr.* tags (per the
-contract, readers ignore untagged geometry).
+Preview: the ``slab``/``rebar``/``outline`` outputs carry data for
+downstream components but their default (red) previews are switched off
+each solve; the ``preview`` meshes carry their colors themselves, so no
+Custom Preview component is needed.  Colors come from
+``rhino_layers.DEFAULT_COLORS``, so the on-canvas preview matches the
+baked layers.  Set ``HIDE_DEFAULT_PREVIEWS = False`` below to get the
+stock red previews back.
+
+New params since the 2026-07 rebuild (add them to the component; the
+script binds by name): inputs ``side``, ``alignment`` (No Type Hint),
+``station``, ``offset``; output ``preview``.
+
+Without an alignment the slab sits on a default due-north tangent with
+the bridge limit at the origin (stations along +Y, transverse along
++X): the Front viewport looks up-station at the slab end (adjusting
+``width`` grows it across the screen) and Right shows the longitudinal
+section.  Baked objects carry full user text — the slab the ITEM 526
+plan area, the anchor bars their ITEM 509 weights, and every bar its
+``rebar.dia_in`` — so estimates and future clash/BIM checks read
+straight from the saved document.
 """
 
-"""
-# //TODO - Most of these files are missing the Rhino civilpy import at the start `# r: civilpy` that is necessary to
-utilize the civilpy library.
-- Update inputs to specify what Kind of Rhino component should be used with them, length only has 4 options, so dropdown 
-    makes more sense than a number slider, etc. 
-- Similar to A-1-20 will rely on an "alignment" object to do station and offsets for it's location, width should be based
-    off of roadway centerline.
-- The orientation is off similar to A-1-20, the bent bars that are embedded into the abutment stem are appearing on the left
-    side of the slab, again, needs a "near"/"far" toggle to work properly. Current layout is assuming the "far" abutment, but 
-    the "front" and "right" views are flopped from what a user would probably expect.
-- Not sure if rebar is encoded with an actual diameter, but clash detection would be a long term goal of the rhino models
-    not a native Rhino feature, so would likely have to be built out in Python somehow.
-"""
+import sys
 
 import Rhino
 import Rhino.Geometry as rg
 
-from civilpy.structural.odot.approach_slab import (
-    ApproachSlabInput,
-    layout_approach_slab,
+# DEV RELOAD: drop cached civilpy modules so every recompute re-imports
+# from the editable install -- a 'git pull' takes effect on the next
+# solve with no Rhino restart. Remove (or guard) once running a pinned
+# release instead of the development checkout.
+for _name in [n for n in list(sys.modules) if n.startswith("civilpy")]:
+    del sys.modules[_name]
+
+from civilpy.structural.odot.approach_slab import ApproachSlabInput
+from civilpy.structural.rhino_approach_slab import approach_slab_emit
+from civilpy.structural.rhino_bim import pay_item_quantities
+from civilpy.structural.rhino_layers import (
+    DEFAULT_COLORS,
+    LAYER_APPROACH_SLAB,
+    LAYER_APPROACH_SLAB_REBAR,
 )
 
 TOL = Rhino.RhinoDoc.ActiveDoc.ModelAbsoluteTolerance
 
+#: Preview colors track the baked layer colors (single source of truth).
+SLAB_RGB = DEFAULT_COLORS[LAYER_APPROACH_SLAB]
+REBAR_RGB = DEFAULT_COLORS[LAYER_APPROACH_SLAB_REBAR]
+HIDE_DEFAULT_PREVIEWS = True
+
 
 def _scale():
-    """Feet (layout units) -> current document units."""
+    """Feet (emit units) -> current document units."""
     return Rhino.RhinoMath.UnitScale(
         Rhino.UnitSystem.Feet, Rhino.RhinoDoc.ActiveDoc.ModelUnitSystem)
 
@@ -64,66 +118,95 @@ def _pt(p, s):
     return rg.Point3d(p[0] * s, p[1] * s, p[2] * s)
 
 
-def _slab_solid(layout, s):
-    """Sweep the longitudinal section profile across the width along the
-    skewed transverse direction (a shear extrusion, so the skewed plan
-    parallelogram and the seat profile are both exact)."""
-    import math
-    prof = rg.Polyline(
-        [rg.Point3d(u * s, 0.0, z * s) for u, z in layout.profile]
-        + [rg.Point3d(layout.profile[0][0] * s, 0.0,
-                      layout.profile[0][1] * s)]).ToNurbsCurve()
-    w = layout.inputs.width_ft
-    tan_skew = math.tan(math.radians(layout.inputs.skew_deg))
-    vec = rg.Vector3d(w * tan_skew * s, w * s, 0.0)
-    srf = rg.Surface.CreateExtrusion(prof, vec)
-    if srf is None:
+def _prism_brep(obj, s):
+    """Loft the emit prism's loop along its (possibly sheared) vector."""
+    loop = [_pt(p, s) for p in obj.points]
+    a = rg.Polyline(loop + [loop[0]]).ToNurbsCurve()
+    b = a.DuplicateCurve()
+    b.Translate(rg.Vector3d(*[c * s for c in obj.vector]))
+    lofted = rg.Brep.CreateFromLoft([a, b], rg.Point3d.Unset,
+                                    rg.Point3d.Unset, rg.LoftType.Straight,
+                                    False)
+    if not lofted:
         return None
-    brep = srf.ToBrep()
-    capped = brep.CapPlanarHoles(TOL)
-    return capped or brep
+    return lofted[0].CapPlanarHoles(TOL) or lofted[0]
 
 
-def _bake(slab, curves, outline):
-    doc = Rhino.RhinoDoc.ActiveDoc
+def _polyline_crv(obj, s):
+    return rg.Polyline([_pt(p, s) for p in obj.points]).ToNurbsCurve()
+
+
+def _monotone(mesh, rgb):
+    """Stamp one color on every vertex; GH previews vertex-colored
+    meshes in their own colors with no Custom Preview component."""
     import System.Drawing as sd
+    mesh.VertexColors.CreateMonotoneMesh(sd.Color.FromArgb(*rgb[:3]))
+    return mesh
 
-    def layer(path, color):
-        idx = doc.Layers.FindByFullPath(path, -1)
-        if idx >= 0:
-            return idx
-        parent = None
-        full = ""
-        for name in path.split("::"):
-            full = name if not full else full + "::" + name
-            idx = doc.Layers.FindByFullPath(full, -1)
-            if idx < 0:
-                lyr = Rhino.DocObjects.Layer()
-                lyr.Name = name
-                if parent is not None:
-                    lyr.ParentLayerId = doc.Layers[parent].Id
-                lyr.Color = color
-                idx = doc.Layers.Add(lyr)
-            parent = idx
+
+def _slab_preview(brep):
+    parts = rg.Mesh.CreateFromBrep(brep, rg.MeshingParameters.Default)
+    if not parts:
+        return None
+    m = rg.Mesh()
+    for p in parts:
+        m.Append(p)
+    return _monotone(m, SLAB_RGB)
+
+
+def _bar_preview(crv, dia_in, s):
+    """The bar as a pipe at its true diameter (the emit's rebar.dia_in)."""
+    m = rg.Mesh.CreateFromCurvePipe(
+        crv, dia_in / 24.0 * s, 6, 1, rg.MeshPipeCapStyle.Flat, True)
+    return _monotone(m, REBAR_RGB) if m else None
+
+
+def _hide_default_previews():
+    """Keep slab/rebar/outline as data outputs but stop their stock red
+    preview — the colored ``preview`` meshes replace it."""
+    try:
+        for p in ghenv.Component.Params.Output:
+            if p.NickName in ("slab", "rebar", "outline"):
+                p.Hidden = HIDE_DEFAULT_PREVIEWS
+    except Exception:
+        pass    # not running inside a GH component; nothing to hide
+
+
+def _ensure_layer(doc, path, rgb):
+    import System.Drawing as sd
+    idx = doc.Layers.FindByFullPath(path, -1)
+    if idx >= 0:
         return idx
+    parent, accum = None, ""
+    for name in path.split("::"):
+        accum = name if not accum else accum + "::" + name
+        idx = doc.Layers.FindByFullPath(accum, -1)
+        if idx < 0:
+            lyr = Rhino.DocObjects.Layer()
+            lyr.Name = name
+            if parent is not None:
+                lyr.ParentLayerId = doc.Layers[parent].Id
+            lyr.Color = sd.Color.FromArgb(*rgb[:3])
+            idx = doc.Layers.Add(lyr)
+        parent = idx
+    return idx
 
-    lay_slab = layer("Site::AS-1-15", sd.Color.FromArgb(160, 160, 160))
-    lay_bars = layer("Site::AS-1-15::Rebar", sd.Color.FromArgb(170, 40, 40))
 
-    def attrs(lay):
-        a = Rhino.DocObjects.ObjectAttributes()
-        a.LayerIndex = lay
-        return a
-
+def _bake(emit, geometry):
+    doc = Rhino.RhinoDoc.ActiveDoc
     n = 0
-    if slab:
-        doc.Objects.AddBrep(slab, attrs(lay_slab))
-        n += 1
-    if outline:
-        doc.Objects.AddCurve(outline, attrs(lay_slab))
-        n += 1
-    for c in curves:
-        doc.Objects.AddCurve(c, attrs(lay_bars))
+    for obj, geom in zip(emit.objects, geometry):
+        if geom is None:
+            continue
+        a = Rhino.DocObjects.ObjectAttributes()
+        a.LayerIndex = _ensure_layer(
+            doc, obj.layer, DEFAULT_COLORS.get(obj.layer, (128, 128, 128)))
+        for k, v in obj.tags.items():
+            a.SetUserString(k, str(v))
+        if isinstance(geom, rg.Brep):
+            doc.Objects.AddBrep(geom, a)
+        else:
+            doc.Objects.AddCurve(geom, a)
         n += 1
     doc.Views.Redraw()
     return n
@@ -131,10 +214,14 @@ def _bake(slab, curves, outline):
 
 # ── main ──────────────────────────────────────────────────────────────────
 
-slab, rebar, outline = None, [], None
+slab, rebar, outline, preview = None, [], None, []
+_hide_default_previews()
 
 if not globals().get("length") or not globals().get("width"):
-    report = "Connect at least: length (15/20/25/30 ft) and width (ft)."
+    report = "Connect at least: length (15/20/25/30 ft, use a Value " \
+             "List) and width (ft). Optional: skew (deg), side " \
+             "('near'|'far'), alignment (+ station, offset), " \
+             "end_thickness (in), seat_length (in), backwall (in), bake."
 else:
     s = _scale()
     inp = ApproachSlabInput(
@@ -149,29 +236,50 @@ else:
                                if globals().get("backwall") else 14.0),
     )
     try:
-        layout = layout_approach_slab(inp)
+        emit = approach_slab_emit(
+            inp,
+            side=(str(side).strip().lower() if globals().get("side")
+                  else "near"),
+            alignment=globals().get("alignment"),
+            station_ft=(float(station) if globals().get("station") is not None
+                        else None),
+            offset_ft=float(offset) if globals().get("offset") else 0.0,
+        )
     except ValueError as exc:
-        layout = None
+        emit = None
         report = "INPUT ERROR: {}".format(exc)
 
-    if layout:
-        slab = _slab_solid(layout, s)
-        for bar in layout.bars:
-            pts = [_pt(p, s) for p in bar.points]
-            rebar.append(rg.PolylineCurve(pts) if len(pts) > 2
-                         else rg.LineCurve(pts[0], pts[1]))
-        outline = rg.Polyline(
-            [_pt(p, s) for p in layout.outline]
-            + [_pt(layout.outline[0], s)]).ToNurbsCurve()
+    if emit:
+        geometry = []
+        for obj in emit.objects:
+            if obj.kind == "prism":
+                g = _prism_brep(obj, s)
+                slab = g
+                if g:
+                    pm = _slab_preview(g)
+                    if pm:
+                        preview.append(pm)
+            else:
+                g = _polyline_crv(obj, s)
+                if obj.tags.get("bim.type") == "rebar":
+                    rebar.append(g)
+                    pm = _bar_preview(
+                        g, float(obj.tags.get("rebar.dia_in", 0.625)), s)
+                    if pm:
+                        preview.append(pm)
+                elif obj.tags.get("bim.id") == "APS-OUTLINE":
+                    outline = g
+            geometry.append(g)
 
-        d = layout.design
+        d = emit.layout.design
         counts = {}
-        for bar in layout.bars:
+        for bar in emit.layout.bars:
             counts[bar.mark] = counts.get(bar.mark, 0) + 1
         sched = ", ".join("{} x {}".format(v, k)
                           for k, v in sorted(counts.items()))
-        report_lines = [
-            "ODOT AS-1-15 approach slab (rev. 01-20-2023)",
+        lines = [
+            "ODOT AS-1-15 approach slab (rev. 01-20-2023), {} abutment"
+            .format(emit.side),
             "L = {:g} ft, T = {:g} in, W = {:g} ft, skew = {:g} deg".format(
                 d.length_ft, d.thickness_in, inp.width_ft, inp.skew_deg),
             "Bars: " + sched,
@@ -179,12 +287,18 @@ else:
             "(5 sp. @ 6 in at bridge end); B501 top & C bars @ 6 in".format(
                 d.a_bar_mark, d.a_bar_spacing_in, d.b501_bottom_spacing_in),
             "Anchor bars: {} x {:.2f} ft (paid under Item 509)".format(
-                layout.anchor_mark, layout.anchor_length_ft),
-            "Item 526 estimated quantity: {:.1f} SY".format(
-                layout.pay_area_sy),
-        ] + list(layout.notes[2:])
+                emit.layout.anchor_mark, emit.layout.anchor_length_ft),
+        ]
+        if "aps.station_ft" in emit.doc_tags:
+            lines.append("Placed at sta. {} ft, offset {} ft".format(
+                emit.doc_tags["aps.station_ft"],
+                emit.doc_tags["aps.offset_ft"]))
+        for item, rec in pay_item_quantities(emit).items():
+            lines.append("  {}  {:,.1f} {}  {}".format(
+                item, rec["qty"], rec["unit"], rec["desc"]))
+        lines += list(emit.layout.notes[2:])
         if globals().get("bake"):
-            n = _bake(slab, rebar, outline)
-            report_lines.append("BAKED {} objects to Site::AS-1-15 "
-                                "(display only, untagged).".format(n))
-        report = "\n".join(report_lines)
+            n = _bake(emit, geometry)
+            lines.append("BAKED {} tagged objects to Deck::Approach Slab "
+                         "layers.".format(n))
+        report = "\n".join(lines)

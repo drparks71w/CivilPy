@@ -184,6 +184,97 @@ def test_sbr1_parapet_cage(emit):
     assert float(b.tags["pay.qty"]) > 0
 
 
+# ── §3a beam customizations: add_girder_details ────────────────────────────
+
+def _girder_record():
+    from civilpy.structural.bim_spec import (
+        BearingStiffenerRecord, CrossFrameRecord, FieldSpliceRecord,
+        GirderSectionRecord, LongitudinalStiffenerRecord, SteelGirderRecord,
+        TransverseStiffenerRecord)
+    return SteelGirderRecord(
+        section=GirderSectionRecord(label="W36X150"),
+        length_ft=230.0, grade="Grade 50W",
+        transverse_stiffener=TransverseStiffenerRecord(
+            plate_width_in=6.0, plate_thickness_in=0.5, spacing_in=90.0),
+        bearing_stiffener=BearingStiffenerRecord(
+            plate_width_in=7.0, plate_thickness_in=0.625, pairs=1),
+        longitudinal_stiffener=LongitudinalStiffenerRecord(
+            plate_width_in=5.0, plate_thickness_in=0.5,
+            location_from_top_flange_in=12.0),
+        cross_frame=CrossFrameRecord(
+            frame_type="X", member_shape="L4X4X1/2", member_length_ft=8.0,
+            stations_ft=(20.0, 45.0, 70.0, 90.0)),      # irregular per-bay
+        splices=(FieldSpliceRecord(
+            station_ft=70.0, flange_width_left_in=12.0,
+            flange_width_right_in=12.0, flange_thickness_in=0.94,
+            web_depth_in=35.9, web_thickness_left_in=0.625,
+            web_thickness_right_in=0.625),
+                 FieldSpliceRecord(
+            station_ft=160.0, flange_width_left_in=14.0,
+            flange_width_right_in=14.0, flange_thickness_in=1.0,
+            web_depth_in=35.9, web_thickness_left_in=0.75,
+            web_thickness_right_in=0.625)))
+
+
+def test_add_girder_details_appends_tagged_geometry(emit):
+    from civilpy.structural.rhino_bim import add_girder_details
+
+    e2 = add_girder_details(emit, _girder_record())
+    assert len(e2.objects) > len(emit.objects)
+    assert emit.objects == e2.objects[:len(emit.objects)]   # originals kept
+    for t in ("stiffener", "cross_frame", "field_splice"):
+        assert e2.of_type(t), t
+    kinds = {o.tags.get("stiffener.kind") for o in e2.of_type("stiffener")}
+    assert {"transverse", "bearing", "longitudinal"} <= kinds
+    # 2 splices x (web + top + bottom) x 5 lines = 30
+    assert len(e2.of_type("field_splice")) == 30
+    # the two splices are placed at their distinct stations
+    assert {"70", "160"} <= {o.tags["bim.id"].split("@")[1].split("-")[0]
+                             for o in e2.of_type("field_splice")}
+    # cross-frames at the 4 explicit stations, per bay between 4 girder pairs
+    assert len(e2.of_type("cross_frame")) == 4 * 4 * 2    # X-type = 2 diagonals
+    ids = [o.tags["bim.id"] for o in e2.objects if "bim.type" in o.tags]
+    assert len(ids) == len(set(ids)), "bim.id values must stay unique"
+
+
+def test_add_girder_details_apply_to_subset(emit):
+    from civilpy.structural.rhino_bim import add_girder_details
+
+    e2 = add_girder_details(emit, _girder_record(), apply_to=[1])
+    assert len(e2.of_type("field_splice")) == 6           # 2 splices, one line
+    assert all("-G1@" in o.tags["bim.id"] for o in e2.of_type("field_splice"))
+
+
+def test_add_girder_details_only_present_features(emit):
+    from civilpy.structural.rhino_bim import add_girder_details
+    from civilpy.structural.bim_spec import (
+        CrossFrameRecord, GirderSectionRecord, SteelGirderRecord)
+
+    rec = SteelGirderRecord(
+        section=GirderSectionRecord(label="W36X150"), length_ft=230.0,
+        cross_frame=CrossFrameRecord(member_shape="L4X4X1/2",
+                                     member_length_ft=8.0, spacing_ft=40.0))
+    e2 = add_girder_details(emit, rec)
+    assert e2.of_type("cross_frame")
+    assert not e2.of_type("stiffener") and not e2.of_type("field_splice")
+
+
+def test_girder_details_pay_and_readback(tmp_path, emit):
+    pytest.importorskip("rhino3dm")
+    from civilpy.structural.rhino_bim import (
+        add_girder_details, emit_to_3dm, read_bim_tags)
+
+    e2 = add_girder_details(emit, _girder_record())
+    # the details' weight lands in the 513 structural-steel item
+    q = pay_item_quantities(e2)
+    assert q["513E10220"]["qty"] > pay_item_quantities(emit)["513E10220"]["qty"]
+
+    emit_to_3dm(e2, tmp_path / "details.3dm", mesh=True)
+    types = {t.get("bim.type")
+             for t in read_bim_tags(tmp_path / "details.3dm")["components"]}
+    assert {"stiffener", "cross_frame", "field_splice"} <= types
+
+
 def test_pay_item_rollup(emit):
     q = pay_item_quantities(emit)
     # structural steel: 5 girders x 230 ft x 150 plf + 20 load plates
@@ -226,6 +317,71 @@ def test_read_bim_round_trip(tmp_path, emit):
     assert q["513E10220"]["qty"] == pytest.approx(5 * 230.0 * 150.0)
 
 
+def test_cost_estimate_pricing():
+    from civilpy.structural.bim import DEFAULT_UNIT_PRICES, cost_estimate
+
+    q = {"513E10220": {"desc": "steel", "unit": "lb", "qty": 1000.0,
+                       "objects": 5},
+         "516E10000": {"desc": "bearing", "unit": "ea", "qty": 4.0,
+                       "objects": 4},
+         "999E99999": {"desc": "mystery", "unit": "ea", "qty": 2.0,
+                       "objects": 2}}
+    est = cost_estimate(q, prices={"516E10000": 2500.0})
+    # default book price, override price, and the unpriced item
+    assert est.rows["513E10220"]["cost"] == pytest.approx(
+        1000.0 * DEFAULT_UNIT_PRICES["513E10220"])
+    assert est.rows["516E10000"]["unit_price"] == 2500.0
+    assert est.rows["999E99999"]["cost"] is None
+    assert est.unpriced == ("999E99999",)
+    assert est.total == pytest.approx(
+        1000.0 * DEFAULT_UNIT_PRICES["513E10220"] + 4 * 2500.0)
+    # quantity fields ride along and the table renders
+    assert est.rows["513E10220"]["objects"] == 5
+    assert "total" in str(est)
+
+
+def test_read_back_skips_hidden_layers(tmp_path, emit):
+    r3 = pytest.importorskip("rhino3dm")
+    from civilpy.structural.rhino_bim import (
+        read_bim_estimate, read_bim_quantities, read_bim_tags)
+
+    # a live layer plus a Legacy tree hidden at the *parent* only —
+    # the child stays Visible, like a real Rhino doc with Legacy off
+    f = r3.File3dm()
+    live = r3.Layer(); live.Name = "Bearings"
+    i_live = f.Layers.Add(live)
+    parent = r3.Layer(); parent.Name = "Legacy"; parent.Visible = False
+    f.Layers.Add(parent)
+    child = r3.Layer(); child.Name = "Bearings-old"
+    child.ParentLayerId = f.Layers[1].Id
+    i_child = f.Layers.Add(child)
+
+    def add(tags, layer_index):
+        attr = r3.ObjectAttributes()
+        attr.LayerIndex = layer_index
+        for k, v in tags.items():
+            attr.SetUserString(k, v)
+        f.Objects.AddPoint(r3.Point3d(0, 0, 0), attr)
+
+    add({"bim.type": "bridge", "bim.id": "BRIDGE"}, i_child)  # marker hidden
+    for o in emit.objects:
+        if o.tags.get("bim.type") == "bearing":
+            add(o.tags, i_live)
+            add(o.tags, i_child)          # stale duplicate under Legacy
+    path = tmp_path / "legacy.3dm"
+    assert f.Write(str(path), 7)
+
+    # only the live copies count, but the bridge record still comes back
+    back = read_bim_tags(path)
+    assert back["bridge"]["bim.id"] == "BRIDGE"
+    assert len(back["components"]) == 20
+    assert read_bim_quantities(path)["516E10000"]["qty"] == 20
+    q_all = read_bim_quantities(path, include_hidden=True)
+    assert q_all["516E10000"]["qty"] == 40
+    est = read_bim_estimate(path, prices={"516E10000": 1800.0})
+    assert est.total == pytest.approx(20 * 1800.0)
+
+
 def test_emit_json_round_trip(emit):
     data = json.loads(emit_to_json(emit))
     assert data["doc_tags"]["bim.units"] == "ft"
@@ -258,7 +414,89 @@ def test_emit_to_3dm_round_trip(tmp_path, emit):
         assert q_file[item]["qty"] == pytest.approx(rec["qty"])
 
 
-# ── substructure emit (work-plan phase 4) ─────────────────────────────────
+def _mesh_volume(m) -> float:
+    """Signed volume of a closed mesh by the divergence theorem — an
+    independent check that the ear-clipped caps close the solid
+    correctly (a fan that left the section would skew this)."""
+    vol = 0.0
+    for i in range(len(m.Faces)):
+        idx = list(m.Faces[i])
+        tris = [(idx[0], idx[1], idx[2])]
+        if len(idx) == 4 and idx[2] != idx[3]:
+            tris.append((idx[0], idx[2], idx[3]))
+        for a, b, c in tris:
+            v0, v1, v2 = m.Vertices[a], m.Vertices[b], m.Vertices[c]
+            vol += (v0.X * (v1.Y * v2.Z - v1.Z * v2.Y)
+                    - v0.Y * (v1.X * v2.Z - v1.Z * v2.X)
+                    + v0.Z * (v1.X * v2.Y - v1.Y * v2.X)) / 6.0
+    return vol
+
+
+def test_emit_to_3dm_mesh_flavor(tmp_path, emit):
+    """The web-viewer flavor: every solid lands as a *closed* mesh (no
+    breps — 3DMLoader would render those empty), tags and the estimate
+    round-trip identically to the brep flavor."""
+    r3 = pytest.importorskip("rhino3dm")
+    from civilpy.structural.bridge_layout import girder_section
+    from civilpy.structural.rhino_bim import (
+        _polygon_area, emit_to_3dm, read_bim_quantities)
+
+    path = tmp_path / "web.3dm"
+    counts = emit_to_3dm(emit, path, mesh=True)
+    assert sum(counts.values()) == len(emit.objects)
+
+    f = r3.File3dm.Read(str(path))
+    n_solids = sum(1 for o in emit.objects
+                   if o.kind in ("prism", "cylinder"))
+    meshes = [o for o in f.Objects if isinstance(o.Geometry, r3.Mesh)]
+    assert len(meshes) == n_solids
+    assert not any(isinstance(o.Geometry, (r3.Brep, r3.Extrusion))
+                   for o in f.Objects)
+    for o in meshes:
+        assert o.Geometry.IsClosed, dict(
+            o.Attributes.GetUserStrings() or {})
+
+    # the non-convex I-profile caps close to the exact prism volume
+    g1 = next(o for o in meshes
+              if dict(o.Attributes.GetUserStrings())["bim.id"] == "G1")
+    sec = girder_section("W36X150")
+    area_ft2 = _polygon_area(i_profile_wh(sec)) / 144.0
+    assert _mesh_volume(g1.Geometry) == pytest.approx(
+        area_ft2 * emit.layout.total_length_ft, rel=1e-6)
+    # the crowned deck closes to its tagged pay quantity
+    deck = next(o for o in meshes
+                if dict(o.Attributes.GetUserStrings()).get("bim.type")
+                == "deck")
+    assert _mesh_volume(deck.Geometry) / 27.0 == pytest.approx(
+        float(dict(deck.Attributes.GetUserStrings())["pay.qty"]), rel=1e-3)
+
+    # identical read-back contract to the brep flavor
+    q_emit = pay_item_quantities(emit)
+    q_file = read_bim_quantities(path)
+    assert set(q_file) == set(q_emit)
+    for item, rec in q_emit.items():
+        assert q_file[item]["qty"] == pytest.approx(rec["qty"])
+
+
+def test_triangulate_loop_nonconvex():
+    from civilpy.structural.rhino_bim import _triangulate_loop
+
+    # CCW L-shape: a centroid fan would leave the section
+    poly = [(0.0, 0.0), (4.0, 0.0), (4.0, 1.0), (1.0, 1.0),
+            (1.0, 3.0), (0.0, 3.0)]
+    tris = _triangulate_loop(poly)
+    assert len(tris) == len(poly) - 2
+
+    def area(a, b, c):
+        return ((b[0] - a[0]) * (c[1] - a[1])
+                - (b[1] - a[1]) * (c[0] - a[0])) / 2.0
+
+    total = sum(area(poly[a], poly[b], poly[c]) for a, b, c in tris)
+    assert total == pytest.approx(6.0)          # all CCW, sums to the area
+    assert all(area(poly[a], poly[b], poly[c]) > 0 for a, b, c in tris)
+
+
+# ── substructure emit ─────────────────────────────────
 
 @pytest.fixture(scope="module")
 def sub_emit(emit):

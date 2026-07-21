@@ -7,7 +7,7 @@
 """BrIM emit layer for prestressed adjacent box-beam bridges.
 
 The :mod:`~civilpy.structural.rhino_box_beam` legacy writer ported to the
-transport-neutral emit architecture (work-plan phase 5.5): the same
+transport-neutral emit architecture: the same
 PSBD-1-25 / PSBDD-1-25 standard-design content —
 
 * box members as four wall prisms each (hollow tube, square-drawn void
@@ -76,6 +76,9 @@ class BoxBridgeInput:
     cataloged spans.  Beams sit edge to edge (adjacent), beam 1 at
     ``y = 0``."""
 
+    #: PSBDD-1-25 box designation: ``"CB27-48"`` composite /
+    #: ``"B27-48"`` non-composite -- a key of the PSBD span tables in
+    #: :mod:`civilpy.structural.odot.box_beam_design`.
     box: str
     span_ft: float
     n_beams: int

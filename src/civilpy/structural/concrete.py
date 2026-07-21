@@ -13,7 +13,7 @@ All lengths in inches, forces in pounds (lb), stresses in psi.
 import functools
 import math
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Literal, Optional
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Anchor-rod thread lookup: UNC threads per inch → effective stress area (in²)
@@ -251,9 +251,11 @@ class AnchorBolts:
         N_ua: float = 0.0,
         V_ua: float = 0.0,
         # Shear direction
-        shear_direction: str = "perpendicular",
+        shear_direction: Literal["perpendicular", "parallel",
+                                 "away"] = "perpendicular",
         # Anchor type & adhesive bond
-        anchor_type: str = "cast_in",
+        anchor_type: Literal["cast_in", "post_installed",
+                             "adhesive"] = "cast_in",
         tau_uncr: Optional[float] = None,
         tau_cr: Optional[float] = None,
         # Seismic
@@ -1175,7 +1177,7 @@ class AnchorBolts:
         return N_ua_max, V_ua_max
 
     # ─────────────────────────────────────────────────────────────────────────
-    # Phase 4 — Visualisation & digital inputs
+    # Visualisation & digital inputs
     # ─────────────────────────────────────────────────────────────────────────
 
     def plot(self, title: str = "", figsize: tuple = (8, 7)):

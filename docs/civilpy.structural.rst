@@ -217,6 +217,14 @@ civilpy.structural.rhino\_barrier module
    :undoc-members:
    :show-inheritance:
 
+civilpy.structural.rhino\_bchw module
+-------------------------------------
+
+.. automodule:: civilpy.structural.rhino_bchw
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 civilpy.structural.rhino\_bim module
 ------------------------------------
 

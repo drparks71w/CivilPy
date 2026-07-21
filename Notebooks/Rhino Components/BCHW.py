@@ -1,54 +1,62 @@
-"""ODOT BCHW Box Culvert Headwall/Wingwall — GHPython (Rhino 8, CPython 3)
-source.
+"""ODOT BCHW Concrete Headwalls for Precast Box Culverts — GHPython
+(Rhino 8, CPython 3) source.
 
-Drop-in Grasshopper component for the BCHW plan insert (rev. 01-21-2022):
-one cast-in-place wingwall + foreslope wall, from dimensions the engineer
-supplies (this sheet has no dimension table -- every length is
-project-specific; see ``civilpy.structural.odot.box_culvert_headwall``'s
-module docstring). All engineering content comes from that module; this
+Drop-in Grasshopper component for the BCHW Design Data sheets (1/6-6/6):
+the **complete culvert-end assembly**, resolved from the sheet tables by
+``civilpy.structural.odot.box_culvert_headwall.design_headwall`` and
+emitted by ``civilpy.structural.rhino_bchw.bchw_emit`` — both wingwalls
+placed per headwall type, the foreslope wall on top of the box (barrel
+opening clear), footings + cutoff walls, a display-only precast box
+stub, and the X/Y/V/W/Z reinforcing series. Quantities are the sheet's
+tabulated values. All engineering content comes from those modules; this
 script only draws.
 
-The wingwall is generated with the box culvert wall face at y = 0 (the
-wingwall flares out to y = length), x = 0 on the box culvert centerline,
-z = 0 at the top of footing.
+Headwall types (sheet 1/6): "A" when the culvert is normal to the
+roadway (both wingwalls at 45 deg), "B" for roadway skews of 0/15/30/45
+deg (one 45 deg wingwall + one straight), "C" where site constraints
+keep both wingwalls parallel to the roadway.
+
+Frame: culvert axis = +x, headwall face through the origin, z = 0 at the
+top of footing, y = 0 on the culvert centerline.
 
 Component inputs (Type Hint / Access in parentheses):
-    length       (float, Item)  wingwall length L, ft
-    skew         (float, Item)  box culvert skew, degrees (optional, 0)
-    wall_height  (float, Item)  foreslope wall height H, ft
-    foreslope_height (float, Item)  hf, ft
-    cutoff_height    (float, Item)  hcw, ft
-    footing_width    (float, Item)  Wf, ft
-    box_wall_thickness (float, Item)  t box, in
-    bake         (bool, Item)   write display geometry to Culvert::BCHW
+    headwall_type (str, Item)   "A" | "B" | "C"
+    box_span      (float, Item) ft, 8-20 in 2 ft increments
+    box_rise      (float, Item) ft, 4-10 in 1 ft increments
+    slab_thickness (float, Item) box top/bottom slab, in (optional, 10)
+    skew          (float, Item) roadway skew theta, deg — Type B is
+                                tabulated for 0/15/30/45 (optional, 0)
+    foreslope_height (float, Item) 6 or 18 in (optional, 6)
+    box_stub      (float, Item) display-only box length behind the
+                                headwall, ft (optional, 4; 0 skips)
+    rebar         (bool, Item)  draw the bar centerlines (optional, True)
+    bake          (bool, Item)  write tagged geometry to Culvert layers
 Outputs:
-    wingwall  (Curve, Item)  wingwall flared outline
-    foreslope (Curve, Item)  Section A-A foreslope-wall profile
-    footing   (Curve, Item)  footing plan outline
-    report    (str)
+    solids     (Brep, List)   wingwalls / foreslope / cutoffs / footings / box
+    rebar_crvs (Curve, List)  reinforcing bar centerlines
+    report     (str)          resolved design + sheet quantity rollup
 
-Baked geometry is display-only and carries no gdr.* tags.
+Baked objects carry their full ``bim.*`` / ``pay.*`` / ``mat.*`` user
+text on the ``Culvert::*`` layers, so ``read_bim_quantities`` regenerates
+the sheet's estimated quantities from the saved document.
 """
 
-"""
-# //TODO - Missing civilpy import/design input
-- Might be the worst of all the SCDs in terms of geometry, no rebar at all, There's a vaguely wingwall shaped pentagram 
-    in the front orientation, the front and right perspectives are flipped again, There's a random rising line along the 
-    y-axis leading to nothing. there's a random box beneath the Z=0 axis, the skew seems to work.
-- wall_height input doesn't seem to actually do anything
-- foreslope_height is another input that will likely have to rely on a terrain model input, it shouldn't be user defined
-- cutoff_height seems to be bottom of footing depth below the Z=0 axis
-- footing_width should be renamed to footing depth probably (distance along the alignment
-- box_wall_thickness doesn't seem to do anything
-"""
+import sys
 
 import Rhino
 import Rhino.Geometry as rg
 
-from civilpy.structural.odot.box_culvert_headwall import (
-    WingwallInput,
-    layout_wingwall,
-)
+# DEV RELOAD: drop cached civilpy modules so every recompute re-imports
+# from the editable install -- a 'git pull' takes effect on the next
+# solve with no Rhino restart. Remove (or guard) once running a pinned
+# release instead of the development checkout.
+for _name in [n for n in list(sys.modules) if n.startswith("civilpy")]:
+    del sys.modules[_name]
+
+from civilpy.structural.odot.box_culvert_headwall import HeadwallInput
+from civilpy.structural.rhino_bchw import bchw_emit
+from civilpy.structural.rhino_bim import pay_item_quantities
+from civilpy.structural.rhino_layers import DEFAULT_COLORS
 
 TOL = Rhino.RhinoDoc.ActiveDoc.ModelAbsoluteTolerance
 
@@ -62,35 +70,60 @@ def _pt(p, s):
     return rg.Point3d(p[0] * s, p[1] * s, p[2] * s)
 
 
-def _polyline(pts, s, closed=False):
-    poly = [_pt(p, s) for p in pts]
-    if closed:
-        poly.append(poly[0])
-    return rg.Polyline(poly).ToNurbsCurve()
+def _prism_brep(obj, s):
+    loop = [_pt(p, s) for p in obj.points]
+    a = rg.Polyline(loop + [loop[0]]).ToNurbsCurve()
+    b = a.DuplicateCurve()
+    b.Translate(rg.Vector3d(*[c * s for c in obj.vector]))
+    lofted = rg.Brep.CreateFromLoft([a, b], rg.Point3d.Unset,
+                                    rg.Point3d.Unset, rg.LoftType.Straight,
+                                    False)
+    if not lofted:
+        return None
+    return lofted[0].CapPlanarHoles(TOL) or lofted[0]
 
 
-def _bake(objs):
-    doc = Rhino.RhinoDoc.ActiveDoc
+def _polyline_crv(obj, s):
+    return rg.Polyline([_pt(p, s) for p in obj.points]).ToNurbsCurve()
+
+
+def _ensure_layer(doc, path, rgb):
     import System.Drawing as sd
-    idx = doc.Layers.FindByFullPath("Culvert::BCHW", -1)
-    if idx < 0:
-        parent = doc.Layers.FindByFullPath("Culvert", -1)
-        if parent < 0:
+    idx = doc.Layers.FindByFullPath(path, -1)
+    if idx >= 0:
+        return idx
+    parent, accum = None, ""
+    for name in path.split("::"):
+        accum = name if not accum else accum + "::" + name
+        idx = doc.Layers.FindByFullPath(accum, -1)
+        if idx < 0:
             lyr = Rhino.DocObjects.Layer()
-            lyr.Name = "Culvert"
-            parent = doc.Layers.Add(lyr)
-        lyr = Rhino.DocObjects.Layer()
-        lyr.Name = "BCHW"
-        lyr.ParentLayerId = doc.Layers[parent].Id
-        lyr.Color = sd.Color.FromArgb(130, 150, 150)
-        idx = doc.Layers.Add(lyr)
-    a = Rhino.DocObjects.ObjectAttributes()
-    a.LayerIndex = idx
+            lyr.Name = name
+            if parent is not None:
+                lyr.ParentLayerId = doc.Layers[parent].Id
+            lyr.Color = sd.Color.FromArgb(*rgb[:3])
+            idx = doc.Layers.Add(lyr)
+        parent = idx
+    return idx
+
+
+def _bake(emit, geometry):
+    doc = Rhino.RhinoDoc.ActiveDoc
     n = 0
-    for o in objs:
-        if o is None:
+    for obj, geom in zip(emit.objects, geometry):
+        if geom is None:
             continue
-        doc.Objects.AddCurve(o, a)
+        a = Rhino.DocObjects.ObjectAttributes()
+        a.LayerIndex = _ensure_layer(
+            doc, obj.layer, DEFAULT_COLORS.get(obj.layer, (128, 128, 128)))
+        for k, v in obj.tags.items():
+            a.SetUserString(k, str(v))
+        if isinstance(geom, rg.Brep):
+            doc.Objects.AddBrep(geom, a)
+        elif isinstance(geom, rg.Curve):
+            doc.Objects.AddCurve(geom, a)
+        else:
+            doc.Objects.AddPoint(geom, a)
         n += 1
     doc.Views.Redraw()
     return n
@@ -98,42 +131,74 @@ def _bake(objs):
 
 # ── main ──────────────────────────────────────────────────────────────────
 
-wingwall, foreslope, footing = None, None, None
+solids, rebar_crvs = [], []
 
-_required = ("length", "wall_height", "foreslope_height", "cutoff_height",
-             "footing_width", "box_wall_thickness")
-if not all(globals().get(k) for k in _required):
-    report = "Connect all of: length, wall_height, foreslope_height, " \
-             "cutoff_height, footing_width, box_wall_thickness (ft/in). " \
-             "Optional: skew (deg), bake. BCHW has no dimension table -- " \
-             "every value is project-specific (from the box culvert design)."
+if not (globals().get("headwall_type") and globals().get("box_span")
+        and globals().get("box_rise")):
+    report = "Connect headwall_type ('A'|'B'|'C'), box_span (ft, 8-20), " \
+             "box_rise (ft, 4-10). Optional: slab_thickness (in, 10), " \
+             "skew (deg; Type B: 0/15/30/45), foreslope_height (in, 6 or " \
+             "18), box_stub (ft, 4), rebar (bool), bake. Dimensions, " \
+             "reinforcing, and quantities come from the Design Data " \
+             "sheet tables."
 else:
     s = _scale()
-    inp = WingwallInput(
-        length_ft=float(length),
-        skew_deg=float(skew) if globals().get("skew") else 0.0,
-        wall_height_ft=float(wall_height),
-        foreslope_height_ft=float(foreslope_height),
-        cutoff_wall_height_ft=float(cutoff_height),
-        footing_width_ft=float(footing_width),
-        box_wall_thickness_in=float(box_wall_thickness),
-    )
     try:
-        layout = layout_wingwall(inp)
+        inp = HeadwallInput(
+            headwall_type=str(headwall_type).strip().upper(),
+            box_span_ft=float(box_span),
+            box_rise_ft=float(box_rise),
+            box_slab_thickness_in=(float(slab_thickness)
+                                   if globals().get("slab_thickness")
+                                   else 10.0),
+            roadway_skew_deg=(float(skew) if globals().get("skew")
+                              else 0.0),
+            foreslope_wall_height_in=(float(foreslope_height)
+                                      if globals().get("foreslope_height")
+                                      else 6.0),
+        )
+        emit = bchw_emit(
+            inp,
+            box_stub_ft=(float(box_stub)
+                         if globals().get("box_stub") is not None else 4.0),
+            rebar=(bool(rebar) if globals().get("rebar") is not None
+                   else True))
     except ValueError as exc:
-        layout = None
+        emit = None
         report = "INPUT ERROR: {}".format(exc)
 
-    if layout:
-        wingwall = _polyline(layout.wingwall_outline, s, closed=True)
-        foreslope = _polyline(layout.foreslope_section, s)
-        footing = _polyline(layout.footing_outline, s, closed=True)
+    if emit:
+        geometry = []
+        for obj in emit.objects:
+            if obj.kind == "prism":
+                g = _prism_brep(obj, s)
+                solids.append(g)
+            elif obj.kind == "polyline":
+                g = _polyline_crv(obj, s)
+                rebar_crvs.append(g)
+            else:
+                g = _pt(obj.points[0], s)
+            geometry.append(g)
 
-        report_lines = [
-            "ODOT BCHW box culvert wingwall (rev. 01-21-2022)",
-        ] + list(layout.notes)
+        d = emit.design
+        row = d.row
+        lines = [
+            "ODOT BCHW Type {} headwall".format(inp.headwall_type),
+            "H required {:.2f} ft -> design height {:g} ft "
+            "(footing design {})".format(d.H_required, d.H,
+                                         row.footing_design),
+            "wingwalls: L1 {:g} / L2 {:g} ft, roots h1 {:g} / h2 {:g} ft, "
+            "t {:g} in".format(row.L1, row.L2, row.h1, row.h2, d.t_wall_in),
+            "X #{} @ {:g} in, Y #{} @ {:g} in (ext. {:g} ft)".format(
+                row.x_bar, row.x_spa_in, row.y_bar, row.y_spa_in, row.c),
+            "{} solids, {} bars".format(
+                len([g for g in solids if g]), len(rebar_crvs)),
+        ]
+        for item, rec in pay_item_quantities(emit).items():
+            lines.append("  {}  {:,.1f} {}  {}".format(
+                item, rec["qty"], rec["unit"], rec["desc"]))
         if globals().get("bake"):
-            n = _bake([wingwall, foreslope, footing])
-            report_lines.append(
-                "BAKED {} objects to Culvert::BCHW (display only).".format(n))
-        report = "\n".join(report_lines)
+            n = _bake(emit, geometry)
+            lines.append(
+                "BAKED {} tagged objects to Culvert::* layers.".format(n))
+        report = "\n".join(lines)

@@ -7,6 +7,120 @@ Versions follow [Semantic Versioning](https://semver.org/) (major.minor.patch).
 
 ## [Unreleased]
 
+- **Cost estimate straight from a BrIM `.3dm`
+  (`structural.bim.cost_estimate`, `structural.rhino_bim.read_bim_estimate`).**
+  The pay-item quantity read-back now runs through a swappable unit-price
+  book: `DEFAULT_UNIT_PRICES` seeds planning-level $/unit for the catalog
+  items, `cost_estimate(quantities, prices={...})` extends each row with
+  `unit_price`/`cost` (unpriced items are flagged, not silently dropped)
+  and totals the rest, and `read_bim_estimate(path)` does the whole trip
+  from a saved Rhino file in one call. Read-back also honors layer
+  visibility now — `read_bim_tags`/`read_bim_quantities` walk the layer
+  parent chain and skip components under a hidden layer (e.g. a `Legacy`
+  tree kept for reference), so the takeoff counts exactly what the
+  viewport shows (`include_hidden=True` restores the old behavior; the
+  bridge marker always comes back). Demonstrated end-to-end in the new
+  **BIM Cost Estimate from a Rhino Model** notebook against the committed
+  `AI Generated Bridge.3dm`.
+
+- **Critical-section alignment check for positive-moment RF
+  predictions (`structural.rating_ratios`).** Completes the ORIL 2026
+  flowchart: when positive moment governs, a known vehicle's RF only
+  transfers cleanly if its maximum-moment section falls near the
+  target's, so `predict_rating_factors` now computes each known's M+
+  peak-station offset as a fraction of the span and keeps only knowns
+  inside the report's ±5 % band (`ALIGNMENT_TOL`) in the average —
+  short spans under ~50 ft are where this bites, per the report's
+  Figure 6. Each `RFPrediction` carries the per-known `misalignment`
+  map, the `aligned` subset actually averaged, and an `alignment_ok`
+  flag that goes `False` when *no* known aligns (all are then averaged
+  as a fallback so callers can route the bridge to full analysis
+  instead). Shear and negative-moment cases skip the check — their
+  critical sections sit at the supports for every vehicle. Wired
+  through `identify_governing_case(alignment_tol=...)`; pass `None` to
+  disable. Tests cover long-span convergence, short-span exclusion
+  (a corrupted misaligned known cannot contaminate the prediction),
+  the none-aligned fallback, and the disabled path.
+
+- **Constrained inputs documented at the type level.** Enum-like string
+  parameters across the library now carry `typing.Literal` annotations
+  and `#:` field docs naming their allowed values — they render in the
+  Sphinx signatures, autocomplete in IDEs, and type-check statically
+  instead of failing at the runtime guard. Swept: slab-bridge
+  `edge_condition`, alignment curve `direction`, pier column `fixity`,
+  retaining-wall `method`, STM `solve` method, anchor `shear_direction`
+  / `anchor_type`, bearing `fixity` + `default_fixity`, barrier-run
+  `edge`, abutment `kind`, load `direction`, MGS bridge-terminal
+  designations and post `spacing`, and BCHW `headwall_type`.
+  Catalog-keyed strings (AISC girder/pile labels, ODOT railing and PSBD
+  box designations, line-girder `barrier`/`vehicle` choices) instead
+  gained field docs pointing at the owning catalog.
+
+- **Ratio matrices and governing-case identification
+  (`structural.rating_ratios`).** The core of the ORIL 2026 load-factor
+  assignment method (ODOT PID 123396): known rating factors scale to
+  unknown vehicles through 1D live-load-effect ratios because capacity
+  cancels, but the inventory hides *which* action governed — so
+  `identify_governing_case` matches the empirical relative-RF matrix
+  (`RF_i/RF_j`) against theoretical demand-ratio matrices (`E_j/E_i`)
+  per action and picks the minimum Frobenius-norm residual. Simple
+  spans compare M+ vs V on the longest span; `continuous=True` adds M-
+  and sweeps the paper's `r*L | L | r*L` three-span sub-model across
+  candidate span ratios (default 1.00-1.80 by 0.01) for the global
+  minimum, returning the best-fit ratio and the full sweep curves.
+  Demand bases (`simple_span_demands` / `three_span_demands`, cached
+  per configuration) ride the new `UnitResponses` fast path in
+  `continuous_beam` — unit-load matrices solved once per beam and
+  shared across all vehicles — and carry M+ peak stations for the
+  critical-section alignment check. `predict_rating_factors`
+  finishes the flowchart: each known RF scaled through the governing
+  ratio, averaged, with per-known-vehicle spread kept for QC.
+  Synthetic-recovery tests confirm exact identification of action and
+  span ratio (zero residual, ground-truth RFs reproduced) and
+  robustness to ±3 % RF noise.
+
+- **Rating-vehicle catalog and moving-load envelopes** (groundwork for
+  the ORIL 2026 load-factor assignment methodology, ODOT PID 123396).
+  `aashto.vehicles` gains a frozen `RatingVehicle` axle-train dataclass
+  and the full catalog behind Ohio's legal-load ratings: AASHTO legal
+  trucks Type 3 / 3S2 / 3-3 (MBE Fig. D6A-1), SHVs SU4-SU7 (Fig. D6A-2),
+  FAST-Act EV2/EV3, Ohio 2F1/3F1/4F1/5C1 (BDM 908), and HS20 / HL-93 in
+  train form — all exposed via `RATING_VEHICLES` and ready for the
+  axle-train steppers. `continuous_beam` gains `moving_load_envelope`:
+  unit-load response matrices (one stiffness solve per grid point, every
+  truck/direction/placement a gather-sum afterwards) enveloping shear and
+  moment at every station, with patterned lane-load placement from the
+  same influence columns and `EnvelopeExtreme` peak lookups (max M+, max
+  M-, max |V| with stations). Verified against the closed-form
+  influence-line path and the HS-20 textbook maximum.
+
+- **BCHW rebuilt against the actual Design Data sheets.** The module's
+  "no dimension table" premise was wrong — ODOT's six Design Data
+  sheets tabulate everything. `box_culvert_headwall` now carries the
+  full catalog: headwall Types A/B/C (Type B per roadway skew
+  0/15/30/45), the eight design-height rows each of dimensions,
+  X/Y bar callouts, footing designs 1-8 with their V/W/Z reinforcing,
+  foreslope-wall quantities, the span -> wall-thickness rule, and
+  `design_headwall` resolving `H = rise + 2 slab + foreslope height`
+  against the tables. `rhino_bchw.bchw_emit` produces the complete
+  culvert-end assembly — **both** wingwalls placed per type (45 deg /
+  straight / parallel, 2:1 backslope tops), the foreslope wall sitting
+  on top of the box with the barrel opening clear, a display-only
+  precast box stub, footings with the 4 ft extension and cutoff walls,
+  and the sheet's reinforcing series — on `Culvert::*` layers.
+  Wingwall roots retain the full design height H (the tabulated `h` is
+  the tip height, dropping with the graded embankment — level walls
+  tabulate h = H); the wall footings clip flush against the culvert
+  footing strip (no overlaps, no wedge gaps); the strip carries its own
+  V/W mats and Z cutoff bars running continuously across the opening;
+  and a skewed culvert's box stub is end-cut on the rotated headwall
+  plane. Quantities are the sheet's tabulated values (concrete on the
+  solids, reinforcing on schedule markers), so `pay_item_quantities` /
+  `read_bim_quantities` reproduce the sheet estimate exactly. The
+  Grasshopper component now takes the real design inputs (type, span,
+  rise, skew, foreslope height). All 24 civilpy-importing GH components
+  also gained the `# r: civilpy` package directive Rhino 8 needs.
+
 - **Basic line-girder tool (`structural.line_girder_tool`).** The
   simplest useful form of a shear/moment/deflection run, with no Rhino
   or MIDAS dependence: a `BridgeConfig` of dropdown-able settings
@@ -47,7 +161,7 @@ Versions follow [Semantic Versioning](https://semver.org/) (major.minor.patch).
   `read_bim_quantities` regenerates the pay-item estimate from the
   saved file exactly (round-trip covered in `test_rhino_bim`). The MCP
   server the prototypes used was only a transport; this is the
-  agent-free equivalent for locked-down networks.
+  equivalent for locked-down networks.
 
 - **Substructure Gallery notebook.** One 3-span bridge carrying one of
   each substructure type — semi-integral abutment, hammerhead pier,

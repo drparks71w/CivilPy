@@ -19,7 +19,7 @@ Conventions
   alignment is flat at ``z = 0``.
 
 Superelevation/cross-slope is not yet applied to offset elevations (offsets
-sit at the centerline profile elevation) -- see the Work Plan A1 note.
+sit at the centerline profile elevation).
 
 Examples
 --------
@@ -59,6 +59,7 @@ import math
 from dataclasses import dataclass
 
 from civilpy.transportation.curves import HorizontalCurve, station_str
+from typing import Literal
 
 
 def _dir(az_deg: float) -> tuple[float, float]:
@@ -91,7 +92,8 @@ class Curve:
 
     radius_ft: float
     delta_deg: float
-    direction: str = "R"
+    #: Turn direction looking up-station: ``"R"`` (right) or ``"L"``.
+    direction: Literal["R", "L"] = "R"
 
     def __post_init__(self):
         d = str(self.direction).upper()
@@ -201,7 +203,8 @@ class Alignment:
     @classmethod
     def between_points(cls, p0: tuple[float, float], p1: tuple[float, float],
                        *, start_station_ft: float = 0.0,
-                       radius_ft: float | None = None, direction: str = "R",
+                       radius_ft: float | None = None,
+                       direction: Literal["R", "L"] = "R",
                        start_elev_ft: float | None = None,
                        end_elev_ft: float | None = None,
                        terrain=None) -> "Alignment":

@@ -1,0 +1,67 @@
+{% set name = "civilpy" %}
+{% set version = "0.4.1" %}
+
+package:
+  name: {{ name|lower }}
+  version: {{ version }}
+
+source:
+  url: https://pypi.org/packages/source/{{ name[0] }}/{{ name }}/{{ name }}-{{ version }}.tar.gz
+  sha256: 976081b5268b6bff15986d593e0dc3f66f43809ade0231cb05180ca5c9f4be48
+
+build:
+  noarch: python
+  number: 0
+  script: {{ PYTHON }} -m pip install . -vv --no-deps --no-build-isolation
+  entry_points:
+    - civilpy = civilpy.cli:civilpy_cli
+
+requirements:
+  host:
+    - python >=3.9
+    - pip
+    - setuptools
+  run:
+    - python >=3.9
+    - numpy >=2.0
+    - pandas >=2.0
+    - sympy >=1.10
+    - matplotlib-base >=3.7
+    - plotly >=5.0
+    - scipy >=1.11
+    - pint >=0.20
+    - requests >=2.28
+    - beautifulsoup4 >=4.11
+    - pillow >=10.0
+    - openpyxl >=3.1
+    - termcolor >=1.1
+    - natsort >=8.2
+    - rich >=13.0
+    - prompt_toolkit >=3.0
+    - typing_extensions >=4.0
+    - ezdxf >=1.1
+
+test:
+  imports:
+    - civilpy
+  commands:
+    - pip check
+    - civilpy --help
+  requires:
+    - pip
+
+about:
+  home: https://daneparks.com/Dane/civilpy
+  summary: Civil Engineering Tools in Python
+  description: |
+    CivilPy is a collection of civil and structural engineering tools:
+    unit-aware calculations, design checks, DXF/geometry helpers, and
+    notebook-driven reports.
+  license: MIT
+  license_file: LICENSE
+  doc_url: https://dane.daneparks.com/civilpy
+  dev_url: https://daneparks.com/Dane/civilpy
+
+extra:
+  recipe-maintainers:
+    - drparks71

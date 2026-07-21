@@ -1,4 +1,3 @@
-# r: civilpy
 """ODOT SB-1-24 Single Span Slab Bridge — GHPython (Rhino 8, CPython 3) source.
 
 Drop-in Grasshopper component for SCD SB-1-24 (rev. 01-16-2026): the slab

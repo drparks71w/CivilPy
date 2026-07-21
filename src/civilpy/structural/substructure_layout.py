@@ -44,6 +44,7 @@ import math
 from dataclasses import dataclass, replace
 
 from civilpy.structural.substructure import SubstructureUnit, substructure_units
+from typing import Literal
 
 Point = tuple[float, float, float]
 
@@ -204,7 +205,8 @@ class AbutmentGeometry:
     piles: tuple[PileGeometry, ...]
     backwall: WallPanel | None = None
     wingwalls: tuple[WallPanel, ...] = ()
-    kind: str = "seat"
+    #: Abutment configuration this geometry represents.
+    kind: Literal["seat", "semi-integral", "integral"] = "seat"
     diaphragm: WallPanel | None = None
 
 
@@ -246,6 +248,8 @@ class AbutmentSpec:
     read from; ``wingwall_length_ft`` its run along the roadway."""
 
     pile_xs_ft: tuple[float, ...]
+    #: AISC HP label from :mod:`civilpy.structural.steel`, e.g.
+    #: ``"HP10X42"``.
     pile_shape: str = "HP10X42"
     pile_length_ft: float = 40.0
     backwall_thickness_in: float = 18.0
@@ -589,7 +593,9 @@ class PileBentSpec:
 
     cap_design: object
     pile_xs_ft: tuple[float, ...]
-    pile_shape: str = "HP12X53"        # CPP-1-08 default
+    #: AISC HP label from :mod:`civilpy.structural.steel`
+    #: (CPP-1-08 default ``"HP12X53"``).
+    pile_shape: str = "HP12X53"
     pile_length_ft: float = 40.0
 
     def build(self, layout, unit, **frame_kw) -> PierGeometry:
@@ -640,6 +646,8 @@ class IntegralAbutmentSpec:
     parameter; piles embed ``pile_embed_in`` (2 ft typical) into it."""
 
     pile_xs_ft: tuple[float, ...]
+    #: AISC HP label from :mod:`civilpy.structural.steel`, e.g.
+    #: ``"HP10X42"``.
     pile_shape: str = "HP10X42"
     pile_length_ft: float = 40.0
     diaphragm_thickness_in: float = 36.0

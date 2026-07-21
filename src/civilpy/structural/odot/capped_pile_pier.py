@@ -9,7 +9,7 @@
 Transcribed from Ohio DOT Standard Bridge Drawing **CPP-1-08**, "Capped
 Pile Pier for Continuous Slab Bridges" (rev. 07-21-2017, 1 sheet). The
 drawing remains the controlling document. CS-1-24's companion pier
-(rated Wave 4, not yet encoded -- see ``ODOT_SCD_Feasibility.md``).
+(feasibility rated in ``ODOT_SCD_Feasibility.md``).
 
 Unlike BCHW/CPA-1-08, this sheet is genuinely "clean and parametric": the
 pier cap length is a literal formula in terms of the bridge slab width and

@@ -8,8 +8,8 @@
 
 Turn a concrete D-region (a drawn rectangle or arbitrary polygon, with supports
 and loads) into an optimized strut-and-tie truss via SIMP topology optimization
-and skeleton extraction, then size and cost it.  Implements the roadmap in
-``docs/StrutAndTieSolver.md``.
+and skeleton extraction, then size and cost it.  The method is documented
+in ``docs/StrutAndTieSolver.md``.
 
 Typical use::
 

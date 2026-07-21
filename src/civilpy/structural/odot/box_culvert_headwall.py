@@ -38,6 +38,7 @@ legs" split as the sheet itself.
 
 import math
 from dataclasses import dataclass, field
+from typing import Literal
 
 Point = tuple[float, float]  # (x, y) inches, local to the bend shape
 
@@ -204,9 +205,9 @@ class WingwallInput:
     skew_deg: float           # box culvert skew, theta
     wall_height_ft: float     # H, foreslope wall height
     foreslope_height_ft: float  # hf
-    cutoff_wall_height_ft: float  # hcw
-    footing_width_ft: float   # Wf
-    box_wall_thickness_in: float  # t box
+    cutoff_wall_height_ft: float  # hcw, below top of footing (extends to -hcw)
+    footing_width_ft: float   # Wf, perpendicular to the wall face
+    box_wall_thickness_in: float  # t box; also the foreslope stem thickness
     embankment_slope: float = 2.0  # 2:1 (H:V), per the sheet
 
 
@@ -214,10 +215,13 @@ class WingwallInput:
 class WingwallLayout:
     """The generated wingwall + foreslope wall.
 
-    ``wingwall_outline`` is the wingwall's flared-plan footprint (top of
-    footing, z = 0); ``foreslope_section`` is the Section A-A profile (2:1
-    embankment line down to the foreslope wall, cutoff wall, footing) in
-    the Y-Z plane; ``footing_outline`` is the footing plan rectangle."""
+    ``wingwall_outline`` is the wingwall's flared elevation (top of
+    footing at z = 0, box-face height H tapering to hf at y = L);
+    ``foreslope_section`` is the Section A-A profile (cutoff wall,
+    footing top, foreslope-wall stem with its ``t box`` thickness, 2:1
+    embankment line off the back face) in the Y-Z plane;
+    ``footing_outline`` is the footing plan rectangle drawn at the
+    bottom-of-cutoff elevation ``-hcw``."""
 
     inputs: WingwallInput
     wingwall_outline: tuple[PointXYZ, PointXYZ, PointXYZ, PointXYZ]
@@ -253,15 +257,18 @@ def layout_wingwall(inp: WingwallInput) -> WingwallLayout:
                        pt(0.0, L, hf), pt(0.0, L, 0.0))
 
     # Section A-A: footing at z = 0, cutoff wall down to -hcw, foreslope
-    # wall up to hf, then the 2:1 embankment line continuing up from the
-    # top of wall.
+    # wall up to hf with its stem thickness (t box -- the wall wraps the
+    # box, so the stem matches the box wall), then the 2:1 embankment
+    # line continuing up from the top of the BACK face.
+    t_wall = inp.box_wall_thickness_in / 12.0
     embank_run = hf * inp.embankment_slope
     foreslope_section = (
         (0.0, -Wf / 2.0, -hcw),
         (0.0, -Wf / 2.0, 0.0),
         (0.0, 0.0, 0.0),
         (0.0, 0.0, hf),
-        (0.0, embank_run, hf * 2.0),
+        (0.0, t_wall, hf),
+        (0.0, t_wall + embank_run, hf * 2.0),
     )
 
     footing_outline = (pt(-Wf / 2.0, 0.0, -hcw), pt(-Wf / 2.0, L, -hcw),
@@ -287,3 +294,348 @@ def layout_wingwall(inp: WingwallInput) -> WingwallLayout:
         footing_outline=footing_outline,
         notes=notes,
     )
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# Design Data sheets 1/6-6/6 ("Concrete Headwalls for Precast Box
+# Culverts", ODOT Office of Structural Engineering / Hydraulics).  Unlike
+# the plan inserts above, these sheets ARE tabulated: pick the headwall
+# type from the roadway skew, compute the design height H, and read every
+# dimension, reinforcing callout, and quantity from the tables.
+# ══════════════════════════════════════════════════════════════════════════
+
+HEADWALL_TYPES = ("A", "B", "C")
+TYPE_B_SKEWS = (0.0, 15.0, 30.0, 45.0)
+
+#: Culvert size limits (sheet 1/6): precast spans 8-20 ft in 2 ft
+#: increments, rises 4-10 ft in 1 ft increments; ASTM C1433 covers spans
+#: to 12 ft, larger spans need an OSE box design.
+BOX_SPAN_RANGE_FT = (8.0, 20.0)
+BOX_RISE_RANGE_FT = (4.0, 10.0)
+
+#: Foreslope wall height above the top of the culvert (sheet 1/6):
+#: 6 in or 1'-6" only.
+FORESLOPE_WALL_HEIGHTS_IN = (6.0, 18.0)
+
+#: 2:1 backslope on Type A and Type B wingwall tops (sheet 6/6 note 8);
+#: Type C wingwall tops are level (note 9).
+WINGWALL_BACKSLOPE = 2.0
+WINGWALL_TIP_MIN_FT = 2.0
+
+FOOTING_EXTENSION_FT = 4.0     #: "4'-0" (MIN.)" footing run past the wall
+CUTOFF_WALL_WIDTH_FT = 1.5     #: 1'-6" cutoff wall (Section B-B)
+
+
+def box_wall_thickness_in(span_ft: float) -> float:
+    """Precast box wall thickness ``t box, wall`` (sheet 6/6 note 11):
+    8 in for 8 ft spans, 10 in for 10 ft spans, 12 in for spans of 12 ft
+    and over."""
+    if span_ft <= 8.0:
+        return 8.0
+    if span_ft <= 10.0:
+        return 10.0
+    return 12.0
+
+
+@dataclass(frozen=True)
+class HeadwallRow:
+    """One design-height row of a Type A/B/C table (sheets 2/6-5/6).
+
+    Lengths and heights in feet, bar spacings in inches, quantities as
+    printed: wingwall/footing concrete in cy and reinforcing in lbs are
+    **whole-assembly** (both wingwalls); culvert-footing values are per
+    lineal foot, to be multiplied by ``box span + 2 (t box, wall)``."""
+
+    H: float                   # design height, top of footing to top of
+    footing_design: int        # foreslope wall
+    L1: float                  # wingwall length (wall #1; both walls, A/C)
+    L2: float                  # wall #2 length (Type B); == L1 for A / C
+    h1: float                  # wingwall root height (wall #1)
+    h2: float                  # wall #2 root height; == h1 for A / C
+    footing_w: float           # #F, footing width
+    footing_t: float           # hF, footing thickness
+    hcw: float                 # cutoff wall height below the footing
+    a: float                   # footing toe dimension (Section A-A)
+    b: float                   # foreslope wall width (Section A-A)
+    x_bar: int                 # "X" vertical bars, far face
+    x_spa_in: float
+    y_bar: int                 # "Y" footing dowels into the stem
+    y_spa_in: float
+    c: float                   # "Y" bar extension length above the footing
+    wingwall_conc_cy: float
+    wingwall_reinf_lbs: float
+    footing_conc_cy: float
+    footing_reinf_lbs: float
+    culvert_footing_cy_per_ft: float
+    culvert_footing_lbs_per_ft: float
+
+
+def _row(H, fd, L1, L2, h1, h2, wf, hf, hcw, a, b, xb, xs, yb, ys, c,
+         cy, lbs, fcy, flbs, ccy, clbs) -> HeadwallRow:
+    return HeadwallRow(H=H, footing_design=fd, L1=L1, L2=L2, h1=h1, h2=h2,
+                       footing_w=wf, footing_t=hf, hcw=hcw, a=a, b=b,
+                       x_bar=xb, x_spa_in=xs, y_bar=yb, y_spa_in=ys, c=c,
+                       wingwall_conc_cy=cy, wingwall_reinf_lbs=lbs,
+                       footing_conc_cy=fcy, footing_reinf_lbs=flbs,
+                       culvert_footing_cy_per_ft=ccy,
+                       culvert_footing_lbs_per_ft=clbs)
+
+
+def _ft(f, i=0.0):
+    return f + i / 12.0
+
+
+#: Type A headwall (sheet 2/6): culvert normal to the roadway, both
+#: wingwalls skewed 45 degrees from the culvert centerline.
+TYPE_A_TABLE = (
+    _row(6.5, 1, _ft(7, 3), _ft(7, 3), 4.0, 4.0, 4.5, 1.5, 2.5,
+         _ft(1, 2), 1.0, 5, 18.0, 5, 18.0, _ft(2, 5),
+         3.02, 446, 6.00, 598, 0.43, 24.55),
+    _row(7.5, 1, 8.5, 8.5, 4.5, 4.5, 5.0, 1.5, 2.5,
+         1.5, 1.0, 5, 18.0, 5, 18.0, _ft(2, 5),
+         4.01, 533, 7.38, 733, 0.48, 27.58),
+    _row(8.5, 1, 10.0, 10.0, 5.0, 5.0, 5.5, 1.5, 2.5,
+         _ft(1, 11), 1.0, 5, 16.5, 5, 16.5, _ft(2, 5),
+         5.27, 726, 9.05, 830, 0.52, 28.61),
+    _row(9.5, 1, 11.5, 11.5, 5.5, 5.5, _ft(6, 3), 1.5, 2.5,
+         _ft(2, 3), 1.0, 5, 18.0, 5, 9.0, _ft(3, 10),
+         6.69, 934, 11.35, 911, 0.57, 29.90),
+    _row(10.5, 1, _ft(12, 9), _ft(12, 9), 6.0, 6.0, 7.0, 2.0, 2.0,
+         _ft(2, 11), 1.25, 5, 18.0, 5, 9.0, _ft(4, 2),
+         10.25, 1104, 16.19, 1087, 0.74, 33.95),
+    _row(11.5, 1, _ft(14, 3), _ft(14, 3), 6.5, 6.5, 7.5, 2.0, 2.0,
+         _ft(3, 5), 1.25, 5, 17.0, 5, 8.5, 5.0,
+         12.43, 1404, 18.87, 1205, 0.80, 35.06),
+    _row(12.5, 2, _ft(15, 9), _ft(15, 9), 7.0, 7.0, _ft(8, 9), 2.0, 2.0,
+         3.5, 1.25, 5, 17.0, 5, 8.5, _ft(5, 3),
+         14.82, 1580, 24.41, 1511, 0.89, 40.14),
+    _row(13.5, 6, 17.0, 17.0, 7.5, 7.5, 9.5, 2.0, 2.0,
+         _ft(3, 11), 1.25, 6, 18.0, 6, 9.0, _ft(6, 2),
+         17.18, 2139, 28.17, 2024, 0.97, 50.56),
+)
+
+#: Type B headwall (sheets 3/6 & 4/6): wall #1 at 45 degrees from the
+#: culvert centerline, wall #2 straight along the roadway line; tabulated
+#: per roadway skew theta.  Dimensions/reinforcing shared "for all values
+#: of theta"; lengths, heights, and quantities per skew.
+_B_SHARED = (
+    # H, ftg, #F, hF, hcw, a, b, X@x, Y@y, c
+    (6.5, 1, _ft(4, 9), 1.5, 2.5, _ft(1, 8), 1.0, 5, 18.0, 5, 18.0, _ft(2, 5)),
+    (7.5, 1, 5.5, 1.5, 2.5, _ft(2, 1), 1.0, 5, 15.0, 5, 15.0, _ft(2, 5)),
+    (8.5, 1, _ft(6, 3), 1.5, 2.5, 2.5, 1.0, 5, 18.0, 5, 9.0, _ft(2, 10)),
+    (9.5, 1, 7.0, 1.5, 2.5, _ft(2, 11), 1.0, 5, 18.0, 5, 9.0, _ft(3, 2)),
+    (10.5, 1, 8.0, 2.0, 2.0, _ft(3, 9), 1.25, 5, 14.5, 5, 7.25, _ft(3, 7)),
+    (11.5, 3, 9.0, 2.0, 2.0, _ft(4, 1), 1.25, 5, 14.5, 5, 7.25, _ft(3, 9)),
+    (12.5, 7, 10.0, 2.0, 2.0, 4.5, 1.25, 6, 16.0, 6, 8.0, _ft(4, 9)),
+    (13.5, 8, _ft(11, 3), 2.0, 2.0, _ft(4, 10), 1.25, 6, 12.5, 6, 6.25,
+     _ft(4, 11)),
+)
+
+_B_PER_SKEW = {
+    # theta: ((L1, L2, h1, h2, cy, lbs, fcy, flbs, ccy, clbs), ...)
+    0.0: (
+        (_ft(7, 1), 10.0, 4.0, 6.5, 3.89, 512, 6.94, 552, 0.47, 25.31),
+        (8.5, 12.0, 4.5, 7.5, 5.34, 667, 9.13, 684, 0.53, 28.77),
+        (_ft(9, 11), 14.0, 5.0, 8.5, 7.02, 921, 11.62, 819, 0.58, 30.15),
+        (_ft(11, 4), 16.0, 5.5, 9.5, 8.93, 1118, 14.39, 1006, 0.64, 33.53),
+        (_ft(12, 9), 18.0, 6.0, 10.5, 13.88, 1464, 21.52, 1222, 0.85, 38.09),
+        (_ft(14, 2), 20.0, 6.5, 11.5, 16.83, 1787, 26.54, 1569, 0.93, 45.09),
+        (_ft(15, 7), 22.0, 7.0, 12.5, 20.07, 2321, 32.04, 2213, 1.03, 57.50),
+        (17.0, 24.0, 7.5, 13.5, 23.59, 2928, 38.97, 3149, 1.13, 77.35),
+    ),
+    15.0: (
+        (_ft(8, 3), _ft(6, 4), 4.0, _ft(4, 9), 3.05, 422, 5.94, 493,
+         0.47, 25.31),
+        (_ft(9, 11), _ft(7, 11), 4.5, 5.5, 4.05, 582, 7.95, 631,
+         0.53, 28.77),
+        (11.5, 9.5, 5.0, _ft(6, 3), 5.63, 783, 10.20, 743, 0.58, 30.15),
+        (_ft(13, 2), _ft(11, 1), 5.5, 7.0, 7.22, 960, 12.76, 914,
+         0.64, 33.53),
+        (_ft(14, 10), _ft(12, 8), 6.0, _ft(7, 9), 11.32, 1245, 19.23, 1119,
+         0.85, 38.09),
+        (16.5, _ft(14, 3), 6.5, 8.5, 13.89, 1535, 23.91, 1431, 0.93, 45.09),
+        (_ft(18, 1), _ft(15, 10), 7.0, 9.5, 16.59, 2020, 28.96, 2019,
+         1.03, 57.50),
+        (_ft(19, 9), 17.5, 7.5, _ft(10, 3), 19.61, 2587, 35.52, 2902,
+         1.13, 77.35),
+    ),
+    30.0: (
+        (10.0, 4.0, 4.0, 3.5, 2.83, 407, 5.71, 468, 0.47, 25.31),
+        (12.0, _ft(5, 4), 4.5, _ft(4, 3), 3.99, 531, 7.74, 625,
+         0.53, 28.77),
+        (14.0, _ft(6, 8), 5.0, 5.0, 5.35, 772, 10.05, 739, 0.58, 30.15),
+        (16.0, 8.0, 5.5, 5.5, 6.87, 917, 12.64, 910, 0.64, 33.53),
+        (18.0, _ft(9, 4), 6.0, _ft(6, 3), 10.85, 1189, 19.13, 1115,
+         0.85, 38.09),
+        (20.0, _ft(10, 8), 6.5, 7.0, 13.29, 1483, 23.89, 1402, 0.93, 45.09),
+        (22.0, 12.0, 7.0, 7.5, 15.91, 1957, 29.11, 2019, 1.03, 57.50),
+        (24.0, _ft(13, 4), 7.5, _ft(8, 3), 18.84, 2520, 35.74, 2906,
+         1.13, 77.35),
+    ),
+    45.0: (
+        (_ft(13, 1), 4.0, 4.0, _ft(2, 9), 3.40, 469, 6.97, 535,
+         0.47, 25.31),
+        (_ft(15, 9), 4.0, 4.5, 3.5, 4.51, 590, 8.82, 676, 0.53, 28.77),
+        (_ft(18, 4), _ft(4, 11), 5.0, 4.0, 5.94, 825, 11.32, 793,
+         0.58, 30.16),
+        (_ft(20, 11), _ft(6, 1), 5.5, 4.5, 7.63, 983, 14.26, 978,
+         0.64, 33.53),
+        (_ft(23, 7), _ft(7, 3), 6.0, _ft(5, 3), 12.06, 1325, 21.66, 1196,
+         0.85, 38.09),
+        (_ft(26, 2), _ft(8, 5), 6.5, _ft(5, 9), 14.71, 1622, 27.05, 1575,
+         0.93, 45.09),
+        (_ft(28, 9), _ft(9, 7), 7.0, _ft(6, 3), 17.63, 2157, 32.96, 2226,
+         1.03, 57.50),
+        (_ft(31, 5), _ft(10, 9), 7.5, _ft(6, 9), 20.84, 2772, 40.55, 3223,
+         1.13, 77.35),
+    ),
+}
+
+TYPE_B_TABLES = {
+    theta: tuple(
+        _row(s[0], s[1], p[0], p[1], p[2], p[3], s[2], s[3], s[4], s[5],
+             s[6], s[7], s[8], s[9], s[10], s[11],
+             p[4], p[5], p[6], p[7], p[8], p[9])
+        for s, p in zip(_B_SHARED, rows))
+    for theta, rows in _B_PER_SKEW.items()
+}
+
+#: Type C headwall (sheet 5/6): both wingwalls parallel to the roadway
+#: (straight extensions of the headwall line); level wall tops (note 9,
+#: designed with a 2 ft live-load surcharge).
+TYPE_C_TABLE = (
+    _row(6.5, 1, 10.0, 10.0, 6.5, 6.5, _ft(5, 3), 1.5, 2.5,
+         _ft(1, 5), 1.0, 5, 17.5, 5, 17.5, _ft(2, 5),
+         4.82, 528, 8.62, 587, 0.49, 27.84),
+    _row(7.5, 1, 12.0, 12.0, 7.5, 7.5, _ft(5, 9), 1.5, 2.5,
+         2.0, 1.0, 5, 12.0, 5, 12.0, _ft(2, 5),
+         6.67, 749, 11.00, 695, 0.55, 29.04),
+    _row(8.5, 1, 14.0, 14.0, 8.5, 8.5, _ft(6, 3), 1.5, 2.5,
+         _ft(2, 7), 1.0, 5, 17.5, 5, 8.75, 3.5,
+         8.82, 1012, 13.62, 823, 0.59, 30.15),
+    _row(9.5, 1, 16.0, 16.0, 9.5, 9.5, 7.0, 1.5, 2.5,
+         _ft(2, 11), 1.0, 5, 17.5, 5, 8.75, _ft(3, 8),
+         11.26, 1261, 16.89, 1044, 0.64, 33.53),
+    _row(10.5, 1, 18.0, 18.0, 10.5, 10.5, 8.0, 2.0, 2.0,
+         _ft(3, 3), 1.25, 5, 18.0, 5, 9.0, _ft(3, 11),
+         17.50, 1485, 25.34, 1278, 0.85, 38.01),
+    _row(11.5, 1, 20.0, 20.0, 11.5, 11.5, 9.0, 2.0, 2.0,
+         _ft(3, 10), 1.25, 6, 18.0, 6, 9.0, 4.5,
+         21.30, 2201, 31.12, 1478, 0.92, 39.56),
+    _row(12.5, 4, 22.0, 22.0, 12.5, 12.5, _ft(9, 9), 2.0, 2.0,
+         _ft(4, 3), 1.25, 6, 16.0, 6, 8.0, _ft(5, 2),
+         25.47, 2775, 36.67, 2028, 1.0, 49.17),
+    _row(13.5, 5, 24.0, 24.0, 13.5, 13.5, _ft(10, 6), 2.0, 2.0,
+         _ft(4, 8), 1.25, 6, 13.0, 6, 6.5, _ft(5, 4),
+         30.0, 3454, 42.67, 2635, 1.06, 58.62),
+)
+
+#: Footing reinforcing (sheet 6/6): "V" transverse bars and "W"/"Z"
+#: longitudinal / cutoff bars per footing design number.
+FOOTING_REINFORCING = {
+    1: ((5, 18.0), (5, 18.0)),
+    2: ((5, 15.0), (5, 18.0)),
+    3: ((5, 12.0), (5, 18.0)),
+    4: ((5, 18.0), (5, 12.0)),
+    5: ((5, 15.0), (5, 9.0)),
+    6: ((6, 18.0), (6, 18.0)),
+    7: ((6, 18.0), (6, 18.0)),
+    8: ((6, 9.0), (6, 12.0)),
+}
+
+#: Foreslope wall quantities (sheet 6/6): (width b ft, height in) ->
+#: (reinf lbs/ft, conc cy/ft); multiply by box span + 2 (t box, wall).
+FORESLOPE_WALL_QUANTITIES = {
+    (1.0, 6.0): (6.70, 0.02),
+    (1.0, 18.0): (10.87, 0.06),
+    (1.25, 6.0): (7.22, 0.03),
+    (1.25, 18.0): (11.39, 0.07),
+}
+
+
+@dataclass(frozen=True)
+class HeadwallInput:
+    """Design inputs for one culvert-end headwall assembly (Design Data
+    sheets), resolved against the tables by :func:`design_headwall`."""
+
+    #: Sheet 1/6 selection: ``"A"`` when the culvert is normal to the
+    #: roadway (both wingwalls at 45 deg), ``"B"`` for roadway skews of
+    #: 0/15/30/45 deg (one 45 deg wingwall + one straight), ``"C"`` only
+    #: where site constraints keep both wingwalls parallel to the roadway.
+    headwall_type: Literal["A", "B", "C"]
+    #: Box clear span, ft — tabulated 8-20 in 2 ft increments
+    #: (:data:`BOX_SPAN_RANGE_FT`).
+    box_span_ft: float
+    #: Box clear rise, ft — tabulated 4-10 in 1 ft increments
+    #: (:data:`BOX_RISE_RANGE_FT`).
+    box_rise_ft: float
+    #: Box top/bottom slab thickness, in (from the box design); feeds
+    #: ``H = rise + 2 slab + foreslope height``.
+    box_slab_thickness_in: float = 10.0
+    #: Roadway skew theta, deg.  Type B is tabulated for
+    #: :data:`TYPE_B_SKEWS` (0/15/30/45) only.
+    roadway_skew_deg: float = 0.0
+    #: Foreslope wall height above the top of the culvert, in — the
+    #: sheet allows **6 or 18 only** (:data:`FORESLOPE_WALL_HEIGHTS_IN`).
+    foreslope_wall_height_in: float = 6.0
+
+
+@dataclass(frozen=True)
+class HeadwallDesign:
+    """The resolved design: the table row plus the derived dimensions."""
+
+    inputs: HeadwallInput
+    H: float                     # design height actually used (table row)
+    H_required: float            # rise + 2 t_slab + foreslope height
+    t_wall_in: float             # box/wingwall/stem thickness
+    row: HeadwallRow
+    v_bar: "tuple[int, float]"   # footing "V" transverse (size, spa in)
+    wz_bar: "tuple[int, float]"  # footing "W"/"Z" (size, spa in)
+    foreslope_lbs_per_ft: float
+    foreslope_cy_per_ft: float
+
+
+def design_headwall(inp: HeadwallInput) -> HeadwallDesign:
+    """Resolve a :class:`HeadwallInput` against the Design Data tables:
+    compute H = box rise + 2 (box slab thickness) + foreslope wall height
+    (sheet 1/6), round up to the next tabulated design height, and return
+    the row with its footing reinforcing and foreslope quantities."""
+    if inp.headwall_type not in HEADWALL_TYPES:
+        raise ValueError(f"headwall_type must be one of {HEADWALL_TYPES}")
+    lo, hi = BOX_SPAN_RANGE_FT
+    if not lo <= inp.box_span_ft <= hi:
+        raise ValueError(f"box_span_ft must be within {lo}-{hi} ft "
+                         "(sheet 1/6 culvert size limitations)")
+    lo, hi = BOX_RISE_RANGE_FT
+    if not lo <= inp.box_rise_ft <= hi:
+        raise ValueError(f"box_rise_ft must be within {lo}-{hi} ft")
+    if inp.foreslope_wall_height_in not in FORESLOPE_WALL_HEIGHTS_IN:
+        raise ValueError("foreslope_wall_height_in must be 6 or 18 "
+                         "(sheet 1/6)")
+
+    if inp.headwall_type == "B":
+        if inp.roadway_skew_deg not in TYPE_B_SKEWS:
+            raise ValueError(f"Type B is tabulated for skews "
+                             f"{TYPE_B_SKEWS} only")
+        table = TYPE_B_TABLES[inp.roadway_skew_deg]
+    elif inp.headwall_type == "A":
+        table = TYPE_A_TABLE
+    else:
+        table = TYPE_C_TABLE
+
+    H_req = (inp.box_rise_ft + 2.0 * inp.box_slab_thickness_in / 12.0
+             + inp.foreslope_wall_height_in / 12.0)
+    row = next((r for r in table if r.H >= H_req - 1e-9), None)
+    if row is None:
+        raise ValueError(
+            f"required design height {H_req:.2f} ft exceeds the table "
+            f"maximum {table[-1].H:g} ft -- needs a special wall design")
+
+    v, wz = FOOTING_REINFORCING[row.footing_design]
+    fs_lbs, fs_cy = FORESLOPE_WALL_QUANTITIES[
+        (row.b, inp.foreslope_wall_height_in)]
+    return HeadwallDesign(
+        inputs=inp, H=row.H, H_required=H_req,
+        t_wall_in=box_wall_thickness_in(inp.box_span_ft), row=row,
+        v_bar=v, wz_bar=wz,
+        foreslope_lbs_per_ft=fs_lbs, foreslope_cy_per_ft=fs_cy)

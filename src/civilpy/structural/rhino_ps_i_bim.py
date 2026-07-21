@@ -6,8 +6,8 @@
 
 """BrIM emit layer for prestressed I-beam bridges (PSID-1-13).
 
-The prestressed-I counterpart of :mod:`~civilpy.structural.rhino_box_bim`
-(work-plan phase 6): the executed design line from
+The prestressed-I counterpart of :mod:`~civilpy.structural.rhino_box_bim`:
+the executed design line from
 :func:`~civilpy.structural.ps_i_beam_pipeline.ps_i_beam_line_checks`
 drives the drawn geometry — the strand rows are the *designed* pattern,
 not a free parameter.

@@ -193,6 +193,7 @@ django/
 /Notebooks/*.pdf
 /Notebooks/Bridge Backlog Forecast.ipynb
 /Notebooks/.jupyter_ystore.db
+/Notebooks/tims_practice.db
 /res/sample point cloud/3DML_urban_point_cloud.xyz
 /res/sample point cloud/3DML_validation.xyz
 /res/sample point cloud/2020_Drone_M.las
@@ -263,3 +264,4 @@ django/
 # ODOT SCD PDF archive (~190 MB, re-downloadable from dot.state.oh.us)
 /res/odot_scds/*
 /Notebooks/temp_las/
+/Notebooks/api_cache/

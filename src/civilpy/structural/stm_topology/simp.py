@@ -4,7 +4,7 @@
 #  SPDX-License-Identifier: MIT
 #  See the LICENSE file in the project root for full license text.
 
-"""SIMP topology optimization (Phase 2 of the strut-and-tie solver roadmap).
+"""SIMP topology optimization for the strut-and-tie solver.
 
 Solid Isotropic Material with Penalization on the structured quad grid: a
 linear plane-stress FEA (the ``top88`` Q4 element) inside an optimality-criteria

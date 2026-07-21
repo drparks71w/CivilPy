@@ -60,6 +60,19 @@ LAYER_SUBSTRUCTURE = "Substructure"
 LAYER_CULVERT = "Culvert"
 LAYER_SITE = "Site"
 
+#: PROPOSED leaves for the BCHW headwall/wingwall emit (rhino_bchw).
+LAYER_CULVERT_BOX = "Culvert::Box"
+LAYER_CULVERT_WINGWALLS = "Culvert::Wingwalls"
+LAYER_CULVERT_WALLS = "Culvert::Foreslope Walls"
+LAYER_CULVERT_FOOTINGS = "Culvert::Footings"
+LAYER_CULVERT_REBAR = "Culvert::Rebar"
+
+#: PROPOSED leaves for the AS-1-15 approach slab emit (rhino_approach_slab):
+#: human-readable hierarchy under Deck (the slab rides with the roadway
+#: surface), rebar on its own toggleable/estimable sub-layer.
+LAYER_APPROACH_SLAB = "Deck::Approach Slab"
+LAYER_APPROACH_SLAB_REBAR = "Deck::Approach Slab::Rebar"
+
 #: PROPOSED leaves for the BrIM source-of-truth model (rhino_bim): concrete
 #: haunches, welded shear studs, and bearing load plates get their own layers
 #: under Superstructure so the composite-connection and bearing hardware can
@@ -94,6 +107,10 @@ DEFAULT_COLORS: dict[str, tuple[int, int, int, int]] = {
     LAYER_BARRIERS: (150, 150, 155, 255),
     LAYER_REBAR: (60, 120, 200, 255),
     LAYER_LANE_MARKINGS: (245, 225, 70, 255),
+    # approach slab reads as light-blue concrete with orange rebar (also
+    # the GH component's preview colors — keep them in sync here)
+    LAYER_APPROACH_SLAB: (173, 216, 230, 255),
+    LAYER_APPROACH_SLAB_REBAR: (255, 140, 0, 255),
     LAYER_SUPERSTRUCTURE: (40, 40, 40, 255),
     LAYER_GIRDERS: (40, 40, 40, 255),
     LAYER_SPLICES: (200, 30, 30, 255),
@@ -105,6 +122,11 @@ DEFAULT_COLORS: dict[str, tuple[int, int, int, int]] = {
     LAYER_TIE_RODS: (180, 60, 60, 255),
     LAYER_SUBSTRUCTURE: (120, 90, 70, 255),
     LAYER_CULVERT: (130, 150, 150, 255),
+    LAYER_CULVERT_BOX: (170, 170, 175, 255),
+    LAYER_CULVERT_WINGWALLS: (145, 135, 120, 255),
+    LAYER_CULVERT_WALLS: (150, 150, 155, 255),
+    LAYER_CULVERT_FOOTINGS: (110, 110, 115, 255),
+    LAYER_CULVERT_REBAR: (60, 120, 200, 255),
     LAYER_SITE: (150, 140, 120, 255),
     LAYER_HAUNCHES: (200, 200, 190, 255),
     LAYER_SHEAR_STUDS: (200, 120, 40, 255),

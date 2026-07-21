@@ -8,9 +8,6 @@ offending line.
 
 ## Redundant / duplicated modules
 
-- [ ] `src/civilpy/structural/steel_db_temp.py` — SQLite-backed duplicate of
-  `structural/steel.py` (CSV-backed). Pick one data backend, merge, delete
-  the other.
 - [ ] `src/civilpy/transportation/FHWA/snbi.py` vs
   `src/civilpy/state/ohio/snbi.py` — the real (national, Pydantic) SNBI
   validation models live under `state.ohio`; the FHWA module is a plotting

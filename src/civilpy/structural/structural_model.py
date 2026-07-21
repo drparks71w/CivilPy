@@ -6,8 +6,7 @@
 
 """The canonical structural model: a pure, IFC-aligned interchange hub.
 
-This is **stage S1** of the package-coherence track documented in
-``docs/Rhino Design Philosophy.md``.  It is the in-memory analogue of a tagged
+It is the in-memory analogue of a tagged
 ``.3dm`` / an IFC file: a discretized structure (nodes, elements, restraints,
 loads, results) carrying **3D geometry, full 6-DOF restraints, multiple load
 cases, and stable ids** -- everything the lossy 2D
@@ -62,6 +61,7 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass, field, replace
+from typing import Literal
 
 # ── DOF / restraint conventions ───────────────────────────────────────────────
 
@@ -228,7 +228,8 @@ class BeamLoad:
     w_start: float  # kip/ft
     w_end: float | None = None  # if None, uniform
     case: str = "default"
-    direction: str = "GZ"  # Global Z
+    #: MIDAS load direction: ``"GX"``, ``"GY"``, or ``"GZ"``.
+    direction: Literal["GX", "GY", "GZ"] = "GZ"
     id: str = field(default_factory=_new_id)
 
 
@@ -395,7 +396,8 @@ class StructuralModel:
 
     def add_beam_load(self, element_id: str, w_start: float,
                       w_end: float | None = None, *,
-                      case: str = "default", direction: str = "GZ",
+                      case: str = "default",
+                      direction: Literal["GX", "GY", "GZ"] = "GZ",
                       id: str | None = None) -> BeamLoad:
         if element_id not in self.elements:
             raise KeyError(f"beam load references unknown element id {element_id!r}")

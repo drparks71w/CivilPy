@@ -47,9 +47,9 @@ linework typed as the appropriate type of line
 | Status |    SCD Name/Notes    | Quality Score |
 |:-------|:--------------------:|:-------------:|
 | ✅     |  A-1-20 - Reviewed   |     2/10      |
-| ✅     |  AS-1-15 - Reviewed  |     7/10      |
+| ✅     |  AS-1-15 - Reviewed  |     8/10      |
 | ✅     |  AS-2-15 - Reviewed  |     5/10      |
-| ✅     |   BCHW - Reviewed    |     2/10      |
+| ✅     |   BCHW - Reviewed    |     8/10      |
 | ✅     |  BD-1-11 - Reviewed  |     4/10      |
 | ✅     | CPA-1-08 - Reviewed  |     5/10      |
 | ✅     | CPP-1-08 - Reviewed  |     5/10      |

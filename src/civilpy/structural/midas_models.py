@@ -56,7 +56,7 @@ def lb_per_in_to_kip_per_ft(k_lb_per_in: float) -> float:
 # ===================================================== shared MIDAS encoders
 #
 # The NODE/ELEM/CONS/UNIT/MATL encodings below are the *single* source of
-# those payload fragments (design-doc stage S4): both the hub serializer in
+# those payload fragments: both the hub serializer in
 # this module and ``TrussBridge.midas_payloads`` build them here so the two
 # Midas exporters cannot drift.
 
@@ -553,7 +553,7 @@ def soil_spring_supports(
     return assign
 
 
-# ============================================ canonical hub -> MIDAS (stage S4)
+# ============================================ canonical hub -> MIDAS
 #
 # The Rhino -> Midas adapter: read a tagged ``.3dm`` into the canonical
 # ``StructuralModel`` (``rhino_stm.read_structural_model``), then serialize that

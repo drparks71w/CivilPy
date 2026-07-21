@@ -22,7 +22,7 @@ cylinder and how to stamp a user string, never where a stud goes.  Known
 backends:
 
 * ``Notebooks/Rhino Components/draw_bim_emit.py`` — live-document driver
-  (run inside Rhino 8, e.g. through an MCP agent) that consumes
+  (run inside Rhino 8, from the ScriptEditor or over MCP) that consumes
   :func:`emit_to_json`.
 * The ``odot_bridge_generator_ghpython.py`` Grasshopper component shares
   the same :func:`~civilpy.structural.bridge_layout.layout_bridge` layout
@@ -47,7 +47,7 @@ Geometry record kinds
 ``point``
     A marker.  The ``bim.type = bridge`` marker carries the bridge-wide
     parameters, because standalone ``rhino3dm`` cannot write or read the
-    RhinoDoc string table (same G4 contract note as ``rhino_slab``); a
+    RhinoDoc string table (the same contract ``rhino_slab`` follows); a
     live-document backend *additionally* mirrors them into
     ``doc.Strings`` for the ``rhino_gdr`` reader.
 
@@ -81,6 +81,7 @@ from civilpy.structural.rhino_layers import (
     LAYER_LOAD_PLATES,
     LAYER_REBAR,
     LAYER_SHEAR_STUDS,
+    LAYER_SPLICES,
     LAYER_SUB_BACKWALLS,
     LAYER_SUB_CAPS,
     LAYER_SUB_COLUMNS,
@@ -181,7 +182,7 @@ def _arc(cw: float, ch: float, r: float, a0: float, a1: float,
 def i_profile_wh(section, arc_pts: int = 4) -> list[tuple[float, float]]:
     """Closed W-shape outline as ``(w, h)`` pairs in **inches**, ``w``
     across the flange (0 at the web centerline), ``h`` up from the bottom
-    face.  The web-to-flange k-fillets (work-plan 1.4 — no square
+    face.  The web-to-flange k-fillets (no square
     re-entrant corners) are tessellated with ``arc_pts`` points each; a
     section without a cataloged ``fillet_k`` falls back to square
     corners."""
@@ -260,7 +261,7 @@ def girder_bridge_emit(inp: BridgeInput, *,
 
     objects: list[EmitObject] = []
 
-    # bridge marker: bridge-wide parameters ride here (G4 contract) and a
+    # bridge marker: bridge-wide parameters ride here and a
     # live backend mirrors them into doc.Strings for rhino_gdr
     doc_tags = dict(layout.doc_tags)
     doc_tags.update({
@@ -445,6 +446,214 @@ def girder_bridge_emit(inp: BridgeInput, *,
                       doc_tags=doc_tags)
 
 
+# ── §3a beam customizations: cross-frames, stiffeners, field splices ───────
+#
+# The stored SteelGirderRecord (civilpy.structural.bim_spec) carries these
+# details; here they become tagged .3dm geometry appended to a bridge emit —
+# the "emit record" half of build-plan §3a, mirroring add_substructure().
+# Placement rides on the layout's already-solved girder lines and bearings;
+# each plate/member is a simple prism/polyline so the mesh flavor tessellates
+# it, stamped with bim.* + pay.* so the viewer takeoff and read-back include
+# it.  The record is accessed duck-typed to avoid a bim_spec import cycle.
+
+STEEL_UNIT_WT_PCF = 490.0        #: structural steel unit weight, lb/ft^3
+
+
+def _steel_lb(volume_cf: float) -> float:
+    return volume_cf * STEEL_UNIT_WT_PCF
+
+
+def _vplate(x: float, y_lo: float, y_hi: float, z_bot: float, z_top: float,
+            thickness_ft: float, layer: str, tags: dict) -> EmitObject:
+    """A transverse plate at station ``x`` (a Y-Z rectangle extruded a small
+    ``thickness`` along the bridge axis) — web/bearing stiffeners, splice
+    plates."""
+    loop = ((x, y_lo, z_bot), (x, y_hi, z_bot),
+            (x, y_hi, z_top), (x, y_lo, z_top))
+    return EmitObject(kind="prism", layer=layer, points=loop,
+                      vector=(thickness_ft, 0.0, 0.0), tags=tags)
+
+
+def _transverse_stiffeners(lines, ts, d_ft, grade):
+    out = []
+    spacing_ft = ts.spacing_in / 12.0
+    w_ft = ts.plate_width_in / 12.0
+    t_ft = ts.plate_thickness_in / 12.0
+    for g in lines:
+        z_top = g.start[2]
+        z_bot = z_top - d_ft
+        y = g.start[1]
+        x = g.start[0] + spacing_ft
+        n = 0
+        while x < g.end[0] - 1e-6:
+            n += 1
+            y_lo = y if ts.single_sided else y - w_ft
+            y_hi = y + w_ft
+            vol = (y_hi - y_lo) * d_ft * t_ft
+            out.append(_vplate(
+                x - t_ft / 2.0, y_lo, y_hi, z_bot, z_top, t_ft,
+                LAYER_GIRDERS,
+                bim.stiffener_tags(f"TS-G{g.line_no}-{n}", kind="transverse",
+                                   thickness_in=ts.plate_thickness_in,
+                                   grade=grade, weight_lb=_steel_lb(vol))))
+            x += spacing_ft
+    return out
+
+
+def _bearing_stiffeners(layout, lines, bs, d_ft, grade):
+    out = []
+    by_line = {g.line_no: g for g in lines}
+    w_ft = bs.plate_width_in / 12.0
+    t_ft = bs.plate_thickness_in / 12.0
+    for bp in layout.bearings:
+        g = by_line.get(bp.line_no)
+        if g is None:
+            continue
+        z_top = g.start[2]
+        z_bot = z_top - d_ft
+        x, y = bp.location[0], bp.location[1]
+        for p in range(bs.pairs):
+            for sign, tag in ((-1.0, "L"), (1.0, "R")):
+                y_lo, y_hi = sorted((y, y + sign * w_ft))
+                vol = w_ft * d_ft * t_ft
+                out.append(_vplate(
+                    x - t_ft / 2.0, y_lo, y_hi, z_bot, z_top, t_ft,
+                    LAYER_GIRDERS,
+                    bim.stiffener_tags(
+                        f"BS-G{g.line_no}-{bp.station_index}-{p + 1}{tag}",
+                        kind="bearing", thickness_in=bs.plate_thickness_in,
+                        grade=grade, weight_lb=_steel_lb(vol))))
+    return out
+
+
+def _longitudinal_stiffeners(lines, ls, d_ft, grade, L):
+    out = []
+    w_ft = ls.plate_width_in / 12.0
+    t_ft = ls.plate_thickness_in / 12.0
+    for g in lines:
+        z = g.start[2] - ls.location_from_top_flange_in / 12.0
+        y, x0 = g.start[1], g.start[0]
+        loop = ((x0, y, z), (x0, y + w_ft, z),
+                (x0, y + w_ft, z - t_ft), (x0, y, z - t_ft))
+        out.append(EmitObject(
+            kind="prism", layer=LAYER_GIRDERS, points=loop,
+            vector=(L, 0.0, 0.0),
+            tags=bim.stiffener_tags(
+                f"LS-G{g.line_no}", kind="longitudinal",
+                thickness_in=ls.plate_thickness_in, grade=grade,
+                weight_lb=_steel_lb(w_ft * t_ft * L))))
+    return out
+
+
+def _cross_frames(lines, cf, d_ft, grade, L):
+    out = []
+    try:
+        from civilpy.structural.steel import SteelSection
+        area_in2 = float(SteelSection(cf.member_shape).area.magnitude)
+    except Exception:                                 # noqa: BLE001
+        area_in2 = 4.0
+    a_ft2 = area_in2 / 144.0
+    ordered = sorted(lines, key=lambda g: g.line_no)
+    stations = cf.bay_stations(L)                     # per-bay, lossless
+    for g1, g2 in zip(ordered, ordered[1:]):
+        z_top = g1.start[2]
+        z_bot = z_top - d_ft
+        y1, y2 = g1.start[1], g2.start[1]
+        for n, x in enumerate(stations, start=1):
+            members = []
+            if cf.frame_type in ("X", "K"):
+                members += [((x, y1, z_bot), (x, y2, z_top)),
+                            ((x, y1, z_top), (x, y2, z_bot))]
+            if cf.frame_type in ("K", "bent_plate"):
+                members.append(((x, y1, z_bot), (x, y2, z_bot)))
+            for mi, (a, b) in enumerate(members):
+                length_ft = math.dist(a, b)
+                out.append(EmitObject(
+                    kind="polyline", layer=LAYER_DIAPHRAGMS, points=(a, b),
+                    tags=bim.cross_frame_tags(
+                        f"CF-{g1.line_no}{g2.line_no}-{n}-{mi + 1}",
+                        frame_type=cf.frame_type, member_shape=cf.member_shape,
+                        grade=grade, weight_lb=_steel_lb(a_ft2 * length_ft))))
+    return out
+
+
+def _field_splice(lines, sp, d_ft, grade, *, splice_len_ft=2.0):
+    out = []
+    bolts = sp.bolt_rows * sp.bolt_cols * 2          # both sides of the joint
+    t_ft = sp.splice_plate_thickness_in / 12.0
+    x0 = sp.station_ft - splice_len_ft / 2.0
+    sid = f"{sp.station_ft:g}"                        # unique per splice station
+    for g in lines:
+        z_top = g.start[2]
+        z_bot = z_top - d_ft
+        y = g.start[1]
+        bf_ft = sp.flange_width_left_in / 12.0
+        # web plate (thin in Y, full depth) + top/bottom flange plates
+        web = EmitObject(
+            kind="prism", layer=LAYER_SPLICES,
+            points=((x0, y, z_bot), (x0, y + t_ft, z_bot),
+                    (x0, y + t_ft, z_top), (x0, y, z_top)),
+            vector=(splice_len_ft, 0.0, 0.0),
+            tags=bim.field_splice_tags(f"SPL-G{g.line_no}@{sid}-web",
+                                       bolt_count=bolts, grade=grade,
+                                       weight_lb=_steel_lb(t_ft * d_ft
+                                                           * splice_len_ft)))
+        out.append(web)
+        for zf, tag in ((z_top, "top"), (z_bot, "bot")):
+            out.append(EmitObject(
+                kind="prism", layer=LAYER_SPLICES,
+                points=((x0, y - bf_ft / 2.0, zf), (x0, y + bf_ft / 2.0, zf),
+                        (x0, y + bf_ft / 2.0, zf - t_ft),
+                        (x0, y - bf_ft / 2.0, zf - t_ft)),
+                vector=(splice_len_ft, 0.0, 0.0),
+                tags=bim.field_splice_tags(
+                    f"SPL-G{g.line_no}@{sid}-{tag}", bolt_count=bolts,
+                    grade=grade,
+                    weight_lb=_steel_lb(bf_ft * t_ft * splice_len_ft))))
+    return out
+
+
+def add_girder_details(emit: BridgeEmit, record, *,
+                       apply_to=None) -> BridgeEmit:
+    """A new :class:`BridgeEmit` with one :class:`SteelGirderRecord`'s §3a
+    customizations (cross-frames, transverse/bearing/longitudinal stiffeners,
+    and a field splice) appended as tagged geometry — mirroring
+    :func:`add_substructure`, so the merged emit still round-trips through
+    :func:`emit_to_json`, :func:`read_bim_tags`, and the quantity rollup.
+
+    Placement uses the emit's solved girder lines; ``apply_to`` restricts it to
+    those ``line_no`` (default: every line).  The girder depth comes from the
+    record's controlling section (catalog or plate).  Only the details present
+    on the record are emitted.
+    """
+    layout = emit.layout
+    L = layout.total_length_ft
+    d_in, _t_w, _b_fc, _t_fc = record.section.resolve()
+    d_ft = d_in / 12.0
+    grade = record.grade.replace("Grade ", "")
+    lines = [g for g in layout.girders
+             if apply_to is None or g.line_no in apply_to]
+
+    extra: list[EmitObject] = []
+    if record.transverse_stiffener is not None:
+        extra += _transverse_stiffeners(lines, record.transverse_stiffener,
+                                        d_ft, grade)
+    if record.bearing_stiffener is not None:
+        extra += _bearing_stiffeners(layout, lines, record.bearing_stiffener,
+                                     d_ft, grade)
+    if record.longitudinal_stiffener is not None:
+        extra += _longitudinal_stiffeners(lines, record.longitudinal_stiffener,
+                                          d_ft, grade, L)
+    if record.cross_frame is not None:
+        extra += _cross_frames(lines, record.cross_frame, d_ft, grade, L)
+    for splice in (record.splices or ()):
+        extra += _field_splice(lines, splice, d_ft, grade)
+
+    return BridgeEmit(inputs=emit.inputs, layout=layout,
+                      objects=emit.objects + tuple(extra),
+                      doc_tags=emit.doc_tags)
+
+
 def _sbr1_cage(br, s: float, B: float, T: float, H: float, L: float,
                tan_skew: float, *, t_deck_in: float,
                scd_year: int | str) -> list[EmitObject]:
@@ -539,7 +748,7 @@ def _sbr1_cage(br, s: float, B: float, T: float, H: float, L: float,
     return out
 
 
-# ── substructure emit (work-plan phase 4) ─────────────────────────────────
+# ── substructure emit ─────────────────────────────────
 
 SUB_FC_PSI = 4000.0          #: Class QC1 substructure concrete
 
@@ -984,8 +1193,8 @@ class _WithId:
 def stm_overlay_emit(model, geom, layout) -> tuple[EmitObject, ...]:
     """The solved cap strut-and-tie model drawn in place on the
     ``Substructure::STM`` layers (ties red, struts blue) — the analysis
-    overlay work-plan 4.6 asks for, merged into the main document instead
-    of a separate ``.3dm``.
+    overlay merged into the main document instead of a separate
+    ``.3dm``.
 
     ``model`` is the solved
     :class:`~civilpy.structural.strut_and_tie.StrutAndTieModel` from the
@@ -1037,7 +1246,7 @@ def add_substructure(emit: BridgeEmit, sub, *,
                       doc_tags=emit.doc_tags)
 
 
-# ── estimating rollup + read-back (work-plan 3.2 / 3.3) ───────────────────
+# ── estimating rollup + read-back ───────────────────
 
 def _tag_quantities(tag_dicts) -> dict[str, dict]:
     """Group tag dicts by ``pay.item`` and total their ``pay.qty`` —
@@ -1067,10 +1276,33 @@ def pay_item_quantities(emit: BridgeEmit) -> dict[str, dict]:
     return _tag_quantities(o.tags for o in emit.objects)
 
 
-def read_bim_tags(path) -> dict:
+def _layer_visibility(f) -> dict[int, bool]:
+    """Effective visibility per layer index: a layer is visible only if it
+    and every ancestor up the parent chain is (matching what the Rhino
+    viewport shows when a parent layer is turned off)."""
+    by_id = {layer.Id: layer for layer in f.Layers}
+    out: dict[int, bool] = {}
+    for layer in f.Layers:
+        cur, visible = layer, True
+        while cur is not None:
+            if not cur.Visible:
+                visible = False
+                break
+            cur = by_id.get(cur.ParentLayerId)
+        out[layer.Index] = visible
+    return out
+
+
+def read_bim_tags(path, *, include_hidden: bool = False) -> dict:
     """Read a BrIM-tagged ``.3dm`` back: every object carrying ``bim.type``
     returns its full user-text dict, and the ``bim.type = bridge`` marker's
     tags come back as the bridge-wide record.
+
+    Components on hidden layers (directly, or under a hidden parent — e.g.
+    a ``Legacy`` tree kept for reference) are skipped, so the rollup counts
+    exactly what the Rhino document displays; pass ``include_hidden=True``
+    to read everything.  The bridge marker is document metadata and comes
+    back regardless.
 
     This is the round-trip half of the source-of-truth contract: the saved
     Rhino document alone carries enough attributes to regenerate the
@@ -1084,6 +1316,7 @@ def read_bim_tags(path) -> dict:
     f = r3.File3dm.Read(str(path))
     if f is None:
         raise FileNotFoundError(f"could not read 3dm file: {path}")
+    vis = _layer_visibility(f)
     bridge: dict = {}
     components: list[dict] = []
     for obj in f.Objects:
@@ -1092,13 +1325,29 @@ def read_bim_tags(path) -> dict:
         if btype == "bridge":
             bridge = us
         elif btype is not None:
-            components.append(us)
+            if include_hidden or (obj.Attributes.Visible
+                                  and vis.get(obj.Attributes.LayerIndex, True)):
+                components.append(us)
     return {"bridge": bridge, "components": components}
 
 
-def read_bim_quantities(path) -> dict[str, dict]:
+def read_bim_quantities(path, *, include_hidden: bool = False) -> dict[str, dict]:
     """Pay-item rollup for a saved BrIM ``.3dm`` (read-back + estimate)."""
-    return _tag_quantities(read_bim_tags(path)["components"])
+    return _tag_quantities(
+        read_bim_tags(path, include_hidden=include_hidden)["components"])
+
+
+def read_bim_estimate(path, prices: dict[str, float] | None = None,
+                      *, include_hidden: bool = False):
+    """Priced pay-item rollup straight from a saved BrIM ``.3dm`` — the
+    quantity read-back run through :func:`civilpy.structural.bim.cost_estimate`.
+    Unit prices default to the planning-level
+    :data:`~civilpy.structural.bim.DEFAULT_UNIT_PRICES` book; pass
+    ``prices`` to override with project numbers."""
+    from civilpy.structural.bim import cost_estimate
+
+    return cost_estimate(
+        read_bim_quantities(path, include_hidden=include_hidden), prices)
 
 
 # ── JSON transport for the live-document driver ───────────────────────────
@@ -1139,17 +1388,137 @@ def _newell_normal(pts) -> tuple[float, float, float]:
     return (nx / length, ny / length, nz / length)
 
 
-def _prism_geometry(r3, pts, vector):
+def _triangulate_loop(pts2d) -> list[tuple[int, int, int]]:
+    """Ear-clipping triangulation of a simple CCW 2D polygon (unrepeated
+    points).  Returns CCW-wound index triples.  Handles the non-convex
+    profiles the emits produce (I-sections with fillets, the crowned deck,
+    hammerhead elevation profiles) where a centroid fan would leave the
+    section."""
+    def cross(o, a, b):
+        return ((a[0] - o[0]) * (b[1] - o[1])
+                - (a[1] - o[1]) * (b[0] - o[0]))
+
+    span = max(max(abs(u), abs(v)) for u, v in pts2d) or 1.0
+    eps = 1e-12 * span * span
+    idx = list(range(len(pts2d)))
+    tris: list[tuple[int, int, int]] = []
+    while len(idx) > 3:
+        clipped = False
+        # prefer strictly convex ears; accept collinear ones only when
+        # no strict ear remains (degenerate but topologically sound)
+        for tol in (eps, -eps):
+            for k in range(len(idx)):
+                i0 = idx[k - 1]
+                i1 = idx[k]
+                i2 = idx[(k + 1) % len(idx)]
+                a, b, c = pts2d[i0], pts2d[i1], pts2d[i2]
+                if cross(a, b, c) <= tol:
+                    continue
+                if any(cross(a, b, p) >= -eps and cross(b, c, p) >= -eps
+                       and cross(c, a, p) >= -eps
+                       for p in (pts2d[m] for m in idx
+                                 if m not in (i0, i1, i2))):
+                    continue
+                tris.append((i0, i1, i2))
+                idx.pop(k)
+                clipped = True
+                break
+            if clipped:
+                break
+        if not clipped:                      # degenerate input: fan out
+            tris.extend((idx[0], idx[k], idx[k + 1])
+                        for k in range(1, len(idx) - 1))
+            return tris
+    tris.append((idx[0], idx[1], idx[2]))
+    return tris
+
+
+def _plane_basis(n: tuple[float, float, float]):
+    """Right-handed in-plane basis ``(e1, e2)`` with ``e1 x e2 = n``."""
+    a = (1.0, 0.0, 0.0) if abs(n[0]) < 0.9 else (0.0, 1.0, 0.0)
+    d = sum(ai * ni for ai, ni in zip(a, n))
+    e1 = tuple(ai - d * ni for ai, ni in zip(a, n))
+    length = math.sqrt(sum(c * c for c in e1)) or 1.0
+    e1 = tuple(c / length for c in e1)
+    e2 = (n[1] * e1[2] - n[2] * e1[1],
+          n[2] * e1[0] - n[0] * e1[2],
+          n[0] * e1[1] - n[1] * e1[0])
+    return e1, e2
+
+
+def _prism_mesh(r3, pts, vector):
+    """Closed prism mesh: side quads plus ear-clipped caps.  This is the
+    render-ready form a browser loader can shade directly — three's
+    ``3DMLoader`` has no tessellator, so breps arrive empty there — and
+    the caps are correct for non-convex profiles, unlike a centroid
+    fan."""
+    n = _newell_normal(pts)
+    h = sum(v * c for v, c in zip(vector, n))
+    if h < 0:                     # loop CCW about the extrusion direction
+        pts = tuple(reversed(pts))
+        n = tuple(-c for c in n)
+    e1, e2 = _plane_basis(n)
+    pts2d = [(sum(p[i] * e1[i] for i in range(3)),
+              sum(p[i] * e2[i] for i in range(3))) for p in pts]
+    tris = _triangulate_loop(pts2d)
+
+    m = r3.Mesh()
+    npt = len(pts)
+    for base in (pts, [tuple(c + v for c, v in zip(p, vector)) for p in pts]):
+        for p in base:
+            m.Vertices.Add(*p)
+    for i in range(npt):
+        j = (i + 1) % npt
+        m.Faces.AddFace(i, j, npt + j, npt + i)
+    for a, b, c in tris:
+        m.Faces.AddFace(a, c, b)                       # bottom cap, outward
+        m.Faces.AddFace(npt + a, npt + b, npt + c)     # top cap, outward
+    m.Normals.ComputeNormals()
+    m.Compact()
+    return m
+
+
+def _cylinder_mesh(r3, base, tip, radius_ft: float, segments: int = 16):
+    """Closed cylinder mesh (side quads + center-fan caps) between two
+    points — the render-ready twin of the cylinder brep."""
+    axis = tuple(t - b for b, t in zip(base, tip))
+    length = math.sqrt(sum(c * c for c in axis))
+    if length <= 0.0:
+        return None
+    a = tuple(c / length for c in axis)
+    e1, e2 = _plane_basis(a)
+
+    m = r3.Mesh()
+    for origin in (base, tip):
+        for k in range(segments):
+            t = 2.0 * math.pi * k / segments
+            m.Vertices.Add(*(o + radius_ft * (math.cos(t) * u
+                                              + math.sin(t) * v)
+                             for o, u, v in zip(origin, e1, e2)))
+    c0 = m.Vertices.Add(*base)
+    c1 = m.Vertices.Add(*tip)
+    for i in range(segments):
+        j = (i + 1) % segments
+        m.Faces.AddFace(i, j, segments + j, segments + i)
+        m.Faces.AddFace(c0, j, i)
+        m.Faces.AddFace(c1, segments + i, segments + j)
+    m.Normals.ComputeNormals()
+    m.Compact()
+    return m
+
+
+def _prism_geometry(r3, pts, vector, *, mesh: bool = False):
     """Prism solid for the offline backend.  The perpendicular case (every
     prism the emits produce today) becomes a capped ``Extrusion`` brep —
     correct caps for the non-convex profiles (I-sections, parapets).  An
-    oblique vector falls back to a closed mesh with centroid-fan caps."""
+    oblique vector — or ``mesh=True`` (the web-viewer path) — builds a
+    closed mesh with ear-clipped caps instead."""
     n = _newell_normal(pts)
     h = sum(v * c for v, c in zip(vector, n))
     residual = math.sqrt(sum((v - h * c) ** 2 for v, c in zip(vector, n)))
     v_len = math.sqrt(sum(v * v for v in vector)) or 1.0
 
-    if residual <= 1e-6 * v_len:
+    if not mesh and residual <= 1e-6 * v_len:
         loop = r3.Polyline()
         for p in pts:
             loop.Add(*p)
@@ -1157,25 +1526,11 @@ def _prism_geometry(r3, pts, vector):
         ext = r3.Extrusion.Create(loop.ToPolylineCurve(), h, True)
         return ext.ToBrep(False) if ext else None
 
-    m = r3.Mesh()
-    npt = len(pts)
-    for base in (pts, [tuple(c + v for c, v in zip(p, vector)) for p in pts]):
-        for p in base:
-            m.Vertices.Add(*p)
-    cx, cy, cz = (sum(p[i] for p in pts) / npt for i in range(3))
-    c0 = m.Vertices.Add(cx, cy, cz)
-    c1 = m.Vertices.Add(cx + vector[0], cy + vector[1], cz + vector[2])
-    for i in range(npt):
-        j = (i + 1) % npt
-        m.Faces.AddFace(i, j, npt + j, npt + i)
-        m.Faces.AddFace(c0, j, i)
-        m.Faces.AddFace(c1, npt + i, npt + j)
-    m.Normals.ComputeNormals()
-    m.Compact()
-    return m
+    return _prism_mesh(r3, pts, vector)
 
 
-def emit_to_3dm(emit: BridgeEmit, path, *, version: int = 7) -> dict[str, int]:
+def emit_to_3dm(emit: BridgeEmit, path, *, version: int = 7,
+                mesh: bool = False) -> dict[str, int]:
     """Bake the emit straight into a ``.3dm`` with standalone ``rhino3dm``
     — no Rhino session, no MCP server, no network: the notebook-only path
     to a real Rhino file.  Prisms become capped extrusion breps, studs
@@ -1183,10 +1538,16 @@ def emit_to_3dm(emit: BridgeEmit, path, *, version: int = 7) -> dict[str, int]:
     the same colored layer taxonomy as the live-document driver, each
     object stamped with its full user-text tags.  The bridge-wide record
     rides on the ``bim.type = bridge`` marker (standalone ``rhino3dm``
-    has no document string table — the G4 contract in the module
-    docstring), so :func:`read_bim_tags` / :func:`read_bim_quantities`
+    has no document string table — see the ``point`` record kind in
+    the module docstring), so :func:`read_bim_tags` / :func:`read_bim_quantities`
     round-trip from the saved file alone.  Returns per-layer object
     counts.
+
+    ``mesh=True`` routes every solid (prisms *and* stud cylinders)
+    through closed-mesh construction instead of breps — the web-viewer
+    flavor: headless ``rhino3dm`` cannot tessellate breps, so three's
+    ``3DMLoader`` renders a brep file empty, while meshes arrive
+    shaded.  Tag stamping and read-back are identical in both flavors.
 
     ``Notebooks/Rhino Components/draw_bim_emit.py`` remains the
     live-document twin (same JSON payload via :func:`emit_to_json`) when
@@ -1196,6 +1557,7 @@ def emit_to_3dm(emit: BridgeEmit, path, *, version: int = 7) -> dict[str, int]:
     from civilpy.structural.rhino_layers import ensure_layer
 
     f = r3.File3dm()
+    f.Settings.ModelUnitSystem = r3.UnitSystem.Feet
     layer_idx = {name: ensure_layer(f, name)
                  for name in sorted({o.layer for o in emit.objects})}
 
@@ -1208,7 +1570,7 @@ def emit_to_3dm(emit: BridgeEmit, path, *, version: int = 7) -> dict[str, int]:
 
         added = None
         if o.kind == "prism":
-            geom = _prism_geometry(r3, o.points, o.vector)
+            geom = _prism_geometry(r3, o.points, o.vector, mesh=mesh)
             if isinstance(geom, r3.Brep):
                 added = f.Objects.AddBrep(geom, a)
             elif geom is not None:
@@ -1219,18 +1581,25 @@ def emit_to_3dm(emit: BridgeEmit, path, *, version: int = 7) -> dict[str, int]:
                 pl.Add(*p)
             added = f.Objects.AddCurve(pl.ToPolylineCurve(), a)
         elif o.kind == "cylinder":
-            (bx, by, bz), (tx, ty, tz) = o.points
-            axis = (tx - bx, ty - by, tz - bz)
-            length = math.sqrt(sum(c * c for c in axis))
-            if length > 0.0:
-                brep = r3.Cylinder(r3.Circle(o.radius_ft), length).ToBrep(
-                    True, True)
-                xf = r3.Transform.PlaneToPlane(
-                    r3.Plane(r3.Point3d(0.0, 0.0, 0.0),
-                             r3.Vector3d(0.0, 0.0, 1.0)),
-                    r3.Plane(r3.Point3d(bx, by, bz), r3.Vector3d(*axis)))
-                brep.Transform(xf)
-                added = f.Objects.AddBrep(brep, a)
+            if mesh:
+                geom = _cylinder_mesh(r3, o.points[0], o.points[1],
+                                      o.radius_ft)
+                if geom is not None:
+                    added = f.Objects.AddMesh(geom, a)
+            else:
+                (bx, by, bz), (tx, ty, tz) = o.points
+                axis = (tx - bx, ty - by, tz - bz)
+                length = math.sqrt(sum(c * c for c in axis))
+                if length > 0.0:
+                    brep = r3.Cylinder(r3.Circle(o.radius_ft),
+                                       length).ToBrep(True, True)
+                    xf = r3.Transform.PlaneToPlane(
+                        r3.Plane(r3.Point3d(0.0, 0.0, 0.0),
+                                 r3.Vector3d(0.0, 0.0, 1.0)),
+                        r3.Plane(r3.Point3d(bx, by, bz),
+                                 r3.Vector3d(*axis)))
+                    brep.Transform(xf)
+                    added = f.Objects.AddBrep(brep, a)
         elif o.kind == "point":
             added = f.Objects.AddPoint(r3.Point3d(*o.points[0]), a)
 

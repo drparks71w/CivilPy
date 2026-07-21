@@ -8,8 +8,7 @@
 
 The PSBDD-1-25 tables are pre-engineered designs; this module is the
 pure-Python gate that *re-derives* the governing checks for one design
-line — the box-beam analog of the steel slice's line-girder envelope
-(work-plan 5.2/5.3):
+line — the box-beam analog of the steel line-girder envelope:
 
 * HL-93 demands from the same :func:`~civilpy.structural.girder_pipeline
   .girder_line_envelope` influence-line machinery the steel slice uses,
@@ -130,7 +129,7 @@ def structural_model_from_box(box: str, span_ft: float, n_beams: int, *,
                               fws_klf: float = 0.0):
     """Build the :class:`~civilpy.structural.structural_model
     .StructuralModel` hub for an adjacent box-beam bridge — the MIDAS
-    spoke (work-plan 5.4), one line of beam elements per box broken at
+    spoke: one line of beam elements per box broken at
     the diaphragm stations, transverse tie elements there (the tie-rod /
     keyway load path), a pin + roller per line, and the DC1/DC2/DW beam
     loads matching :func:`box_beam_line_checks` exactly, so the L1
