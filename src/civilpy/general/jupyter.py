@@ -12,6 +12,8 @@ calculation notebooks can be published as clean reports.
 """
 
 import asyncio
+import sys
+
 import nbformat
 from nbconvert import WebPDFExporter, PDFExporter, LatexExporter
 from nbconvert.preprocessors import TagRemovePreprocessor
@@ -31,8 +33,10 @@ def notebook_converter(notebook_path, format='webpdf', text_width="70ch",
     unless the notebook already carries a stamped title-block cell, which is
     kept as-is.
     """
-    # Set the appropriate event loop policy for Windows
-    if asyncio.get_event_loop().is_running():
+    # Windows' default proactor event loop breaks nbconvert's subprocess use;
+    # switch to the selector loop there. (The old running-loop check raised
+    # RuntimeError on Python 3.14, where get_event_loop() no longer creates one.)
+    if sys.platform.startswith("win"):
         asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
     # Read the notebook
