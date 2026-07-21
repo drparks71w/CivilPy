@@ -24,7 +24,7 @@ cache:
 .test_logic:
   script:
     - pip install uv
-    - uv venv venv
+    - uv venv --clear venv   # --clear: stale venv/ can arrive via the pre-uv branch cache
     - source venv/bin/activate
     - uv pip install setuptools -e ".[db,geo,web,jupyter,validation]" pytest pytest-cov
     - python -m pytest --cov --cov-report term --cov-report xml:coverage.xml
