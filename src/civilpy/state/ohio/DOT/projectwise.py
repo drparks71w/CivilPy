@@ -51,13 +51,12 @@ PLANVAULT_DISTRICT_FOLDERS = {
     "07": 8204, "08": 8205, "09": 8206, "10": 8207, "11": 8208, "12": 8209,
 }
 
-# Path of a project's Structures folder under 01 Active Projects.  The root
-# segment ("Documents") may need adjustment after the first
-# resolve-by-name-path test on the ODOT box.
-ACTIVE_STRUCTURES_PATH = (
-    "Documents\\01 Active Projects\\District {district}\\{county}"
-    "\\{pid}\\400-Engineering\\Structures"
+# Paths under 01 Active Projects.  The root segment ("Documents") may need
+# adjustment after the first resolve-by-name-path test on the ODOT box.
+ACTIVE_PROJECT_PATH = (
+    "Documents\\01 Active Projects\\District {district}\\{county}\\{pid}"
 )
+ACTIVE_STRUCTURES_PATH = ACTIVE_PROJECT_PATH + "\\400-Engineering\\Structures"
 
 # --- Grammars ----------------------------------------------------------------
 #: PlanVault filename: D{dd}-{PID}-{CTY}-{ROUTE}-{SLM}-{YEAR}-{NN}.pdf
@@ -153,20 +152,32 @@ def find_plans_by_bridge_key(county, route, slm, inventory, tol=0.20):
     return sorted(out, key=lambda r: r["slm_delta"])
 
 
-def find_plans_by_sfn(sfn, inventory, pids=None, bridge_name=None, tol=0.20):
+def find_plans_by_sfn(sfn, inventory, pids=None, project_rows=None,
+                      bridge_name=None, tol=0.20):
     """Every PlanVault plan set discoverable for an SFN.
 
-    PIDs come from ``pids`` if given, else live from TIMS
-    (:func:`sfn_to_pids`).  ``bridge_name`` (``'FRA-00270-22.66'``) enables
-    the county-route-SLM fallback tier.
+    PID sources, in priority order:
 
-    Returns ``{"sfn", "pids", "pid_hits", "name_hits"}`` — ``pid_hits`` are
-    high-confidence, ``name_hits`` are candidates (each row carries
-    ``slm_delta``).
+    - ``pids`` — an explicit iterable of PID strings;
+    - ``project_rows`` — dicts with at least a ``pid`` key (extras like a
+      work-type label or status ride along into the result).  Agencies with a
+      richer internal SFN→project crosswalk than public TIMS should inject it
+      here — TIMS only reaches back a handful of years;
+    - neither given — a live TIMS lookup (:func:`sfn_to_pids`).
+
+    ``bridge_name`` (``'FRA-00270-22.66'``) enables the county-route-SLM
+    fallback tier.
+
+    Returns ``{"sfn", "pids", "projects", "pid_hits", "name_hits"}`` —
+    ``pid_hits`` are high-confidence, ``name_hits`` are candidates (each row
+    carries ``slm_delta``).
     """
     sfn = str(sfn).strip()
+    project_rows = list(project_rows or [])
     if pids is None:
-        pids = sfn_to_pids(sfn)
+        pids = [r["pid"] for r in project_rows] if project_rows \
+            else sfn_to_pids(sfn)
+    pids = list(dict.fromkeys(str(p) for p in pids))
     pid_hits = []
     for pid in pids:
         pid_hits.extend(find_plans_by_pid(pid, inventory))
@@ -178,7 +189,7 @@ def find_plans_by_sfn(sfn, inventory, pids=None, bridge_name=None, tol=0.20):
             name_hits = [r for r in find_plans_by_bridge_key(
                 m["county"], m["route"], parse_slm(m["slm"]), inventory, tol)
                 if id(r) not in seen]
-    return {"sfn": sfn, "pids": list(pids),
+    return {"sfn": sfn, "pids": pids, "projects": project_rows,
             "pid_hits": pid_hits, "name_hits": name_hits}
 
 

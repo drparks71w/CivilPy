@@ -13,6 +13,7 @@ anywhere) and points at :mod:`civilpy.general.bentley.projectwise` for the
 raw Windows-native client.
 """
 from civilpy.state.ohio.DOT.projectwise import (  # noqa: F401
+    ACTIVE_PROJECT_PATH,
     ACTIVE_SHEET_GRAMMAR,
     ACTIVE_STRUCTURES_PATH,
     BRIDGE_NAME_GRAMMAR,
@@ -31,4 +32,10 @@ from civilpy.state.ohio.DOT.projectwise import (  # noqa: F401
     parse_slm,
     pull_plan,
     sfn_to_pids,
+)
+from civilpy.state.ohio.DOT.pw_project import (  # noqa: F401
+    DELIVERABLES,
+    ProjectWiseProject,
+    ProjectWiseSFN,
+    PWFolder,
 )

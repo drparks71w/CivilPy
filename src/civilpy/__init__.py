@@ -21,3 +21,14 @@ The package is organized by discipline:
   (``civilpy.general.units``), photo/EXIF tools, and database utilities.
 """
 
+
+def __getattr__(name):
+    # Lazy top-level conveniences (PEP 562) — keeps `import civilpy` light.
+    if name == "ProjectWiseProject":
+        from civilpy.state.ohio.DOT.pw_project import ProjectWiseProject
+        return ProjectWiseProject
+    if name == "projectwise":
+        import civilpy.projectwise as projectwise
+        return projectwise
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
