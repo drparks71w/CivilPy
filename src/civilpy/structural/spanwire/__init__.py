@@ -33,6 +33,10 @@ from civilpy.structural.spanwire.multispan import (
     SystemSolution,
     SpanWireSystem,
 )
+from civilpy.structural.spanwire.combination import (
+    CombinedPoleResult,
+    combine_pole,
+)
 
 __all__ = [
     "BALANCE_TOLERANCE_DEG",
@@ -40,6 +44,8 @@ __all__ = [
     "SegmentResult",
     "SystemSolution",
     "SpanWireSystem",
+    "CombinedPoleResult",
+    "combine_pole",
     "DEFAULT_CODELIST",
     "SignalHead",
     "SignPanel",

@@ -455,6 +455,41 @@ class SpanWireSystem:
             for pole, elevation in self.pole_attachment_elevations.items()
         }
 
+    def load_elevations(self, solution: SystemSolution) -> list[dict]:
+        """Wire elevation at every hung load — the legacy results window's
+        "Height of Each Signal or Sign Attachment Point above the Lowest".
+
+        Returns one record per load: segment, label, x_ft, elevation_ft,
+        and height_above_lowest_ft (relative to the lowest attachment
+        point among all loads, the legacy zero convention).
+        """
+        records = []
+        by_name = {s.name: s for s in solution.segments}
+        for seg in self.segments:
+            if not seg.loads:
+                continue
+            res = by_name[seg.name]
+            span = SimpleSpan(
+                self.plan_length(seg),
+                wire_weight_plf=seg.wire_weight_plf,
+                start_elevation_ft=res.start_elevation_ft,
+                end_elevation_ft=res.end_elevation_ft,
+                loads=seg.loads,
+            )
+            for load in seg.loads:
+                records.append({
+                    "segment": seg.name,
+                    "label": load.label,
+                    "x_ft": load.x_ft,
+                    "elevation_ft": span.wire_elevation(
+                        load.x_ft, res.horizontal_tension_lb),
+                })
+        if records:
+            lowest = min(r["elevation_ft"] for r in records)
+            for r in records:
+                r["height_above_lowest_ft"] = r["elevation_ft"] - lowest
+        return records
+
     # -- convenience builders ---------------------------------------------
 
     @classmethod
@@ -465,6 +500,7 @@ class SpanWireSystem:
         loads: dict[str, list[SpanLoad]] | None = None,
         wire_weight_plf: float = 0.0,
         pole_attachment_elevations: dict[str, float] | None = None,
+        wire_weights: dict[str, float] | None = None,
     ) -> "SpanWireSystem":
         """Three poles on one bullring.  Segments are named ``P1R1``,
         ``P2R1``, ``P3R1`` (load positions measured from the pole); the
@@ -478,6 +514,37 @@ class SpanWireSystem:
             loads=loads,
             wire_weight_plf=wire_weight_plf,
             pole_attachment_elevations=pole_attachment_elevations,
+            wire_weights=wire_weights,
+        )
+
+    @classmethod
+    def h(
+        cls,
+        ring_positions: tuple[tuple[float, float], tuple[float, float]],
+        tail_lengths: tuple[float, float, float, float],
+        tail_bearings_deg: tuple[float, float, float, float],
+        loads: dict[str, list[SpanLoad]] | None = None,
+        wire_weight_plf: float = 0.0,
+        pole_attachment_elevations: dict[str, float] | None = None,
+        wire_weights: dict[str, float] | None = None,
+    ) -> "SpanWireSystem":
+        """H configuration: two bullrings joined by a crossbar, two pole
+        tails on each ring.  Tails ``P1R1``/``P2R1`` hang off R1 and
+        ``P3R2``/``P4R2`` off R2; the crossbar is ``R1R2``.  Statically
+        determinate — no balance pole."""
+        rings = {f"R{i + 1}": pos for i, pos in enumerate(ring_positions)}
+        if len(rings) != 2:
+            raise ValueError("h needs exactly 2 ring positions")
+        tail_rings = ("R1", "R1", "R2", "R2")
+        return cls._from_tails(
+            rings,
+            [(ring, length, bearing) for ring, (length, bearing) in
+             zip(tail_rings, zip(tail_lengths, tail_bearings_deg))],
+            sides=[("R1", "R2")],
+            loads=loads,
+            wire_weight_plf=wire_weight_plf,
+            pole_attachment_elevations=pole_attachment_elevations,
+            wire_weights=wire_weights,
         )
 
     @classmethod
@@ -490,6 +557,7 @@ class SpanWireSystem:
         wire_weight_plf: float = 0.0,
         pole_attachment_elevations: dict[str, float] | None = None,
         balance_pole: str = "P2",
+        wire_weights: dict[str, float] | None = None,
     ) -> "SpanWireSystem":
         """Three bullrings in a triangle, one pole tail off each ring.
         Segments: tails ``P1R1``..``P3R3``, sides ``R1R2``, ``R2R3``,
@@ -506,6 +574,7 @@ class SpanWireSystem:
             wire_weight_plf=wire_weight_plf,
             pole_attachment_elevations=pole_attachment_elevations,
             balance_pole=balance_pole,
+            wire_weights=wire_weights,
         )
 
     @classmethod
@@ -518,6 +587,7 @@ class SpanWireSystem:
         wire_weight_plf: float = 0.0,
         pole_attachment_elevations: dict[str, float] | None = None,
         balance_pole: str = "P2",
+        wire_weights: dict[str, float] | None = None,
     ) -> "SpanWireSystem":
         """Four bullrings in a quadrilateral, one pole tail off each ring
         ("box with 4 tails").  Segments: tails ``P1R1``..``P4R4``, sides
@@ -534,6 +604,7 @@ class SpanWireSystem:
             wire_weight_plf=wire_weight_plf,
             pole_attachment_elevations=pole_attachment_elevations,
             balance_pole=balance_pole,
+            wire_weights=wire_weights,
         )
 
     @classmethod
@@ -546,10 +617,18 @@ class SpanWireSystem:
         wire_weight_plf: float,
         pole_attachment_elevations: dict[str, float] | None,
         balance_pole: str | None = None,
+        wire_weights: dict[str, float] | None = None,
     ) -> "SpanWireSystem":
-        loads = loads or {}
+        """``wire_weights`` overrides the uniform ``wire_weight_plf`` per
+        segment name — the legacy "Enable Variable Wire Weight" feature."""
+        loads = dict(loads or {})
+        wire_weights = dict(wire_weights or {})
         poles = {}
         segments = []
+
+        def wire_for(name: str) -> float:
+            return float(wire_weights.pop(name, wire_weight_plf))
+
         for i, (ring, length, bearing) in enumerate(tails):
             if length <= 0:
                 raise ValueError("tail lengths must be positive")
@@ -560,17 +639,20 @@ class SpanWireSystem:
                            ry + length * math.sin(angle))
             name = f"{pole}{ring}"
             segments.append(
-                SegmentDef(name, pole, ring, wire_weight_plf,
+                SegmentDef(name, pole, ring, wire_for(name),
                            tuple(loads.pop(name, ())))
             )
         for a, b in sides:
             name = f"{a}{b}"
             segments.append(
-                SegmentDef(name, a, b, wire_weight_plf,
+                SegmentDef(name, a, b, wire_for(name),
                            tuple(loads.pop(name, ())))
             )
         if loads:
             raise ValueError(f"loads reference unknown segments: {sorted(loads)}")
+        if wire_weights:
+            raise ValueError(
+                f"wire_weights reference unknown segments: {sorted(wire_weights)}")
         return cls(
             poles,
             rings,
