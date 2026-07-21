@@ -98,6 +98,85 @@ def sfn_to_pids(sfn, timeout=60):
                    if f["attributes"].get("PID_NBR")})
 
 
+#: Key in ``~/secrets.json`` whose value is the path of a *definitions* JSON
+#: describing the agency's internal SFN->project database.  The definitions
+#: file (kept outside this package — schemas are institution-private) has
+#: three generic keys::
+#:
+#:     {
+#:       "odbc":      "<pyodbc connection string>",
+#:       "sfn_query": "<SQL with exactly one ? parameter (the SFN)>",
+#:       "columns":   ["sfn", "pid", "label", "work_category", "status", ...]
+#:     }
+#:
+#: ``columns`` names the generic key for each column of the result set, in
+#: order; ``pid`` is required, anything else is optional and rides along.
+PROJECT_DB_SECRETS_KEY = "PROJECT_DB_DEFINITIONS"
+
+
+def load_project_db_definitions(path=None):
+    """The project-DB definitions dict, or ``None`` when not configured.
+
+    Resolution: explicit ``path`` argument, else ``~/secrets.json``'s
+    :data:`PROJECT_DB_SECRETS_KEY` entry.  Never raises for the ordinary
+    "not set up on this machine" cases.
+    """
+    import json
+    from pathlib import Path
+    if path is None:
+        try:
+            with open(Path.home() / "secrets.json") as fh:
+                path = json.load(fh).get(PROJECT_DB_SECRETS_KEY)
+        except (OSError, ValueError):
+            return None
+        if not path:
+            return None
+    try:
+        with open(path) as fh:
+            return json.load(fh)
+    except (OSError, ValueError):
+        return None
+
+
+def query_projects_by_sfn(sfn, definitions=None, _connect=None):
+    """Query the agency's internal project database for a bridge's projects.
+
+    Schema-free by design: the connection string, query text, and column
+    mapping all come from the definitions file (see
+    :data:`PROJECT_DB_SECRETS_KEY`), so this works identically for anyone —
+    with the definitions file and network access it returns live rows; without
+    them it returns ``None`` and callers fall back to public sources.
+
+    Returns a list of generic project dicts (``pid`` plus whatever the
+    definitions map), ``[]`` for a connected-but-no-rows bridge, or ``None``
+    when unconfigured/unreachable.
+    """
+    definitions = definitions or load_project_db_definitions()
+    if not definitions:
+        return None
+    try:
+        if _connect is None:
+            import pyodbc
+            _connect = pyodbc.connect
+        with _connect(definitions["odbc"], timeout=8) as cn:
+            cur = cn.cursor()
+            cur.execute(definitions["sfn_query"], str(sfn).strip())
+            raw = cur.fetchall()
+    except Exception:
+        return None
+    keys = definitions.get("columns", ["sfn", "pid"])
+    rows = []
+    for record in raw:
+        row = {k: ("" if v is None else str(v).strip())
+               for k, v in zip(keys, record)}
+        pid = row.get("pid", "")
+        pid = pid.split(".")[0] if pid else ""     # numeric PIDs arrive as floats
+        if pid:
+            row["pid"] = pid
+            rows.append(row)
+    return rows
+
+
 def parse_slm(text):
     """SLM string -> float miles. No decimal point means implied hundredths
     (``'2292'`` -> 22.92, matching ODOT bridge display names)."""
@@ -163,20 +242,30 @@ def find_plans_by_sfn(sfn, inventory, pids=None, project_rows=None,
       work-type label or status ride along into the result).  Agencies with a
       richer internal SFN→project crosswalk than public TIMS should inject it
       here — TIMS only reaches back a handful of years;
-    - neither given — a live TIMS lookup (:func:`sfn_to_pids`).
+    - the internal project database, when configured
+      (:func:`query_projects_by_sfn` via the secrets-referenced definitions
+      file);
+    - finally a live TIMS lookup (:func:`sfn_to_pids`).
 
     ``bridge_name`` (``'FRA-00270-22.66'``) enables the county-route-SLM
     fallback tier.
 
-    Returns ``{"sfn", "pids", "projects", "pid_hits", "name_hits"}`` —
-    ``pid_hits`` are high-confidence, ``name_hits`` are candidates (each row
-    carries ``slm_delta``).
+    Returns ``{"sfn", "pids", "pid_source", "projects", "pid_hits",
+    "name_hits"}`` — ``pid_hits`` are high-confidence, ``name_hits`` are
+    candidates (each row carries ``slm_delta``).
     """
     sfn = str(sfn).strip()
     project_rows = list(project_rows or [])
+    pid_source = "injected"
     if pids is None:
-        pids = [r["pid"] for r in project_rows] if project_rows \
-            else sfn_to_pids(sfn)
+        if not project_rows:
+            db_rows = query_projects_by_sfn(sfn)
+            if db_rows is not None:
+                project_rows, pid_source = db_rows, "project_db"
+        if project_rows:
+            pids = [r["pid"] for r in project_rows]
+        else:
+            pids, pid_source = sfn_to_pids(sfn), "tims"
     pids = list(dict.fromkeys(str(p) for p in pids))
     pid_hits = []
     for pid in pids:
@@ -189,7 +278,8 @@ def find_plans_by_sfn(sfn, inventory, pids=None, project_rows=None,
             name_hits = [r for r in find_plans_by_bridge_key(
                 m["county"], m["route"], parse_slm(m["slm"]), inventory, tol)
                 if id(r) not in seen]
-    return {"sfn": sfn, "pids": pids, "projects": project_rows,
+    return {"sfn": sfn, "pids": pids, "pid_source": pid_source,
+            "projects": project_rows,
             "pid_hits": pid_hits, "name_hits": name_hits}
 
 

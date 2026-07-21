@@ -96,3 +96,72 @@ def test_active_path_template():
 def test_district_folder_anchors():
     assert pw.PLANVAULT_DISTRICT_FOLDERS["06"] == 8203
     assert len(pw.PLANVAULT_DISTRICT_FOLDERS) == 12
+
+
+# --- schema-externalized project-DB query ------------------------------------
+
+def test_load_definitions_unconfigured(monkeypatch, tmp_path):
+    monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)  # no secrets.json
+    assert pw.load_project_db_definitions() is None
+
+
+def test_load_definitions_via_secrets(monkeypatch, tmp_path):
+    import json
+    defs = tmp_path / "defs.json"
+    defs.write_text(json.dumps({"odbc": "DSN=x", "sfn_query": "q?",
+                                "columns": ["sfn", "pid"]}))
+    (tmp_path / "secrets.json").write_text(
+        json.dumps({"PROJECT_DB_DEFINITIONS": str(defs)}))
+    monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
+    assert pw.load_project_db_definitions()["odbc"] == "DSN=x"
+
+
+class _FakeCursor:
+    def __init__(self, rows): self._rows = rows
+    def execute(self, sql, *params): self.params = params
+    def fetchall(self): return self._rows
+
+
+class _FakeConn:
+    def __init__(self, rows): self._rows = rows
+    def cursor(self): return _FakeCursor(self._rows)
+    def __enter__(self): return self
+    def __exit__(self, *exc): return False
+
+
+def test_query_projects_by_sfn_maps_generic_rows():
+    defs = {"odbc": "DSN=x", "sfn_query": "SELECT ... WHERE s = ?",
+            "columns": ["sfn", "pid", "label", "work_category", "status"]}
+    rows = [("2510774 ", 116581.0, "FRA-270-22.65 Abutment Repair",
+             "Bridge Preservation", "Active"),
+            ("2510774", None, "no pid -> dropped", "", "")]
+    out = pw.query_projects_by_sfn("2510774", definitions=defs,
+                                   _connect=lambda cs, timeout: _FakeConn(rows))
+    assert len(out) == 1
+    assert out[0]["pid"] == "116581"           # float un-mangled
+    assert out[0]["work_category"] == "Bridge Preservation"
+
+
+def test_query_projects_unconfigured_and_failing(monkeypatch, tmp_path):
+    monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
+    assert pw.query_projects_by_sfn("1") is None            # not configured
+    defs = {"odbc": "DSN=x", "sfn_query": "q", "columns": ["pid"]}
+    def boom(cs, timeout): raise OSError("off network")
+    assert pw.query_projects_by_sfn("1", definitions=defs, _connect=boom) is None
+
+
+def test_find_plans_by_sfn_prefers_project_db(inventory, monkeypatch):
+    import civilpy.state.ohio.DOT.projectwise as mod
+    monkeypatch.setattr(mod, "query_projects_by_sfn",
+                        lambda sfn: [{"pid": "78173", "status": "Sold"}])
+    res = pw.find_plans_by_sfn("0102318", inventory)
+    assert res["pid_source"] == "project_db"
+    assert len(res["pid_hits"]) == 1
+
+
+def test_find_plans_by_sfn_falls_back_to_tims(inventory, monkeypatch):
+    import civilpy.state.ohio.DOT.projectwise as mod
+    monkeypatch.setattr(mod, "query_projects_by_sfn", lambda sfn: None)
+    monkeypatch.setattr(mod, "sfn_to_pids", lambda sfn: ["100242"])
+    res = pw.find_plans_by_sfn("x", inventory)
+    assert res["pid_source"] == "tims" and len(res["pid_hits"]) == 1
