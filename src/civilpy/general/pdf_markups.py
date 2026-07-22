@@ -59,6 +59,18 @@ def extract_markups(pdf_path, include_bluebeam_raw=True):
                 irt_xref = None
                 if irt and irt[0] == "xref":
                     irt_xref = int(irt[1].split()[0])
+                # anchor geometry: arrows/leaders point AT the referent —
+                # a comment like "move to sheet 3" is meaningless without
+                # where the arrow head lands.
+                try:
+                    verts = annot.vertices
+                except Exception:
+                    verts = None
+                if verts:
+                    entry["vertices"] = [(round(x, 2), round(y, 2))
+                                         for x, y in verts]
+                    if entry["type"] in ("Line", "PolyLine"):
+                        entry["arrow_head"] = entry["vertices"][-1]
                 if include_bluebeam_raw:
                     bsi = {}
                     for key in doc.xref_get_keys(annot.xref):
@@ -101,3 +113,49 @@ def markup_summary(markups):
         "by_subject": dict(by_subject.most_common()),
         "by_type": dict(by_type.most_common()),
     }
+
+
+def anchor_text(pdf_path, markup, margin=72):
+    """Sheet text near a markup's anchor — labels, dimensions, detail
+    titles under the arrow/cloud.  ``margin`` is in points (72 = 1 inch).
+
+    This is what turns "move to sheet 3" + an arrow into a record that
+    knows *what* should move: the words the annotation points at.
+    """
+    import fitz
+
+    with fitz.open(str(pdf_path)) as doc:
+        page = doc[markup["page"] - 1]
+        pts = [markup.get("arrow_head")] if markup.get("arrow_head") else []
+        pts += list(markup.get("vertices") or [])
+        rect = fitz.Rect(*markup["rect"])
+        for x, y in [p for p in pts if p]:
+            rect |= fitz.Rect(x, y, x, y)
+        clip = fitz.Rect(rect.x0 - margin, rect.y0 - margin,
+                         rect.x1 + margin, rect.y1 + margin) & page.rect
+        # whole words whose box touches the clip — get_text(clip=...) would
+        # slice words at the boundary ("ABUTMENT E")
+        words = [w for w in page.get_text("words")
+                 if fitz.Rect(w[:4]).intersects(clip)]
+        return " ".join(w[4] for w in words).strip()
+
+
+def render_clip(pdf_path, markup, out_path, margin=108, dpi=150):
+    """Render the sheet region around a markup to a PNG.
+
+    The clip is the self-contained visual context for a comment card —
+    reviewable (by human or model) without hauling the full plan set.
+    Returns the output path.
+    """
+    import fitz
+
+    with fitz.open(str(pdf_path)) as doc:
+        page = doc[markup["page"] - 1]
+        rect = fitz.Rect(*markup["rect"])
+        for x, y in ([markup["arrow_head"]] if markup.get("arrow_head") else []):
+            rect |= fitz.Rect(x, y, x, y)
+        clip = fitz.Rect(rect.x0 - margin, rect.y0 - margin,
+                         rect.x1 + margin, rect.y1 + margin) & page.rect
+        pix = page.get_pixmap(clip=clip, dpi=dpi)
+        pix.save(str(out_path))
+    return out_path

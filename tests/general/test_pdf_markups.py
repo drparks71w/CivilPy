@@ -65,3 +65,21 @@ def test_unannotated_pdf(tmp_path):
     doc.close()
     assert extract_markups(path) == []
     assert markup_summary([])["total"] == 0
+
+
+def test_arrow_geometry_and_anchor_text(tmp_path):
+    from civilpy.general.pdf_markups import anchor_text, render_clip
+    doc = fitz.open()
+    page = doc.new_page()
+    page.insert_text((300, 300), "ABUTMENT ELEVATION")   # the referent
+    a = page.add_line_annot((100, 100), (295, 295))      # arrow to it
+    a.set_info(title="Reviewer", content="Move to sheet 3")
+    a.update()
+    path = tmp_path / "arrow.pdf"
+    doc.save(path); doc.close()
+
+    m = next(m for m in extract_markups(path) if m["type"] == "Line")
+    assert m["arrow_head"] == (295.0, 295.0)
+    assert "ABUTMENT ELEVATION" in anchor_text(path, m)
+    out = render_clip(path, m, tmp_path / "clip.png")
+    assert out.stat().st_size > 0
