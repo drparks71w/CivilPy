@@ -19,7 +19,7 @@ def doc(doc_id, filename, folder_id):
 class FakeClient:
     """Duck-typed stand-in for civilpy.general.bentley.projectwise."""
 
-    PATH = "Documents\\01 Active Projects\\District 06\\Franklin\\112665"
+    PATH = "01 Active Projects\\District 06\\Franklin\\112665"
 
     def __init__(self):
         self.folders = {

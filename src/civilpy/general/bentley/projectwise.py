@@ -415,6 +415,25 @@ def list_children(folder_id):
         dmscli.aaApi_DmsDataBufferFree(buf)
 
 
+def list_children_info(folder_id):
+    """[(name, id, description), ...] of a folder's immediate subfolders.
+
+    Same buffer as :func:`list_children` but also reads PROJ_PROP_DESC —
+    active-project folders often carry the PID or project label in the
+    description when the folder *name* is descriptive.
+    """
+    buf = dmscli.aaApi_SelectProjectDataBufferChilds2(folder_id, False)
+    if not buf:
+        return []
+    try:
+        return [(dmscli.aaApi_DmsDataBufferGetStringProperty(buf, PROJ_PROP_NAME, i),
+                 dmscli.aaApi_DmsDataBufferGetNumericProperty(buf, PROJ_PROP_ID, i),
+                 dmscli.aaApi_DmsDataBufferGetStringProperty(buf, PROJ_PROP_DESC, i) or "")
+                for i in range(dmscli.aaApi_DmsDataBufferGetCount(buf))]
+    finally:
+        dmscli.aaApi_DmsDataBufferFree(buf)
+
+
 def list_documents(folder_id):
     """One dict per document in the folder (calibrated properties)."""
     extend_prototypes()

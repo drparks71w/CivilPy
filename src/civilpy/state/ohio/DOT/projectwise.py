@@ -51,10 +51,15 @@ PLANVAULT_DISTRICT_FOLDERS = {
     "07": 8204, "08": 8205, "09": 8206, "10": 8207, "11": 8208, "12": 8209,
 }
 
-# Paths under 01 Active Projects.  The root segment ("Documents") may need
-# adjustment after the first resolve-by-name-path test on the ODOT box.
+# Paths under 01 Active Projects.  Root verified on-box 2026-07-22 via
+# aaApi_GetProjectNamePath2 round-trip: NO "Documents" prefix —
+# "01 Active Projects\\District 06" resolves (id 100).  Caveat: the {pid}
+# leaf only holds where the project folder is literally named by PID
+# (e.g. District 06); elsewhere folders carry descriptive names
+# ("- LUC IR 475 10.00 Widening"), so callers should fall back to walking
+# the county folder and matching PID against folder name/description.
 ACTIVE_PROJECT_PATH = (
-    "Documents\\01 Active Projects\\District {district}\\{county}\\{pid}"
+    "01 Active Projects\\District {district}\\{county}\\{pid}"
 )
 ACTIVE_STRUCTURES_PATH = ACTIVE_PROJECT_PATH + "\\400-Engineering\\Structures"
 
