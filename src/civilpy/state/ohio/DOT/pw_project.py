@@ -362,6 +362,48 @@ class ProjectWiseProject:
         return [ProjectWiseSFN(self, f) for f in self.structures.children
                 if re.match(r"SFN[_ ]?\d", f.name or "", re.IGNORECASE)]
 
+    def review_documents(self, budget=800, refresh=False):
+        """Every document under ``950-Reviews``, classified.
+
+        Walks the review subtree (budgeted) and attaches
+        :func:`~civilpy.state.ohio.DOT.review_taxonomy.classify_review_path`
+        / ``classify_review_file`` results, so callers can filter by
+        stage / role (submission, comments, disposition) / review type
+        (plan_review, sts, aer, load_rating, ...) without knowing the
+        PM's folder flavor.  Returns ``[]`` when the project has no
+        950-Reviews folder.
+        """
+        if not refresh and getattr(self, "_review_docs", None) is not None:
+            return self._review_docs
+        from civilpy.state.ohio.DOT.review_taxonomy import (
+            classify_review_file, classify_review_path)
+        try:
+            reviews = self.root["950-Reviews"]
+        except KeyError:
+            hits = self.root.find_folders([r"^950-Reviews$"], max_depth=2)
+            if not hits:
+                self._review_docs = []
+                return self._review_docs
+            reviews = hits[0]
+        out, remaining = [], [budget]
+
+        def _walk(folder, segments):
+            for d in folder.documents:
+                rec = dict(d)
+                rec["segments"] = list(segments)
+                rec["review_path"] = classify_review_path(segments)
+                rec["review_file"] = classify_review_file(d.get("filename", ""))
+                out.append(rec)
+            for child in folder.children:
+                if remaining[0] <= 0:
+                    return
+                remaining[0] -= 1
+                _walk(child, segments + [child.name])
+
+        _walk(reviews, [])
+        self._review_docs = out
+        return out
+
     def sfn(self, number):
         """The :class:`ProjectWiseSFN` for one structure file number."""
         number = str(number)

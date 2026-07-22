@@ -42,6 +42,13 @@ from civilpy.state.ohio.DOT.pw_project import (  # noqa: F401
     ProjectWiseSFN,
     PWFolder,
 )
+from civilpy.state.ohio.DOT.review_taxonomy import (  # noqa: F401
+    FILE_KIND_PATTERNS,
+    ROLE_PATTERNS,
+    TYPE_PATTERNS,
+    classify_review_file,
+    classify_review_path,
+)
 from civilpy.state.ohio.DOT.sheet_taxonomy import (  # noqa: F401
     CODE_INDEX,
     CODE_TABLES,
