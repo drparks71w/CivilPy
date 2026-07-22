@@ -388,6 +388,20 @@ def resolve_path(name_path):
     return max(dmscli.aaApi_GetProjectIdByNamePath(name_path), 0)
 
 
+def folder_path(folder_id, full=True, delim="\\", bufsize=2048):
+    """Numeric folder id -> canonical name path (None if the call fails).
+
+    The inverse of :func:`resolve_path` — use it on a folder id you already
+    hold (from a pwlink GUID, a tree survey, ...) to learn the exact path
+    string ``aaApi_GetProjectIdByNamePath`` expects, instead of guessing
+    the root segments.
+    """
+    buf = ctypes.create_unicode_buffer(bufsize)
+    ok = dmscli.aaApi_GetProjectNamePath2(folder_id, bool(full), delim,
+                                          buf, bufsize)
+    return buf.value if ok else None
+
+
 def list_children(folder_id):
     """[(name, id), ...] of a folder's immediate subfolders."""
     buf = dmscli.aaApi_SelectProjectDataBufferChilds2(folder_id, False)
