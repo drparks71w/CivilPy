@@ -53,17 +53,30 @@ from civilpy.state.ohio.DOT.sheet_taxonomy import (
 
 #: L&D Vol. 3 deliverables -> folder-name patterns (case-insensitive regex,
 #: matched against folder names breadth-first through the project tree).
-#: Names marked (verified) were confirmed on the live datasource; the rest
-#: are seeded from the manual's deliverable list pending recon.
+#: Names marked (verified) were confirmed on the live datasource (2026-07
+#: Probe F tree surveys of pw-02); the rest are seeded from the manual's
+#: deliverable list pending recon.  Verified skeleton: every active project
+#: carries the numbered template (000-Admin/010-ProjAdmin, 100-Planning,
+#: 200-Environmental, 300-Survey, 400-Engineering/<discipline>/{Basemaps,
+#: EngData,Sheets}, 500-RealEstate, 600-Contracts, 800-Construction,
+#: 950-Reviews).  Review submittals live under 950-Reviews as
+#: ``<type>/<bridge>/<YYYYMMDD (Re)Submittal>/Submittal`` and staged
+#: deliverable packages under 950-Reviews/Stage N/01-Submission/
+#: ``YYYYMMDD_StageN_Submittal/{Stage N Plans, Structure Design Reports,
+#: Bridge Load Rating Files, Bridge Stage N Checklists, Cost Estimate}``
+#: (mirrored in 010-ProjAdmin/Correspondence/Deliverables).
 DELIVERABLES = {
-    "sts": [r"structure\s*type\s*stud", r"\bSTS\b"],
+    "sts": [r"structure\s*type\s*stud", r"\bSTS\b"],    # (verified: "Structure Type Studies")
     "preliminary_plans": [r"preliminary", r"stage\s*1"],
-    "stage_1_plans": [r"stage\s*1"],
-    "stage_2_plans": [r"stage\s*2"],
-    "stage_3_plans": [r"stage\s*3"],
+    "stage_1_plans": [r"stage\s*_?1"],                  # (verified: "Stage 1 Plans", "Stage1_Submittal")
+    "stage_2_plans": [r"stage\s*_?2"],                  # (verified: "Stage 2 Plans", "Stage2_Submittal")
+    "stage_3_plans": [r"stage\s*_?3"],                  # (verified: "Stage3Railroad_Submittal")
     "final_tracings": [r"final\s*tracing", r"signed.*plans?"],
-    "structures": [r"^structures$"],                    # (verified)
+    "structures": [r"^structures$"],                    # (verified: 400-Engineering/Structures)
     "load_rating": [r"load\s*rating"],                  # (verified: "Bridge Load Rating Files")
+    "reviews": [r"^950-Reviews$"],                      # (verified: review-submittal home)
+    "design_reports": [r"structure\s*design\s*report"], # (verified: "Structure Design Reports")
+    "aer": [r"\bAERs?\b", r"alternative\s*evaluation"], # (verified: "950-Reviews/AERs")
     "foundation": [r"foundation", r"geotech", r"soil"],
     "hydraulics": [r"hydraul", r"scour", r"h\s*&\s*h"],
     "estimates": [r"estimate"],
