@@ -41,6 +41,10 @@ from __future__ import annotations
 
 import re
 
+from civilpy.state.ohio.DOT.folder_taxonomy import (
+    classify_project_path,
+    merge_key,
+)
 from civilpy.state.ohio.DOT.projectwise import (
     ACTIVE_PROJECT_PATH,
     ACTIVE_SHEET_GRAMMAR,
@@ -404,6 +408,132 @@ class ProjectWiseProject:
         self._review_docs = out
         return out
 
+    # -- full-tree walk / query (any series, consultant folders merged) --------
+    def walk(self, max_depth=12, budget=20000, refresh=False):
+        """Every document in the project, fully classified (cached).
+
+        Each dict carries the raw listing keys plus:
+
+        ``segments``
+            folder names below the project root (outermost first),
+        ``tree``
+            :func:`~civilpy.state.ohio.DOT.folder_taxonomy
+            .classify_project_path` of those segments (series, discipline,
+            consultant, CADD bucket, SFN/Wall, area),
+        ``sheet``
+            the L&D §1204 filename parse (or ``None``),
+        ``review_path`` / ``review_file``
+            the 950-Reviews classifications, only for documents inside a
+            reviews-series folder.
+
+        Consultant-parallel folders are not special-cased here — they
+        classify to the same series/discipline as the ODOT folder, which
+        is what makes :meth:`query` merge them for free.
+        """
+        if not refresh and getattr(self, "_walked", None) is not None:
+            return self._walked
+        from civilpy.state.ohio.DOT.review_taxonomy import (
+            classify_review_file, classify_review_path)
+        out, remaining = [], [budget]
+
+        def _walk(folder, segments):
+            for d in folder.documents:
+                rec = dict(d)
+                rec["segments"] = list(segments)
+                rec["folder"] = folder.path or folder.name
+                info = classify_project_path(segments)
+                rec["tree"] = info
+                rec["sheet"] = classify_filename(d.get("filename"))
+                if info["series"] == "reviews":
+                    rec["review_path"] = classify_review_path(segments[1:])
+                    rec["review_file"] = classify_review_file(
+                        d.get("filename", ""))
+                out.append(rec)
+            if len(segments) >= max_depth:
+                return
+            for child in folder.children:
+                if remaining[0] <= 0:
+                    return
+                remaining[0] -= 1
+                _walk(child, segments + [child.name])
+
+        _walk(self.root, [])
+        self._walked = out
+        return out
+
+    def query(self, series=None, discipline=None, sfn=None, bucket=None,
+              area=None, kind=None, stage=None, sheet_code=None,
+              consultant=None, pattern=None):
+        """Filter the classified walk — the general form of
+        :meth:`review_documents` for the whole tree.
+
+        All filters are ANDed; each accepts a single value or a set.
+        ``sfn`` is zero-padded for you; ``kind``/``stage`` apply the
+        950-Reviews file/path classifications; ``sheet_code`` matches the
+        L&D filename code (``"GP"``, ``"SB"`` ...); ``pattern`` is a
+        case-insensitive regex over the filename.  Consultant-parallel
+        folders are merged unless you pin ``consultant=`` (use
+        ``consultant=""`` for ODOT-only folders).
+
+        ::
+
+            project.query(series="survey", area="SurveyData")
+            project.query(discipline="structures", sfn=2502118,
+                          bucket="sheets")
+            project.query(series="reviews", stage="2", kind="comments")
+        """
+        def wants(value, want):
+            if want is None:
+                return True
+            if isinstance(want, (set, frozenset, list, tuple)):
+                return value in want
+            return value == want
+
+        if sfn is not None:
+            sfn = {str(s).zfill(7) for s in
+                   (sfn if isinstance(sfn, (set, list, tuple)) else [sfn])}
+        rx = re.compile(pattern, re.IGNORECASE) if pattern else None
+        hits = []
+        for rec in self.walk():
+            info = rec["tree"]
+            if not (wants(info["series"], series)
+                    and wants(info["discipline"], discipline)
+                    and wants(info["bucket"], bucket)
+                    and wants(info["area"], area)):
+                continue
+            if sfn is not None and info["sfn"] not in sfn:
+                continue
+            if consultant is not None \
+                    and (info["consultant"] or "") != consultant:
+                continue
+            if kind is not None and \
+                    rec.get("review_file", {}).get("kind") != kind:
+                continue
+            if stage is not None:
+                st = (rec.get("review_path", {}).get("stage")
+                      or rec.get("review_file", {}).get("stage"))
+                if st != str(stage):
+                    continue
+            if sheet_code is not None and not (
+                    rec["sheet"] and rec["sheet"]["code"] == sheet_code):
+                continue
+            if rx is not None and not rx.search(rec.get("filename") or ""):
+                continue
+            hits.append(rec)
+        return hits
+
+    def branches(self):
+        """The project's logical branches with document counts:
+        ``{(series, discipline, sfn_or_wall): n_docs}`` — consultant
+        folders merged via :func:`~civilpy.state.ohio.DOT
+        .folder_taxonomy.merge_key`.  This is the shape the MCP resource
+        listing serves."""
+        counts = {}
+        for rec in self.walk():
+            key = merge_key(rec["tree"])
+            counts[key] = counts.get(key, 0) + 1
+        return counts
+
     def sfn(self, number):
         """The :class:`ProjectWiseSFN` for one structure file number."""
         number = str(number)
@@ -426,3 +556,46 @@ class ProjectWiseProject:
 
     def __repr__(self):
         return f"<ProjectWiseProject PID {self.pid}>"
+
+
+# -- pw:// resource naming -----------------------------------------------------
+# The stable, path-independent address of a project branch:
+#   pw://{pid}                              the project
+#   pw://{pid}/{series}                     e.g. pw://112665/survey
+#   pw://{pid}/engineering/{discipline}     e.g. pw://112665/engineering/roadway
+#   pw://{pid}/engineering/structures/{sfn} one bridge's branch
+# This is the resource scheme the civilpy MCP server exposes; it names
+# *classified* branches, so folder renames and consultant-parallel folders
+# never change an address.
+
+def resource_uri(pid, series=None, discipline=None, sfn=None):
+    """Compose the ``pw://`` address of a project branch."""
+    parts = [f"pw://{pid}"]
+    if series:
+        parts.append(series)
+        if series == "engineering" and discipline:
+            parts.append(discipline)
+            if discipline == "structures" and sfn:
+                parts.append(str(sfn).zfill(7))
+    return "/".join(parts)
+
+
+def parse_resource(uri):
+    """``pw://`` address -> ``(pid, query_kwargs)`` for
+    :meth:`ProjectWiseProject.query`.
+
+    >>> parse_resource("pw://112665/engineering/structures/2510774")
+    ('112665', {'series': 'engineering', 'discipline': 'structures', 'sfn': '2510774'})
+    """
+    m = re.match(r"^pw://(?P<pid>\d+)(?:/(?P<rest>.*))?$", uri or "")
+    if not m:
+        raise ValueError(f"not a pw:// resource: {uri!r}")
+    kwargs = {}
+    rest = [p for p in (m["rest"] or "").split("/") if p]
+    if rest:
+        kwargs["series"] = rest[0]
+    if len(rest) > 1:
+        kwargs["discipline"] = rest[1]
+    if len(rest) > 2:
+        kwargs["sfn"] = rest[2]
+    return m["pid"], kwargs

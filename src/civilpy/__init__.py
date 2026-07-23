@@ -30,5 +30,8 @@ def __getattr__(name):
     if name == "projectwise":
         import civilpy.projectwise as projectwise
         return projectwise
+    if name in ("load_file_samples", "load_closed_samples"):
+        from civilpy.state.ohio.DOT import pw_snapshot
+        return getattr(pw_snapshot, name)
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
