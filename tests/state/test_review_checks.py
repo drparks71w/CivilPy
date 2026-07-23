@@ -61,7 +61,7 @@ class TestAbsenceDetection:
         got = by_check(run_checks(p))         # but has no utility files
         assert got["utility_evidence"]["status"] == "missing"
 
-    def test_load_rating_required_at_stage_3(self):
+    def test_load_rating_required_at_stage_2(self):
         record = copy.deepcopy(RECON_RECORD)
         eng = next(c for c in record["tree"]["children"]
                    if c["name"] == "400-Engineering")
@@ -70,7 +70,8 @@ class TestAbsenceDetection:
                            if c["name"] != "EngData"]
         client, path, pid = SnapshotClient.from_recon(record)
         p = ProjectWiseProject(pid, path=path, client=client)
-        assert by_check(run_checks(p, stage=3))["load_rating"]["status"] \
+        # load rating is part of the STAGE 2 submittal package
+        assert by_check(run_checks(p, stage=2))["load_rating"]["status"] \
             == "missing"
         assert by_check(run_checks(p, stage=1))["load_rating"]["status"] \
             == "attention"
@@ -135,3 +136,57 @@ class TestRobustness:
     def test_check_subset(self):
         findings = run_checks(snapshot_project(), checks=["geotech"])
         assert [f["check"] for f in findings] == ["geotech"]
+
+
+class TestStageDeliverables:
+    def test_complete_project_sts_and_stage2(self):
+        from civilpy.state.ohio.DOT.review_checks import (
+            check_stage_deliverables)
+        p = snapshot_project()
+        sts = {f["check"]: f for f in check_stage_deliverables(p, "sts")}
+        assert sts["stage_sts:sts_report"]["status"] == "ok"
+        assert sts["stage_sts:alternatives_narrative"]["status"] == "ok"
+        s2 = {f["check"]: f for f in check_stage_deliverables(p, 2)}
+        assert s2["stage_2:load_rating_files"]["status"] == "ok"
+        assert "1234567" in s2["stage_2:load_rating_files"]["evidence"]
+
+    def test_bdm_reference_in_evidence(self):
+        from civilpy.state.ohio.DOT.review_checks import (
+            check_stage_deliverables)
+        for f in check_stage_deliverables(snapshot_project(), 1):
+            assert "[BDM " in f["evidence"]
+
+    def test_per_sfn_missing_when_no_docs(self):
+        from civilpy.state.ohio.DOT.review_checks import (
+            check_stage_deliverables)
+        record = copy.deepcopy(RECON_RECORD)
+        eng = next(c for c in record["tree"]["children"]
+                   if c["name"] == "400-Engineering")
+        sfn = eng["children"][2]["children"][0]
+        sfn["children"] = [c for c in sfn["children"]
+                           if c["name"] != "EngData"]      # drop load rating
+        client, path, pid = SnapshotClient.from_recon(record)
+        p = ProjectWiseProject(pid, path=path, client=client)
+        s2 = {f["check"]: f for f in check_stage_deliverables(p, 2)}
+        assert s2["stage_2:load_rating_files"]["status"] == "missing"
+        assert "1234567" in s2["stage_2:load_rating_files"]["evidence"]
+
+    def test_conditional_railway_item_na(self):
+        from civilpy.state.ohio.DOT.review_checks import (
+            check_stage_deliverables)
+        s1 = {f["check"]: f
+              for f in check_stage_deliverables(snapshot_project(), 1)}
+        assert s1["stage_1:railway_supplemental_site_plan"]["status"] == "n/a"
+
+    def test_stage3_delegates_to_review_rounds(self):
+        from civilpy.state.ohio.DOT.review_checks import (
+            check_stage_deliverables)
+        s3 = {f["check"]: f
+              for f in check_stage_deliverables(snapshot_project(), 3)}
+        assert s3["stage_3:stage_2_comments_resolved"]["status"] == "ok"
+
+    def test_unknown_stage_raises(self):
+        from civilpy.state.ohio.DOT.review_checks import (
+            check_stage_deliverables)
+        with pytest.raises(KeyError):
+            check_stage_deliverables(snapshot_project(), 7)

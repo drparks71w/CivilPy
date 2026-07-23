@@ -95,3 +95,19 @@ class TestResources:
     def test_reject_non_pw(self):
         with pytest.raises(ValueError):
             parse_resource("http://example.com")
+
+
+class TestPwUrl:
+    def test_project_link(self, project):
+        url = project.pw_url()
+        assert url.startswith("pw:\\\\ohiodot-pw.bentley.com:"
+                              "ohiodot-pw-02\\Documents\\01 Active Projects")
+        assert url.endswith(PID)
+
+    def test_document_link(self, project):
+        doc = project.query(discipline="structures", sfn=SFN,
+                            bucket="sheets", consultant="")[0]
+        url = project.pw_url(doc)
+        assert url.endswith(
+            f"400-Engineering\\Structures\\SFN_{SFN}\\Sheets\\"
+            f"{doc['filename']}")

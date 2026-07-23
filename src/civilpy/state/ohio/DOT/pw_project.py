@@ -408,6 +408,29 @@ class ProjectWiseProject:
         self._review_docs = out
         return out
 
+    def pw_url(self, rec=None):
+        """Clickable ProjectWise Explorer link.
+
+        Without ``rec``: the project folder.  With a walk/query record:
+        that document.  The format is the one PW Explorer / the desktop
+        integration opens directly::
+
+            pw:\\\\ohiodot-pw.bentley.com:ohiodot-pw-02\\Documents\\
+            01 Active Projects\\District 06\\Franklin\\112665\\
+            400-Engineering\\Structures\\SFN_2510774\\Sheets\\...dgn
+
+        Links are built from the *snapshotted* path + segments, so a
+        folder renamed since the snapshot breaks the link (names churn;
+        ids are stable) — regenerate snapshots on a cadence, or resolve
+        by id on-box.
+        """
+        parts = [f"pw:\\\\{self.datasource}\\Documents\\{self.project_path}"]
+        if rec is not None:
+            parts += list(rec.get("segments") or [])
+            if rec.get("filename"):
+                parts.append(rec["filename"])
+        return "\\".join(parts)
+
     # -- full-tree walk / query (any series, consultant folders merged) --------
     def walk(self, max_depth=12, budget=20000, refresh=False):
         """Every document in the project, fully classified (cached).

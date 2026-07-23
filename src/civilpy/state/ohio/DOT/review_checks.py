@@ -45,7 +45,8 @@ from __future__ import annotations
 import re
 
 __all__ = ["run_checks", "summarize", "review_rounds",
-           "comments_addressed", "sheet_naming_conformance", "CHECKS"]
+           "comments_addressed", "sheet_naming_conformance", "CHECKS",
+           "STAGE_DELIVERABLES", "check_stage_deliverables"]
 
 UTILITY_PAT = re.compile(r"util", re.IGNORECASE)
 GEOTECH_PAT = re.compile(r"boring|geotech|soil|\bB-?\d{3}\b", re.IGNORECASE)
@@ -168,7 +169,9 @@ def check_sts(project, stage=None):
 
 
 def check_load_rating(project, stage=None):
-    """Load-rating files must exist by Stage 3 on a structure project."""
+    """Load-rating files are part of the Stage 2 submittal package on a
+    structure project (recon: ``.../Stage2_Submittal/Bridge Load Rating
+    Files``)."""
     if not _has_structures(project):
         return _finding("load_rating", "absence", "n/a",
                         "no structures branch on this project")
@@ -177,11 +180,11 @@ def check_load_rating(project, stage=None):
         return _finding("load_rating", "absence", "ok",
                         f"e.g. {docs[0]['filename']}", len(docs),
                         stage=stage)
-    status = "missing" if (stage or 0) >= 3 else "attention"
+    status = "missing" if (stage or 0) >= 2 else "attention"
     return _finding("load_rating", "absence", status,
                     "no load-rating documents "
-                    + ("(required at Stage 3)" if (stage or 0) >= 3
-                       else "(will be required by Stage 3)"),
+                    + ("(part of the Stage 2 submittal)" if (stage or 0) >= 2
+                       else "(will be required with Stage 2)"),
                     stage=stage)
 
 
@@ -318,6 +321,154 @@ def sheet_naming_conformance(project):
         return 0.0, 0
     good = sum(1 for d in docs if d["sheet"])
     return good / len(docs), len(docs)
+
+
+# -- stage-submittal deliverables (from the ODOT review checklists) ------------
+#: What each review-stage submittal package must contain, distilled from
+#: the ODOT checklists (StructureTypeStudyChecklist2022,
+#: Stage1PlanChecklist2022, Stage 2 Plan CheckList 07-2020, Stage 3
+#: CheckList 12-2014) down to what is decidable from document *presence*.
+#: ``bdm`` cites the governing BDM article.  ``per_sfn`` items must exist
+#: once per structure (BDM 201.2.1: "Separate ... for each SFN").
+#: ``when`` gates conditional items (e.g. railway supplements).
+STAGE_DELIVERABLES = {
+    "sts": [
+        {"item": "sts_report", "bdm": "201.1.2",
+         "patterns": [r"structure\s*type\s*stud", r"\bSTS\b.*report",
+                      r"type\s*study"]},
+        {"item": "alternatives_narrative", "bdm": "201.1.2.3",
+         "patterns": [r"alt(?:ernative)?s?\b", r"narrative"]},
+        {"item": "cost_analysis", "bdm": "201.1.2.4",
+         "patterns": [r"cost|estimate|\best\b"]},
+        {"item": "foundation_recommendations", "bdm": "201.1.2.5",
+         "patterns": [r"foundation|geotech|boring"]},
+        {"item": "preliminary_mot", "bdm": "201.1.2.6",
+         "patterns": [r"\bMOT\b|maintenance\s*of\s*traffic|detour"]},
+    ],
+    1: [
+        {"item": "preliminary_design_report", "bdm": "201.2.1",
+         "per_sfn": True,
+         "patterns": [r"preliminary\s*design\s*report",
+                      r"design\s*report", r"\bBPDR\b"]},
+        {"item": "final_site_plan", "bdm": "201.2.1.1",
+         "patterns": [r"site\s*plan", r"_SP\d{3}"]},
+        {"item": "final_mot_plan", "bdm": "201.2.1.2",
+         "patterns": [r"\bMOT\b|maintenance\s*of\s*traffic"]},
+        {"item": "foundation_exploration_report", "bdm": "201.2.1.3",
+         "patterns": [r"foundation|exploration|geotech|\bSFER\b|boring"]},
+        {"item": "sts_comment_disposition", "bdm": "201.2.1.E",
+         "patterns": [r"(STS|type\s*stud).*(disposi|comment)",
+                      r"(disposi|comment).*(STS|type\s*stud)"]},
+        {"item": "railway_supplemental_site_plan", "bdm": "201.2.1.4",
+         "when": lambda p: bool(p.query(
+             pattern=r"railroad|railway|\bCSX\b|\bNS\b\d|Norfolk")),
+         "patterns": [r"(supplemental|railroad|railway).*(site\s*plan)",
+                      r"site\s*plan.*(rail)"]},
+    ],
+    2: [
+        {"item": "stage_2_plans", "bdm": "202",
+         "patterns": [r"stage\s*_?2.*plan", r"S2.*plan", r"plan.*S2\b"]},
+        {"item": "structure_design_report", "bdm": "202",
+         "patterns": [r"structure\s*design\s*report", r"design\s*report"]},
+        {"item": "load_rating_files", "bdm": "202 / 900",
+         "per_sfn": True,
+         "patterns": [r"load\s*rating|\bBR-?100\b|\.xml$"]},
+        {"item": "stage_2_checklist", "bdm": "202",
+         "patterns": [r"(stage\s*_?2|bridge).{0,20}check\s*list",
+                      r"check\s*list.{0,20}stage\s*_?2"]},
+        {"item": "cost_estimate", "bdm": "202",
+         "patterns": [r"estimate|\best\b|cost"]},
+    ],
+    3: [
+        {"item": "stage_3_plans", "bdm": "203",
+         "patterns": [r"stage\s*_?3.*plan", r"S3.*plan", r"tracing"]},
+        {"item": "stage_2_comments_resolved", "bdm": "Stage 3 checklist",
+         "resolved_stage": "2"},
+    ],
+}
+
+
+def check_stage_deliverables(project, stage):
+    """Findings for one stage's submittal package (``stage`` in
+    ``{"sts", 1, 2, 3}``).
+
+    Presence-level only, by design: each finding says whether *any*
+    document matching the deliverable's patterns exists (per SFN where
+    the BDM requires one per structure).  Content-level checklist items
+    (dimensions shown, notes present, quantities add up) need the plan
+    PDFs/DGNs and belong to the extraction phase, not this walk.
+    """
+    items = STAGE_DELIVERABLES.get(stage)
+    if items is None:
+        raise KeyError(f"unknown stage {stage!r}; known: "
+                       f"{sorted(STAGE_DELIVERABLES, key=str)}")
+    stage_no = stage if isinstance(stage, int) else None
+    findings = []
+    for spec in items:
+        name = f"stage_{stage}:{spec['item']}"
+        if "resolved_stage" in spec:            # delegate to review rounds
+            open_rounds = [
+                r for r in review_rounds(project)
+                if r["stage"] == spec["resolved_stage"]
+                and r["comments"] and not r["dispositions"]]
+            status = "attention" if open_rounds else "ok"
+            findings.append(_finding(
+                name, "absence", status,
+                (f"stage {spec['resolved_stage']} has "
+                 f"{len(open_rounds)} unresolved comment round(s)"
+                 if open_rounds else
+                 f"no open stage-{spec['resolved_stage']} comment rounds")
+                + f" [BDM {spec['bdm']}]", stage=stage_no))
+            continue
+        if "when" in spec and not spec["when"](project):
+            findings.append(_finding(name, "absence", "n/a",
+                                     f"condition not met on this project "
+                                     f"[BDM {spec['bdm']}]", stage=stage_no))
+            continue
+        pattern = "|".join(f"(?:{p})" for p in spec["patterns"])
+        docs = project.query(pattern=pattern)
+        if not spec.get("per_sfn"):
+            status = "ok" if docs else "missing"
+            evidence = (f"e.g. {docs[0]['filename']}" if docs
+                        else "no matching document")
+            findings.append(_finding(name, "absence", status,
+                                     f"{evidence} [BDM {spec['bdm']}]",
+                                     len(docs), stage=stage_no))
+            continue
+        sfns = sorted({d["tree"]["sfn"]
+                       for d in project.query(discipline="structures")
+                       if d["tree"]["sfn"]})
+        if not sfns:
+            status = "ok" if docs else "missing"
+            findings.append(_finding(
+                name, "absence", status,
+                (f"e.g. {docs[0]['filename']}" if docs
+                 else "no matching document")
+                + f" (no SFN folders to check per-structure) "
+                  f"[BDM {spec['bdm']}]", len(docs), stage=stage_no))
+            continue
+        if not docs:
+            findings.append(_finding(
+                name, "absence", "missing",
+                f"no matching document (required per SFN: "
+                f"{', '.join(sfns)}) [BDM {spec['bdm']}]",
+                stage=stage_no))
+            continue
+        missing = [s for s in sfns
+                   if not any(s in (d.get("filename") or "")
+                              or d["tree"]["sfn"] == s for d in docs)]
+        if missing:
+            findings.append(_finding(
+                name, "absence", "attention",
+                f"found {len(docs)} docs but none attributable to SFN "
+                f"{', '.join(missing)} [BDM {spec['bdm']}]",
+                len(docs), stage=stage_no))
+        else:
+            findings.append(_finding(
+                name, "absence", "ok",
+                f"covered for SFN {', '.join(sfns)} [BDM {spec['bdm']}]",
+                len(docs), stage=stage_no))
+    return findings
 
 
 # -- entry points --------------------------------------------------------------

@@ -164,6 +164,7 @@ def query_documents(store, resource=None, pid=None, series=None,
     hits = project.query(**kwargs)
     return [{"filename": d.get("filename"),
              "path": "/".join(d.get("segments") or []),
+             "link": project.pw_url(d),
              "doc_id": d.get("doc_id"), "folder_id": d.get("folder_id"),
              "series": d["tree"]["series"],
              "discipline": d["tree"]["discipline"],
@@ -175,8 +176,16 @@ def query_documents(store, resource=None, pid=None, series=None,
 
 
 def project_checklist(store, pid, stage=None):
-    """Tier-2 completion/absence findings for one project."""
-    findings = run_checks(store.get(pid), stage=stage)
+    """Tier-2 completion/absence findings for one project.  With a
+    ``stage`` (``"sts"``, 1, 2, 3) the stage's submittal-package
+    deliverables (from the ODOT review checklists) are appended."""
+    from civilpy.state.ohio.DOT.review_checks import (
+        STAGE_DELIVERABLES, check_stage_deliverables)
+    project = store.get(pid)
+    numeric = stage if isinstance(stage, int) else None
+    findings = run_checks(project, stage=numeric)
+    if stage in STAGE_DELIVERABLES:
+        findings += check_stage_deliverables(project, stage)
     return {"pid": str(pid), "stage": stage, "findings": findings,
             "summary": summarize(findings)["counts"]}
 

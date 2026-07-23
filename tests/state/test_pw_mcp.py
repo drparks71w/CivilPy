@@ -57,6 +57,16 @@ class TestCoreApi:
         with pytest.raises(ValueError):
             query_documents(store)
 
+    def test_query_results_carry_clickable_links(self, store):
+        doc = query_documents(store, pid=PID, series="planning")[0]
+        assert doc["link"].startswith("pw:\\\\ohiodot-pw.bentley.com")
+        assert doc["link"].endswith(doc["filename"])
+
+    def test_checklist_with_stage_appends_deliverables(self, store):
+        result = project_checklist(store, PID, stage=2)
+        checks = {f["check"] for f in result["findings"]}
+        assert "stage_2:load_rating_files" in checks
+
     def test_query_limit(self, store):
         assert len(query_documents(store, pid=PID, limit=3)) == 3
 
