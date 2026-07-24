@@ -212,6 +212,14 @@ civilpy.state.ohio.DOT.review\_taxonomy module
    :undoc-members:
    :show-inheritance:
 
+civilpy.state.ohio.DOT.standard\_drawings module
+------------------------------------------------
+
+.. automodule:: civilpy.state.ohio.DOT.standard_drawings
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 civilpy.state.ohio.DOT.sheet\_taxonomy module
 ---------------------------------------------
 

@@ -59,6 +59,12 @@ def title_pdf(tmp_path_factory):
     put(1760, 320, "PROJECT DESCRIPTION")
     put(1760, 342, "UPGRADING 0.44 MILE OF FERNWOOD ROAD")
 
+    # --- standard-specifications note (lower-left), the CMS citation ---
+    put(100, 1300, "THE STANDARD SPECIFICATIONS OF THE STATE OF OHIO,")
+    put(100, 1322, "DEPARTMENT OF TRANSPORTATION, INCLUDING SUPPLEMENTAL")
+    put(100, 1344, "SPECIFICATIONS LISTED IN 2019 SPECIFICATIONS SHALL")
+    put(100, 1366, "GOVERN THIS IMPROVEMENT.")
+
     doc.save(path)
     return str(path)
 
@@ -236,3 +242,33 @@ class TestNoTextLayer:
         parsed = parse_title_sheet(fitz.open(path)[0])
         assert parsed["anchors_found"] == []
         assert parsed["sheet_index"] is None
+
+
+class TestSpecYear:
+    """The CMS spec year cited in the standard-specifications note —
+    phrasings from the real corpus plus the older spelled-out forms."""
+
+    def test_parsed_from_fixture_sheet(self, parsed):
+        assert parsed["spec_year"] == 2019
+
+    def test_year_before_bare_specifications(self):
+        from civilpy.state.ohio.DOT.title_sheet_text import parse_spec_year
+        text = ("INCLUDING SUPPLEMENTAL SPECIFICATIONS LISTED IN "
+                "2023 SPECIFICATIONS SHALL GOVERN THIS IMPROVEMENT")
+        assert parse_spec_year(text) == 2023
+
+    def test_spelled_out_cms_phrase_wins(self):
+        from civilpy.state.ohio.DOT.title_sheet_text import parse_spec_year
+        assert parse_spec_year(
+            "THE 2013 CONSTRUCTION AND MATERIAL SPECIFICATIONS OF THE "
+            "STATE OF OHIO") == 2013
+
+    def test_dated_after_phrase(self):
+        from civilpy.state.ohio.DOT.title_sheet_text import parse_spec_year
+        assert parse_spec_year(
+            "CONSTRUCTION AND MATERIAL SPECIFICATIONS DATED "
+            "JANUARY 1, 2008 SHALL GOVERN") == 2008
+
+    def test_absent_note_returns_none(self):
+        from civilpy.state.ohio.DOT.title_sheet_text import parse_spec_year
+        assert parse_spec_year("GENERAL NOTES AND A 2021 AADT TABLE") is None

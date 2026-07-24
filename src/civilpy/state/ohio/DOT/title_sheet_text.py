@@ -41,7 +41,7 @@ import re
 
 __all__ = ["ANCHORS", "find_anchor", "parse_title_sheet",
            "parse_sheet_index", "expand_sheet_numbers",
-           "locate_title_page"]
+           "locate_title_page", "parse_spec_year"]
 
 #: canonical field -> anchor phrase variants (matched on normalized words)
 ANCHORS = {
@@ -253,6 +253,34 @@ def _region_text(region_words):
                      for line in _lines(region_words))
 
 
+#: the CMS citation in the standard-specifications note.  On real sheets
+#: (verified on the 40-set corpus) the year sits immediately before a
+#: SPECIFICATIONS token: "...SUPPLEMENTAL SPECIFICATIONS LISTED IN
+#: [2023 SPECIFICATIONS] SHALL GOVERN THIS IMPROVEMENT."; older phrasings
+#: spell out "20xx CONSTRUCTION AND MATERIAL SPECIFICATIONS" or date the
+#: phrase after ("...SPECIFICATIONS DATED JANUARY 1, 20xx").
+_SPEC_YEAR_PATS = (
+    re.compile(r"((?:19|20)\d{2})\s+CONSTRUCTION\s+AND\s+MATERIAL\s+"
+               r"SPECIFICATIONS", re.IGNORECASE),
+    re.compile(r"((?:19|20)\d{2})\s+SPECIFICATIONS", re.IGNORECASE),
+    re.compile(r"CONSTRUCTION\s+AND\s+MATERIAL\s+SPECIFICATIONS"
+               r"\W{0,5}(?:\w+\W{0,5}){0,8}?((?:19|20)\d{2})",
+               re.IGNORECASE | re.DOTALL),
+)
+
+
+def parse_spec_year(text):
+    """The CMS construction-spec year cited in the title sheet's
+    standard-specifications note, or None.  The era registry keys the
+    whole standards regime off this year, so it is parsed from the full
+    sheet text (the note has no fixed anchor block)."""
+    for pat in _SPEC_YEAR_PATS:
+        m = pat.search(text)
+        if m:
+            return int(m.group(1))
+    return None
+
+
 def parse_title_sheet(page):
     """Parse one title-sheet page into a structured dict.
 
@@ -260,9 +288,9 @@ def parse_title_sheet(page):
     "expected_sheets": {...}, "scds": [...], "supplemental_specs": str,
     "special_provisions": str, "project_description": str,
     "design_designation": str, "railroad": str, "federal_project": str,
-    "pid_candidates": [...]}`` — fields whose anchor is absent are
-    ``None``/empty.  Route curves-only pages (no text layer) to the ML
-    model instead; see the module docstring.
+    "pid_candidates": [...], "spec_year": int}`` — fields whose anchor
+    is absent are ``None``/empty.  Route curves-only pages (no text
+    layer) to the ML model instead; see the module docstring.
     """
     words = _words(page)
     H = page.rect.height
@@ -282,7 +310,9 @@ def parse_title_sheet(page):
               "scds": None, "supplemental_specs": None,
               "special_provisions": None, "project_description": None,
               "design_designation": None, "railroad": None,
-              "federal_project": None, "pid_candidates": []}
+              "federal_project": None, "pid_candidates": [],
+              "spec_year": parse_spec_year(
+                  " ".join(w[4] for w in words))}
     if "sheet_index" in regions:
         result["sheet_index"] = parse_sheet_index(regions["sheet_index"])
         result["expected_sheets"] = expand_sheet_numbers(
