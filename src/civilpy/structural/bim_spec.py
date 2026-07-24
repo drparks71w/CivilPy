@@ -52,7 +52,10 @@ SCHEMA_VERSION = 1
 #: Provenance tiers, element-level (decision 3 of the build plan):
 #: per-field overrides ride in ``Provenance.field_sources`` only for
 #: manually-entered values where a re-derivation trigger pays off.
-SOURCES = ("brr", "plans", "manual")
+#: ``snbi`` = seeded from the inventory columns; ``inferred`` = resolved
+#: through the era-standards registry (the standard-default path) — both
+#: mark records the Tier A campaign populates without a plan in hand.
+SOURCES = ("brr", "plans", "manual", "snbi", "inferred")
 
 
 def spec_field(default=MISSING, *, unit: str | None = None,
@@ -1636,3 +1639,134 @@ class BridgeLayoutRecord(ElementRecord):
             deck_thickness_in=self.deck_thickness_in,
             deck_fc_ksi=self.deck_fc_ksi, cross_slope_pct=self.cross_slope_pct,
             crown_offset_ft=self.crown_offset_ft, composite=self.composite)
+
+
+# ══ Tier A parametric records: standard slab + adjacent box beam ════════════
+#
+# The project-object phase's Tier A campaign (project_object_schema.md P4)
+# populates the ODOT-maintained standard-drawing bridges straight from SNBI +
+# the era registry — the standard sheets ARE the design, so a handful of
+# parameters regenerates geometry *including reinforcement* (LOD 400
+# as-designed).  Each record mirrors its emit engine's input one-for-one
+# (the BridgeLayoutRecord pattern) and validates against the cataloged
+# design-table envelope, so a record that stores is a record that emits.
+
+
+@dataclass(frozen=True)
+class SlabBridgeRecord(ElementRecord):
+    """One single-span ODOT standard slab bridge (SB-1-24 series): the
+    :class:`~civilpy.structural.odot.slab_bridge.SlabBridgeInput` as a
+    storable record.  The slab thickness and the full A/B/M/N bar
+    schedule come from the standard's design table at emit time — they
+    are the *standard's* content, so they are never stored here (design
+    rule: never copy what the era registry derives)."""
+
+    span_ft: int = spec_field(unit="ft", gt=0, desc="single span, c/c "
+                              "bearings — a design-table key")
+    width_ft: float = spec_field(unit="ft", gt=0.0,
+                                 desc="out-to-out slab width")
+    skew_deg: float = spec_field(0.0, unit="deg",
+                                 desc="SB-1-24 caps skew at 25 deg")
+    edge_condition: str = spec_field(
+        "over_the_side", enum=("over_the_side", "parapet"),
+        desc="edge-beam schedule option on the sheet")
+    standard: str | None = spec_field(None, desc="ODOT standard drawing id")
+    standard_year: int | None = spec_field(None, ge=1900)
+    provenance: Provenance | None = spec_field(None)
+
+    BIM_TYPE = "bridge"
+    SUBTYPE = "slab"
+
+    def __post_init__(self):
+        if self.provenance is None:
+            object.__setattr__(self, "provenance", Provenance())
+
+    def _cross_validate(self):
+        from civilpy.structural.odot.slab_bridge import (SKEW_MAX_DEG,
+                                                         SLAB_DESIGNS)
+        problems = []
+        if self.span_ft not in SLAB_DESIGNS:
+            lo, hi = min(SLAB_DESIGNS), max(SLAB_DESIGNS)
+            problems.append(f"span_ft: {self.span_ft} outside the SB-1-24 "
+                            f"design table ({lo}-{hi} ft, integer)")
+        if abs(self.skew_deg) > SKEW_MAX_DEG:
+            problems.append(f"skew_deg: {self.skew_deg} exceeds the sheet "
+                            f"maximum {SKEW_MAX_DEG}")
+        return problems
+
+    def to_input(self):
+        """The :class:`~civilpy.structural.odot.slab_bridge
+        .SlabBridgeInput` the emit engine consumes."""
+        from civilpy.structural.odot.slab_bridge import SlabBridgeInput
+
+        return SlabBridgeInput(span_ft=self.span_ft,
+                               width_ft=self.width_ft,
+                               skew_deg=self.skew_deg,
+                               edge_condition=self.edge_condition)
+
+
+def select_box(span_ft: float, *, composite: bool = True) -> str | None:
+    """The shallowest PSBDD-1-25 box designation whose cataloged span
+    range covers ``span_ft`` (48-in widths; the standard's selection
+    logic), or None when no box reaches — spans are cataloged in 5-ft
+    steps, so the lookup rounds up to the next step."""
+    import math
+
+    from civilpy.structural.odot.box_beam_design import (BOX_DESIGNATIONS,
+                                                         designs_for_box)
+    span = 5 * math.ceil(span_ft / 5.0)
+    want = (lambda b: b.startswith("CB")) if composite \
+        else (lambda b: not b.startswith("CB"))
+    for box in BOX_DESIGNATIONS:            # shallow -> deep per family
+        if not want(box):
+            continue
+        if any(d.span == span for d in designs_for_box(box)):
+            return box
+    return None
+
+
+@dataclass(frozen=True)
+class BoxBeamBridgeRecord(ElementRecord):
+    """One adjacent prestressed box-beam bridge on the ODOT standard
+    designs (PSBDD-1-25 tables): the :class:`~civilpy.structural
+    .rhino_box_bim.BoxBridgeInput` as a storable record.  The strand
+    pattern and section come from the design table for ``(box,
+    span_ft)`` at emit time."""
+
+    box: str = spec_field(desc="PSBDD-1-25 designation, e.g. CB27-48")
+    span_ft: float = spec_field(unit="ft", gt=0.0,
+                                desc="one of the box's cataloged spans")
+    n_beams: int = spec_field(ge=2)
+    skew_deg: float = spec_field(0.0, unit="deg")
+    fc_psi: float = spec_field(6000.0, unit="psi", gt=0.0)
+    standard: str | None = spec_field(None, desc="ODOT standard drawing id")
+    standard_year: int | None = spec_field(None, ge=1900)
+    provenance: Provenance | None = spec_field(None)
+
+    BIM_TYPE = "bridge"
+    SUBTYPE = "box_beam"
+
+    def __post_init__(self):
+        if self.provenance is None:
+            object.__setattr__(self, "provenance", Provenance())
+
+    def _cross_validate(self):
+        from civilpy.structural.odot.box_beam_design import (
+            BOX_DESIGNATIONS, designs_for_box)
+        if self.box not in BOX_DESIGNATIONS:
+            return [f"box: {self.box!r} not a PSBDD-1-25 designation"]
+        spans = sorted(d.span for d in designs_for_box(self.box))
+        if self.span_ft not in spans:
+            return [f"span_ft: {self.span_ft} not cataloged for "
+                    f"{self.box} (spans {spans[0]}-{spans[-1]} in 5-ft "
+                    f"steps)"]
+        return []
+
+    def to_input(self):
+        """The :class:`~civilpy.structural.rhino_box_bim.BoxBridgeInput`
+        the emit engine consumes."""
+        from civilpy.structural.rhino_box_bim import BoxBridgeInput
+
+        return BoxBridgeInput(box=self.box, span_ft=self.span_ft,
+                              n_beams=self.n_beams,
+                              skew_deg=self.skew_deg, fc_psi=self.fc_psi)
