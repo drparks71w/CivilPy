@@ -228,6 +228,14 @@ civilpy.state.ohio.DOT.title\_sheet\_text module
    :undoc-members:
    :show-inheritance:
 
+civilpy.state.ohio.DOT.plan\_set module
+---------------------------------------
+
+.. automodule:: civilpy.state.ohio.DOT.plan_set
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 Module contents
 ---------------
 
