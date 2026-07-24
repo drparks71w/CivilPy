@@ -105,6 +105,63 @@ class TestSheetIndex:
         assert not any("BP-" in t for t in titles)
 
 
+class TestSheetIndexRealWorld:
+    """Layout quirks seen in the pulled DigitalPaper corpus."""
+
+    def test_p_prefixed_numbers(self):
+        from civilpy.state.ohio.DOT.title_sheet_text import (
+            _lines, parse_sheet_index)
+
+        class W(tuple):
+            pass
+        # (x0, y0, x1, y1, text) rows: "SCHEMATIC PLAN  P.2"
+        words = [(760, 460, 900, 472, "SCHEMATIC"),
+                 (905, 460, 980, 472, "PLAN"),
+                 (1050, 460, 1090, 472, "P.2"),
+                 (760, 482, 900, 494, "TYPICAL"),
+                 (905, 482, 980, 494, "SECTIONS"),
+                 (1050, 482, 1120, 494, "P.3-P.5")]
+        entries = parse_sheet_index(words)
+        got = {e["title"]: e["sheets"] for e in entries}
+        assert got["SCHEMATIC PLAN"] == "2"
+        assert got["TYPICAL SECTIONS"] == "3-5"
+
+    def test_route_number_in_title_not_mistaken(self):
+        from civilpy.state.ohio.DOT.title_sheet_text import parse_sheet_index
+        # "PLAN AND PROFILE - S.R. 161   25"  -> sheet 25, route stays
+        words = [(760, 460, 900, 472, "PLAN"),
+                 (905, 460, 950, 472, "AND"),
+                 (955, 460, 1010, 472, "PROFILE"),
+                 (1015, 460, 1030, 472, "-"),
+                 (1035, 460, 1075, 472, "S.R."),
+                 (1080, 460, 1110, 472, "161"),
+                 (1250, 460, 1280, 472, "25")]
+        entries = parse_sheet_index(words)
+        assert entries[0]["sheets"] == "25"
+        assert "161" in entries[0]["title"]
+
+    def test_year_not_treated_as_sheet(self):
+        from civilpy.state.ohio.DOT.title_sheet_text import parse_sheet_index
+        words = [(760, 460, 900, 472, "GENERAL"),
+                 (905, 460, 980, 472, "NOTES"),
+                 (1050, 460, 1090, 472, "5"),
+                 (1300, 460, 1360, 472, "2023")]
+        entries = parse_sheet_index(words)
+        assert entries[0]["sheets"] == "5"
+
+    def test_range_split_across_tokens(self):
+        from civilpy.state.ohio.DOT.title_sheet_text import parse_sheet_index
+        words = [(760, 460, 900, 472, "GENERAL"),
+                 (905, 460, 980, 472, "NOTES"),
+                 (1050, 460, 1090, 472, "P.03"),
+                 (1095, 460, 1105, 472, "-"),
+                 (1110, 460, 1150, 472, "04")]
+        entries = parse_sheet_index(words)
+        assert entries[0]["sheets"] == "03-04"       # leading zeros kept
+        assert expand_sheet_numbers(entries) == {3, 4}
+        assert entries[0]["title"] == "GENERAL NOTES"
+
+
 class TestExpandSheetNumbers:
     def test_ranges_and_singles(self):
         got = expand_sheet_numbers([{"sheets": "1"}, {"sheets": "3-4"},

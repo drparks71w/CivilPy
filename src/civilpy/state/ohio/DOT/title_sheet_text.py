@@ -58,7 +58,13 @@ ANCHORS = {
 
 SCD_CODE_PAT = re.compile(r"^[A-Z]{1,4}-?\d[\d.\-]*M?$")
 DATE_PAT = re.compile(r"^\d{1,2}[-/]\d{1,2}[-/]\d{2,4}$")
-SHEET_NO_PAT = re.compile(r"^\d{1,3}(?:[-,]\d{1,3})*\.?$")
+#: a sheet-number token: bare (``5``, ``3-4``, ``11,17``) or ODOT's
+#: plan-sheet form with a "P." prefix (``P.1``, ``P.3-P.5``).
+SHEET_NO_PAT = re.compile(
+    r"^(?:P\.)?\d{1,3}(?:\s*[-,]\s*(?:P\.)?\d{1,3})*\.?$", re.IGNORECASE)
+#: a bare 4-digit year (1900-2099) — excluded from sheet numbers so a
+#: "2019 SPECIFICATIONS" bleed or a date never reads as a sheet.
+_YEAR_PAT = re.compile(r"^(?:19|20)\d{2}\.?$")
 
 
 def _norm(token):
@@ -128,20 +134,41 @@ def _lines(words, y_bin=5.0):
 def parse_sheet_index(region_words):
     """``[{"title", "sheets"}]`` from the INDEX OF SHEETS region.
 
-    Each visual row splits into the leftmost run of words (title) and a
-    trailing sheet-number token (``5``, ``3-4``, ``11-17``); wrapped
-    titles without a number merge into the previous entry when no number
-    is present at all."""
+    Each visual row is anchored on its **sheet-number token** (``5``,
+    ``3-4``, or ODOT's ``P.1`` / ``P.3-P.5``): the title is the words
+    *before* the number, and anything *after* it is dropped — that
+    trailing text is the neighbouring paragraph (project description,
+    limited-access note) bleeding into the capture band, not part of the
+    entry.  A row with no number is a wrapped title and merges into the
+    previous numberless entry.
+    """
     entries = []
     for line in _lines(region_words):
         texts = [w[4] for w in line]
         if not texts:
             continue
-        sheets = None
-        if SHEET_NO_PAT.match(texts[-1]) and len(texts) > 1:
-            sheets = texts[-1].rstrip(".")
-            texts = texts[:-1]
-        title = " ".join(texts).strip().rstrip(".")
+        # the sheet number sits in the right-aligned number column, so
+        # take the RIGHTMOST qualifying token (skipping bare 4-digit years
+        # and route-style numbers that appear mid-title).
+        num_idx = next((i for i in range(len(texts) - 1, 0, -1)
+                        if SHEET_NO_PAT.match(texts[i])
+                        and not _YEAR_PAT.match(texts[i])), None)
+        if num_idx is not None:
+            start = num_idx
+            # absorb a range split across tokens: "P.03 - 04" / "3 - 4"
+            if (num_idx >= 2 and texts[num_idx - 1] in "-–"
+                    and SHEET_NO_PAT.match(texts[num_idx - 2])
+                    and not _YEAR_PAT.match(texts[num_idx - 2])):
+                start = num_idx - 2
+                sheets = _norm_sheets(texts[start]) + "-" \
+                    + _norm_sheets(texts[num_idx])
+            else:
+                sheets = _norm_sheets(texts[num_idx])
+            title = " ".join(texts[:start]).strip().rstrip(".")
+        else:
+            sheets = None
+            title = " ".join(texts).strip().rstrip(".")
+        title = re.sub(r"\s{2,}", " ", title)
         if not title:
             continue
         if sheets is None and entries and entries[-1]["sheets"] is None:
@@ -149,6 +176,11 @@ def parse_sheet_index(region_words):
             continue
         entries.append({"title": title, "sheets": sheets})
     return entries
+
+
+def _norm_sheets(token):
+    """``P.3-P.5`` -> ``3-5``; ``P.1`` -> ``1``; passes bare forms through."""
+    return re.sub(r"P\.", "", token, flags=re.IGNORECASE).rstrip(".")
 
 
 def expand_sheet_numbers(entries):
