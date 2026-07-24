@@ -49,6 +49,14 @@ civilpy.structural.bim module
    :undoc-members:
    :show-inheritance:
 
+civilpy.structural.bim\_spec module
+-----------------------------------
+
+.. automodule:: civilpy.structural.bim_spec
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 civilpy.structural.box\_beam\_pipeline module
 ---------------------------------------------
 
@@ -197,6 +205,14 @@ civilpy.structural.placement module
 -----------------------------------
 
 .. automodule:: civilpy.structural.placement
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+civilpy.structural.project\_spec module
+---------------------------------------
+
+.. automodule:: civilpy.structural.project_spec
    :members:
    :undoc-members:
    :show-inheritance:
