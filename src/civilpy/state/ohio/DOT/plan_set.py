@@ -111,13 +111,22 @@ def open_plan_set(source):
                              role="other", source=src_name)]
 
 
-def title_page(parts):
-    """The title sheet (page 1 of the main plan document) from
-    :func:`open_plan_set`'s result, or ``None`` if empty."""
-    for p in parts:
-        if p.role == "plan" and p.n_pages:
-            return p.doc[0]
-    for p in parts:
-        if p.n_pages:
-            return p.doc[0]
-    return None
+def title_page(parts, locate=True):
+    """The engineering title sheet from :func:`open_plan_set`'s result.
+
+    By default (``locate=True``) this scans the main plan document for the
+    real title sheet — DigitalPaper prepends a contract-proposal cover
+    page, so it is often not page 1 (see
+    :func:`~civilpy.state.ohio.DOT.title_sheet_text.locate_title_page`).
+    Pass ``locate=False`` for the raw first page.  Returns a
+    ``fitz.Page`` or ``None`` when there are no pages.
+    """
+    main = next((p for p in parts if p.role == "plan" and p.n_pages), None)
+    if main is None:
+        main = next((p for p in parts if p.n_pages), None)
+    if main is None:
+        return None
+    if not locate:
+        return main.doc[0]
+    from civilpy.state.ohio.DOT.title_sheet_text import locate_title_page
+    return locate_title_page(main.doc)

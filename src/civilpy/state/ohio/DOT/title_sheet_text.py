@@ -40,7 +40,8 @@ from __future__ import annotations
 import re
 
 __all__ = ["ANCHORS", "find_anchor", "parse_title_sheet",
-           "parse_sheet_index", "expand_sheet_numbers"]
+           "parse_sheet_index", "expand_sheet_numbers",
+           "locate_title_page"]
 
 #: canonical field -> anchor phrase variants (matched on normalized words)
 ANCHORS = {
@@ -67,8 +68,37 @@ SHEET_NO_PAT = re.compile(
 _YEAR_PAT = re.compile(r"^(?:19|20)\d{2}\.?$")
 
 
+#: DigitalPaper prepends a "Contract Proposal" cover/routing page (it
+#: carries "PID - {n} Dist {n}" and "Contract Proposal", no engineering
+#: title block), so the real title sheet is often page 2+.
+_COVER_PAT = re.compile(r"contract\s+proposal|routing\s+slip", re.IGNORECASE)
+_INDEX_PHRASES = ("INDEX OF SHEETS", "SHEET INDEX")
+
+
 def _norm(token):
     return re.sub(r"[^\w]", "", (token or "").upper())
+
+
+def locate_title_page(doc, max_scan=8):
+    """The engineering title sheet in a plan document.
+
+    DigitalPaper often prepends a contract-proposal cover page, so page 1
+    is not always the title sheet.  Scans the first ``max_scan`` pages
+    and returns the first whose text carries an INDEX OF SHEETS / SHEET
+    INDEX anchor; failing that, the first page that is not a recognizable
+    cover; failing that, page 0.  Returns a ``fitz.Page``.
+    """
+    n = min(max_scan, doc.page_count)
+    first_non_cover = None
+    for i in range(n):
+        page = doc[i]
+        words = [w[:5] for w in page.get_text("words")]
+        if any(find_anchor(words, p) for p in _INDEX_PHRASES):
+            return page
+        text = page.get_text() or ""
+        if first_non_cover is None and not _COVER_PAT.search(text):
+            first_non_cover = page
+    return first_non_cover or doc[0]
 
 
 def _words(page):

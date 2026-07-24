@@ -199,6 +199,34 @@ class TestMetadata:
         assert "115549" in parsed["pid_candidates"]
 
 
+class TestLocateTitlePage:
+    """DigitalPaper prepends a contract-proposal cover; the title sheet
+    with the index is often page 2+."""
+
+    def test_skips_cover_page(self, tmp_path, title_pdf):
+        from civilpy.state.ohio.DOT.title_sheet_text import locate_title_page
+        # build a 2-page doc: cover, then the real title sheet
+        doc = fitz.open()
+        cover = doc.new_page(width=2448, height=1584)
+        cover.insert_text((100, 100),
+                          "US 35-19.80  PID - 90273 Dist 7  Contract Proposal")
+        # append the fixture title sheet (has INDEX OF SHEETS)
+        doc.insert_pdf(fitz.open(title_pdf))
+        page = locate_title_page(doc)
+        assert page.number == 1              # page 2 (0-indexed)
+
+    def test_page_one_when_index_there(self, title_pdf):
+        from civilpy.state.ohio.DOT.title_sheet_text import locate_title_page
+        page = locate_title_page(fitz.open(title_pdf))
+        assert page.number == 0
+
+    def test_falls_back_to_first_page(self, tmp_path):
+        from civilpy.state.ohio.DOT.title_sheet_text import locate_title_page
+        doc = fitz.open()
+        doc.new_page(width=612, height=792).insert_text((72, 72), "no index")
+        assert locate_title_page(doc).number == 0
+
+
 class TestNoTextLayer:
     def test_blank_page_yields_no_anchors(self, tmp_path):
         path = tmp_path / "blank.pdf"
