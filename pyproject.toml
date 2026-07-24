@@ -65,6 +65,11 @@ geo = [
 mcp = [
     "mcp>=1.0",
 ]
+ai = [
+    "torch>=2.0",
+    "torchvision>=0.15",
+    "pytesseract>=0.3",
+]
 web = [
     "selenium>=3.141",
     "plotly>=5.0",
