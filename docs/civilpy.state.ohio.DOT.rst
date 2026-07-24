@@ -220,6 +220,14 @@ civilpy.state.ohio.DOT.sheet\_taxonomy module
    :undoc-members:
    :show-inheritance:
 
+civilpy.state.ohio.DOT.title\_sheet\_text module
+------------------------------------------------
+
+.. automodule:: civilpy.state.ohio.DOT.title_sheet_text
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 Module contents
 ---------------
 
