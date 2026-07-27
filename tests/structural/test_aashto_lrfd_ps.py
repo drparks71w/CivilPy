@@ -164,3 +164,128 @@ class TestRegistry:
         ]
         assert passing
         assert min(passing) > 20  # demand high enough to reject the lightest
+
+
+class TestUnbondedStrandStress:
+    def test_rectangular_fixed_point_hand_calc(self):
+        # le = 2*480/(2+0) = 480; solve fps = 150 + 900*(20 - c)/480 with
+        # c = Aps*fps/(0.85*4? ...) hand: f'c=5 -> beta1=0.80,
+        # c = fps/(0.85*5*0.80*12) = fps/40.8
+        # fps*(1 + 1.875/40.8) = 150 + 37.5 -> fps = 179.26, c = 4.394
+        r = lrfd.ps_strand_stress_unbonded(
+            a_ps=1.0, f_pe=150.0, d_p=20.0, f_c=5.0, b=12.0,
+            l_i=480.0, f_py=243.0)
+        assert r.capacity == pytest.approx(179.26, abs=0.05)
+        assert r.details["c"] == pytest.approx(4.394, abs=0.01)
+        assert r.details["le"] == pytest.approx(480.0)
+        assert r.details["behavior"] == "rectangular"
+        assert not r.details["capped_at_fpy"]
+
+    def test_support_hinges_shorten_le(self):
+        # Ns = 2 halves le, raising fps
+        r0 = lrfd.ps_strand_stress_unbonded(
+            a_ps=1.0, f_pe=150.0, d_p=20.0, f_c=5.0, b=12.0,
+            l_i=480.0, f_py=243.0)
+        r2 = lrfd.ps_strand_stress_unbonded(
+            a_ps=1.0, f_pe=150.0, d_p=20.0, f_c=5.0, b=12.0,
+            l_i=480.0, f_py=243.0, n_s=2)
+        assert r2.details["le"] == pytest.approx(240.0)
+        assert r2.capacity > r0.capacity
+
+    def test_caps_at_fpy(self):
+        # very short tendon -> huge strain concentration -> fpy governs
+        r = lrfd.ps_strand_stress_unbonded(
+            a_ps=1.0, f_pe=150.0, d_p=20.0, f_c=5.0, b=12.0,
+            l_i=60.0, f_py=243.0)
+        assert r.capacity == 243.0
+        assert r.details["capped_at_fpy"]
+
+    def test_far_below_the_bonded_value(self):
+        # same section bonded vs unbonded: the bonded strand approaches
+        # fpu while the unbonded one stays near fpe
+        bonded = lrfd.ps_strand_stress_at_nominal(
+            a_ps=1.0, f_pu=270.0, d_p=20.0, f_c=5.0, b=12.0)
+        unbonded = lrfd.ps_strand_stress_unbonded(
+            a_ps=1.0, f_pe=150.0, d_p=20.0, f_c=5.0, b=12.0,
+            l_i=480.0, f_py=243.0)
+        assert unbonded.capacity < bonded.capacity - 50.0
+
+
+class TestPrestressedMinimumReinforcement:
+    def test_composite_prestressed_mcr_hand_calc(self):
+        # 5.6.3.3-1 with all terms: fr = 0.24*sqrt(7) = 0.635 ksi,
+        # gamma = 1.6 / 1.1 / 1.0 (prestressed), Sc = 6403, Snc = 4945,
+        # f_cpe = 1.2 ksi, Mdnc = 6000 kip-in:
+        # Mcr = 1.0*[(1.6*0.635 + 1.1*1.2)*6403 - 6000*(6403/4945 - 1)]
+        fr = 0.24 * math.sqrt(7.0)
+        expect = ((1.6 * fr + 1.1 * 1.2) * 6403.0
+                  - 6000.0 * (6403.0 / 4945.0 - 1.0))
+        r = lrfd.rc_minimum_reinforcement(
+            m_n=20000.0, phi=1.0, f_c=7.0, s_c=6403.0,
+            gamma_3=1.0, f_cpe=1.2, m_dnc=6000.0, s_nc=4945.0)
+        assert r.details["Mcr"] == pytest.approx(expect)
+
+    def test_defaults_reproduce_the_nonprestressed_form(self):
+        # no prestress/composite args -> gamma_3*gamma_1*fr*Sc as before
+        r = lrfd.rc_minimum_reinforcement(m_n=1000.0, phi=0.9, f_c=4.0,
+                                          s_c=1152.0)
+        assert r.details["Mcr"] == pytest.approx(0.67 * 1.6 * 0.48 * 1152.0)
+
+    def test_governs_by_the_lesser_of_mcr_and_133mu(self):
+        # AASHTO 5.6.3.3 takes the LESSER (the guide's Eq 1.15 prints max
+        # -- an erratum)
+        r = lrfd.rc_minimum_reinforcement(
+            m_n=20000.0, phi=1.0, f_c=7.0, s_c=6403.0, m_u=1000.0,
+            gamma_3=1.0, f_cpe=1.2)
+        assert r.demand == pytest.approx(1.33 * 1000.0)
+
+    def test_pre_2012_scales_the_full_mcr(self):
+        # the historical 1.2 multiplies the whole Mcr, composite term
+        # included
+        r = lrfd.rc_minimum_reinforcement(
+            m_n=20000.0, phi=1.0, f_c=7.0, s_c=6403.0, design_year=2008,
+            f_cpe=1.2, m_dnc=6000.0, s_nc=4945.0)
+        fr = 0.24 * math.sqrt(7.0)
+        expect = 1.2 * ((fr + 1.2) * 6403.0
+                        - 6000.0 * (6403.0 / 4945.0 - 1.0))
+        assert r.details["Mcr"] == pytest.approx(expect)
+
+    def test_fr_override_reproduces_midas_convention(self):
+        # Midas always uses fr = 0.37*sqrt(f'c) in Mcr; the override
+        # scales the fr term only
+        base = lrfd.rc_minimum_reinforcement(
+            m_n=20000.0, phi=1.0, f_c=7.0, s_c=4945.0, gamma_3=1.0,
+            f_cpe=2.99)
+        midas = lrfd.rc_minimum_reinforcement(
+            m_n=20000.0, phi=1.0, f_c=7.0, s_c=4945.0, gamma_3=1.0,
+            f_cpe=2.99, f_r=0.37 * math.sqrt(7.0))
+        d = (1.6 * (0.37 - 0.24) * math.sqrt(7.0)) * 4945.0
+        assert midas.details["Mcr"] - base.details["Mcr"] == pytest.approx(d)
+        assert midas.details["fr"] == pytest.approx(0.37 * math.sqrt(7.0))
+
+
+class TestTendonAndPrincipalStress:
+    def test_low_relaxation_limits_table(self):
+        lim = lrfd.ps_tendon_stress_limits(270.0)
+        assert lim["pre_prior_to_transfer"] == pytest.approx(0.75 * 270.0)
+        assert lim["pre_service_after_losses"] == pytest.approx(
+            0.80 * 0.90 * 270.0)
+        assert lim["post_at_anchorage_after_set"] == pytest.approx(189.0)
+        assert lim["post_elsewhere_after_set"] == pytest.approx(0.74 * 270.0)
+
+    def test_stress_relieved_transfer_drops_to_070(self):
+        lim = lrfd.ps_tendon_stress_limits(270.0,
+                                           tendon_type="stress_relieved")
+        assert lim["pre_prior_to_transfer"] == pytest.approx(0.70 * 270.0)
+        # fpy default 0.85*fpu for stress-relieved
+        assert lim["pre_service_after_losses"] == pytest.approx(
+            0.80 * 0.85 * 270.0)
+
+    def test_unknown_type_raises(self):
+        with pytest.raises(ValueError):
+            lrfd.ps_tendon_stress_limits(270.0, tendon_type="rope")
+
+    def test_principal_tension_limit(self):
+        r = lrfd.ps_principal_tension_check(f_ci=4.5, sigma_ps=0.15)
+        assert r.capacity == pytest.approx(0.110 * math.sqrt(4.5))
+        assert r.demand == 0.15

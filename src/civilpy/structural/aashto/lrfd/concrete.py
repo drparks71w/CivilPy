@@ -110,21 +110,44 @@ def rc_minimum_reinforcement(
     gamma_1: float = 1.6,
     gamma_3: float = 0.67,
     design_year: int | None = None,
+    f_cpe: float = 0.0,
+    gamma_2: float = 1.1,
+    m_dnc: float = 0.0,
+    s_nc: float | None = None,
+    f_r: float | None = None,
 ) -> CheckResult:
     """Minimum flexural reinforcement check (5.6.3.3): Mr = phi*Mn must
-    exceed the lesser of Mcr = gamma_3*gamma_1*fr*Sc and 1.33*Mu.
+    exceed the lesser of Mcr and 1.33*Mu, with the full 5.6.3.3-1
+    cracking moment:
 
-    ``s_c`` is the section modulus of the extreme tension fiber (in^3),
-    ``gamma_1`` = 1.6 flexural cracking variability (1.2 precast segmental),
-    ``gamma_3`` = 0.67 for A615 Grade 60 (0.75 for A706).  Designs before
-    the 2012 6th Edition used 1.2*Mcr instead of the gamma factors — pass
-    ``design_year`` for historical designs (gamma overrides are ignored in
-    that case).
+        Mcr = gamma_3 * [(gamma_1*fr + gamma_2*f_cpe)*Sc
+                         - M_dnc*(Sc/Snc - 1)]
+
+    ``s_c`` is the section modulus of the extreme tension fiber (in^3);
+    ``f_cpe`` the compressive stress there from effective prestress (ksi,
+    0 for nonprestressed); for composite sections ``m_dnc`` is the
+    unfactored dead-load moment carried by the noncomposite section
+    (kip-in) and ``s_nc`` its section modulus (the deduction vanishes for
+    monolithic/noncomposite sections, ``s_nc = None``).  ``gamma_1`` =
+    1.6 flexural cracking variability (1.2 precast segmental),
+    ``gamma_2`` = 1.1 prestress variability (bonded; 1.0 unbonded),
+    ``gamma_3`` = 0.67 for A615 Grade 60, 0.75 for A706, 1.0 for
+    prestressed structures.  Designs before the 2012 6th Edition used
+    1.2*Mcr instead of the gamma factors — pass ``design_year`` for
+    historical designs (gamma_1/gamma_3 overrides are ignored; gamma_2
+    becomes 1.0).
+
+    ``f_r`` overrides the 5.4.2.6 modulus of rupture (0.24*sqrt(f'c)) --
+    e.g. 0.37*sqrt(f'c) to reproduce Midas Civil (or the 2008-2016
+    editions whose conservatism the gamma_1 = 1.6 factor replaced).
     """
-    fr = modulus_of_rupture(f_c)
+    fr = modulus_of_rupture(f_c) if f_r is None else f_r
     if design_year is not None and design_year < 2012:
-        gamma_1, gamma_3 = 1.2, 1.0  # pre-6E form: 1.2*Mcr
-    m_cr = gamma_3 * gamma_1 * fr * s_c  # 5.6.3.3-1 (nonprestressed)
+        # pre-6E form: 1.2 * [full Mcr], i.e. gamma_3 = 1.2 outside
+        gamma_1, gamma_2, gamma_3 = 1.0, 1.0, 1.2
+    composite_term = m_dnc * (s_c / s_nc - 1.0) if s_nc else 0.0
+    m_cr = gamma_3 * ((gamma_1 * fr + gamma_2 * f_cpe) * s_c
+                      - composite_term)  # 5.6.3.3-1
     target = m_cr if m_u is None else min(m_cr, 1.33 * m_u)
     return CheckResult(
         article="5.6.3.3",
@@ -235,7 +258,9 @@ def rc_mcft_beta_theta(
     uncracked), the concrete stiffness ``e_c_a_ct`` = Ec*Act may be added
     to the denominator; eps_s is bounded to [-0.40e-3, 6.0e-3].
     """
-    demand = abs(m_u) / d_v + 0.5 * n_u + abs(v_u - v_p) - a_ps * f_po
+    # 5.7.3.4.2: |Mu| shall not be taken less than |Vu - Vp|*dv
+    m_u_eff = max(abs(m_u), abs(v_u - v_p) * d_v)
+    demand = m_u_eff / d_v + 0.5 * n_u + abs(v_u - v_p) - a_ps * f_po
     eps_s = demand / (e_s_a_s + e_p_a_ps)
     if eps_s < 0.0:
         eps_s = demand / (e_s_a_s + e_p_a_ps + e_c_a_ct)
@@ -253,6 +278,66 @@ def rc_mcft_beta_theta(
         beta *= 51.0 / (39.0 + s_xe)
     theta = 29.0 + 3500.0 * eps_s
     return MCFTParams(beta=beta, theta_deg=theta, eps_s=eps_s, s_xe=s_xe)
+
+
+@article("5.7.2.8", "Effective Shear Depth")
+def rc_effective_shear_depth(
+    h: float,
+    a: float,
+    a_ps: float = 0.0,
+    f_ps: float = 0.0,
+    d_p: float = 0.0,
+    a_s: float = 0.0,
+    f_y: float = 60.0,
+    d_s: float = 0.0,
+) -> CheckResult:
+    """Effective shear depth dv (5.7.2.8): the lever arm between the
+    flexural tension and compression resultants,
+
+        dv = max(de - a/2,  0.9*de,  0.72*h)
+
+    with the effective depth combining strands and mild steel
+    (5.7.2.8-2): de = (Aps*fps*dp + As*fy*ds) / (Aps*fps + As*fy).
+    ``a`` is the equivalent stress-block depth at the section.
+    ``capacity`` holds dv (in).  Segmental box girders use 5.12.5.3.8c
+    instead (the greater of 0.8h and the depth to the prestressing
+    centroid) -- not implemented here.
+    """
+    t_ps, t_s = a_ps * f_ps, a_s * f_y
+    if t_ps + t_s <= 0.0:
+        raise ValueError("need strand and/or mild steel tension to locate de")
+    d_e = (t_ps * d_p + t_s * d_s) / (t_ps + t_s)
+    candidates = {"de - a/2": d_e - a / 2.0, "0.9de": 0.9 * d_e,
+                  "0.72h": 0.72 * h}
+    governing = max(candidates, key=candidates.get)
+    return CheckResult(
+        article="5.7.2.8",
+        name="Effective Shear Depth",
+        capacity=candidates[governing],
+        details={"de": d_e, "governing": governing, **candidates},
+    )
+
+
+@article("5.7.2.3", "Regions Requiring Transverse Reinforcement")
+def rc_transverse_reinf_required(
+    v_u: float,
+    v_c: float,
+    v_p: float = 0.0,
+    phi_v: float = 0.9,
+) -> CheckResult:
+    """Whether transverse reinforcement is required (5.7.2.3-1):
+    Vu > 0.5*phi*(Vc + Vp).  Below that threshold the transverse
+    reinforcement checks may be skipped.  ``capacity`` is the threshold
+    (kips), ``demand`` is Vu; ``details['required']`` gives the verdict.
+    """
+    threshold = 0.5 * phi_v * (v_c + v_p)
+    return CheckResult(
+        article="5.7.2.3",
+        name="Regions Requiring Transverse Reinforcement",
+        capacity=threshold,
+        demand=v_u,
+        details={"required": v_u > threshold},
+    )
 
 
 @article("5.7.2.5", "Minimum Transverse Reinforcement")
@@ -399,23 +484,93 @@ def rc_torsion_threshold(
     f_pc: float = 0.0,
     lam: float = 1.0,
     phi_t: float = 0.9,
+    a_o: float | None = None,
+    b_e: float | None = None,
 ) -> CheckResult:
-    """Whether torsion must be considered (5.7.2.1): Tu > 0.25*phi*Tcr with
-    Tcr = 0.126*lam*sqrt(f'c)*(Acp^2/pc)*sqrt(1 + fpc/(0.126*lam*sqrt(f'c)))
-    for solid sections.
+    """Whether torsion must be considered (5.7.2.1): Tu > 0.25*phi*Tcr.
+
+    Solid sections (5.7.2.1-4):
+    Tcr = 0.126*lam*sqrt(f'c)*(Acp^2/pc)*sqrt(1 + fpc/(0.126*lam*sqrt(f'c)));
+    cellular/box sections (5.7.2.1-5, pass ``a_o`` and ``b_e``):
+    Tcr = 0.126*lam*sqrt(f'c)*2*Ao*be*sqrt(same term).
 
     ``a_cp`` is the area enclosed by the outside perimeter (in^2), ``p_c``
-    that perimeter (in), ``f_pc`` the prestress at the centroid (ksi).
-    ``capacity`` is the 0.25*phi*Tcr threshold (kip-in); ``ok`` True means
-    torsion may be neglected."""
+    that perimeter (in), ``a_o`` the area enclosed by the shear flow path
+    (in^2), ``b_e`` its effective width (min wall, <= Acp/pc), ``f_pc``
+    the prestress at the centroid -- or at the web/flange junction when
+    the centroid falls in the flange (ksi).  ``capacity`` is the
+    0.25*phi*Tcr threshold (kip-in); ``ok`` True means torsion may be
+    neglected."""
+    if (a_o is None) != (b_e is None):
+        raise ValueError("pass a_o and b_e together for the box form")
     sqrt_term = 0.126 * lam * math.sqrt(f_c)
-    t_cr = sqrt_term * a_cp**2 / p_c * math.sqrt(1.0 + f_pc / sqrt_term)
+    amp = math.sqrt(1.0 + f_pc / sqrt_term)
+    if a_o is not None:
+        t_cr = sqrt_term * 2.0 * a_o * b_e * amp
+        form = "box (5.7.2.1-5)"
+    else:
+        t_cr = sqrt_term * a_cp**2 / p_c * amp
+        form = "solid (5.7.2.1-4)"
     return CheckResult(
         article="5.7.2.1",
         name="Torsion Threshold",
         capacity=0.25 * phi_t * t_cr,
         demand=t_u,
-        details={"Tcr": t_cr},
+        details={"Tcr": t_cr, "form": form},
+    )
+
+
+@article("5.7.3.6.2", "Torsional Resistance")
+def rc_torsion_resistance(
+    a_o: float,
+    a_t: float,
+    s: float,
+    theta_deg: float = 45.0,
+    f_y: float = 60.0,
+    t_u: float | None = None,
+    lam_duct: float = 1.0,
+) -> CheckResult:
+    """Nominal torsional resistance (5.7.3.6.2-1):
+    Tn = 2*Ao*At*fy*cot(theta)/s * lam_duct, with phi_t = 0.9 (5.5.4.2.1).
+
+    ``a_t`` is the area of ONE leg of closed transverse torsion
+    reinforcement (in^2) at spacing ``s`` (in); ``theta_deg`` from the
+    shear MCFT procedure; ``lam_duct`` the duct-reduction factor
+    (5.7.3.6.2, 1.0 with no ducts in the web)."""
+    t_n = 2.0 * a_o * a_t * f_y / (s * math.tan(math.radians(theta_deg))) \
+        * lam_duct
+    return CheckResult(
+        article="5.7.3.6.2",
+        name="Torsional Resistance",
+        capacity=t_n,
+        demand=t_u,
+        phi=0.9,
+        details={"Ao": a_o, "theta_deg": theta_deg, "lam_duct": lam_duct},
+    )
+
+
+@article("5.7.3.6.3", "Longitudinal Reinforcement for Torsion (Box)")
+def rc_torsion_longitudinal(
+    t_u: float,
+    p_h: float,
+    a_o: float,
+    f_y: float = 60.0,
+    a_lt: float | None = None,
+    phi_t: float = 0.9,
+) -> CheckResult:
+    """Additional longitudinal reinforcement for torsion in box sections
+    (5.7.3.6.3-2): Alt >= (Tu/phi)*ph / (2*Ao*fy).
+
+    ``p_h`` is the perimeter of the centerline of the closed transverse
+    reinforcement (in).  ``capacity`` is the provided ``a_lt`` (in^2, if
+    given) and ``demand`` the required area."""
+    required = (t_u / phi_t) * p_h / (2.0 * a_o * f_y)
+    return CheckResult(
+        article="5.7.3.6.3",
+        name="Longitudinal Reinforcement for Torsion (Box)",
+        capacity=a_lt if a_lt is not None else required,
+        demand=required if a_lt is not None else None,
+        details={"required": required, "ph": p_h, "Ao": a_o},
     )
 
 
@@ -508,17 +663,22 @@ def rc_shear_resistance(
     theta_deg: float = 45.0,
     v_p: float = 0.0,
     lam: float = 1.0,
+    alpha_deg: float = 90.0,
 ) -> CheckResult:
     """Nominal shear resistance Vn (5.7.3.3) with phi_v = 0.9 (5.5.4.2).
 
     Vc = 0.0316*lam*beta*sqrt(f'c)*bv*dv (5.7.3.3-3) and Vs per 5.7.3.3-4
-    with vertical stirrups ``a_v`` (in^2) at spacing ``s`` (in).  Defaults
-    beta = 2.0 / theta = 45 deg correspond to the 5.7.3.4.1 simplified
-    procedure; pass values from the 5.7.3.4.2 general (MCFT) procedure for
-    sections that qualify for it.
+    with stirrups ``a_v`` (in^2) at spacing ``s`` (in), inclined at
+    ``alpha_deg`` to the longitudinal axis (90 = vertical, where the
+    (cot theta + cot alpha)*sin alpha term reduces to cot theta).
+    Defaults beta = 2.0 / theta = 45 deg correspond to the 5.7.3.4.1
+    simplified procedure; pass values from the 5.7.3.4.2 general (MCFT)
+    procedure for sections that qualify for it.
     """
     v_c = 0.0316 * lam * beta * math.sqrt(f_c) * b_v * d_v
-    v_s = a_v * f_y * d_v / (s * math.tan(math.radians(theta_deg))) if a_v else 0.0
+    theta, alpha = math.radians(theta_deg), math.radians(alpha_deg)
+    v_s = (a_v * f_y * d_v * (1.0 / math.tan(theta) + 1.0 / math.tan(alpha))
+           * math.sin(alpha) / s) if a_v else 0.0
     v_n = min(v_c + v_s + v_p, 0.25 * f_c * b_v * d_v + v_p)  # 5.7.3.3-1,-2
     return CheckResult(
         article="5.7.3.3",

@@ -82,6 +82,70 @@ def ps_strand_stress_at_nominal(
     )
 
 
+@article("5.6.3.1.2", "Stress in Unbonded Strands at Nominal Flexural "
+                      "Resistance")
+def ps_strand_stress_unbonded(
+    a_ps: float,
+    f_pe: float,
+    d_p: float,
+    f_c: float,
+    b: float,
+    l_i: float,
+    f_py: float,
+    n_s: int = 0,
+    b_w: float | None = None,
+    h_f: float = 0.0,
+    a_s: float = 0.0,
+    f_y: float = 60.0,
+    a_s_prime: float = 0.0,
+    f_y_prime: float | None = None,
+    max_iter: int = 100,
+    tol: float = 1e-6,
+) -> CheckResult:
+    """Average stress fps in unbonded strands at nominal flexural
+    resistance (5.6.3.1.2-1), with the effective tendon length from
+    5.6.3.1.2-2:
+
+        fps = fpe + 900 (dp - c) / le  <=  fpy,    le = 2 li / (2 + Ns)
+
+    An unbonded tendon slips relative to the concrete, so its strain
+    change averages over ``le`` instead of peaking at the critical
+    section -- fps lands far below the bonded 5.6.3.1.1 value.  ``l_i``
+    is the tendon length between anchorages (in); ``n_s`` the number of
+    support hinges crossed.  fps and the neutral axis are solved
+    together by fixed-point iteration from the commentary's
+    ``fpe + 15`` start; rectangular or flanged behavior as in
+    :func:`ps_strand_stress_at_nominal`.  ``capacity`` holds fps (ksi).
+    """
+    b1 = beta1(f_c)
+    f_yp = f_y if f_y_prime is None else f_y_prime
+    l_e = 2.0 * l_i / (2.0 + n_s)
+
+    f_ps = f_pe + 15.0
+    c = behavior = None
+    for i in range(1, max_iter + 1):
+        tension = a_ps * f_ps + a_s * f_y - a_s_prime * f_yp
+        c = tension / (0.85 * f_c * b1 * b)
+        behavior = "rectangular"
+        if b_w is not None and c > h_f:
+            c = (tension - 0.85 * f_c * (b - b_w) * h_f) / (
+                0.85 * f_c * b1 * b_w)
+            behavior = "flanged"
+        f_new = min(f_pe + 900.0 * (d_p - c) / l_e, f_py)
+        if abs(f_new - f_ps) < tol:
+            f_ps = f_new
+            break
+        f_ps = f_new
+
+    return CheckResult(
+        article="5.6.3.1.2",
+        name="Stress in Unbonded Strands at Nominal Flexural Resistance",
+        capacity=f_ps,
+        details={"c": c, "le": l_e, "beta1": b1, "behavior": behavior,
+                 "iterations": i, "capped_at_fpy": f_ps >= f_py},
+    )
+
+
 @article("5.6.3.2.2", "Flexural Resistance (Prestressed Concrete)")
 def ps_flexural_resistance(
     a_ps: float,
@@ -192,6 +256,88 @@ def ps_transfer_tension_check(
         capacity=limit,
         demand=stress,
         details={"f_ci": f_ci, "bonded_reinforcement": bonded_reinforcement},
+    )
+
+
+#: Table 5.9.2.2-1 tendon stress limits as multipliers on (f_pu or f_py):
+#: {tendon_type: {condition: (factor, basis)}}.
+TENDON_STRESS_LIMITS = {
+    "low_relaxation": {
+        "pre_prior_to_transfer": (0.75, "f_pu"),
+        "pre_service_after_losses": (0.80, "f_py"),
+        "post_prior_to_seating": (0.90, "f_py"),
+        "post_at_anchorage_after_set": (0.70, "f_pu"),
+        "post_elsewhere_after_set": (0.74, "f_pu"),
+        "post_service_after_losses": (0.80, "f_py"),
+    },
+    "stress_relieved": {
+        "pre_prior_to_transfer": (0.70, "f_pu"),
+        "pre_service_after_losses": (0.80, "f_py"),
+        "post_prior_to_seating": (0.90, "f_py"),
+        "post_at_anchorage_after_set": (0.70, "f_pu"),
+        "post_elsewhere_after_set": (0.70, "f_pu"),
+        "post_service_after_losses": (0.80, "f_py"),
+    },
+    "bar": {
+        "pre_prior_to_transfer": (0.70, "f_pu"),
+        "pre_service_after_losses": (0.80, "f_py"),
+        "post_prior_to_seating": (0.90, "f_py"),
+        "post_at_anchorage_after_set": (0.70, "f_pu"),
+        "post_elsewhere_after_set": (0.70, "f_pu"),
+        "post_service_after_losses": (0.80, "f_py"),
+    },
+}
+
+
+@article("5.9.2.2", "Stress Limits for Prestressing Steel")
+def ps_tendon_stress_limits(
+    f_pu: float,
+    f_py: float | None = None,
+    tendon_type: str = "low_relaxation",
+) -> dict:
+    """Tendon stress limits of Table 5.9.2.2-1 (ksi) keyed by condition:
+    ``pre_*`` rows for pretensioning (prior to transfer, service after
+    losses), ``post_*`` rows for post-tensioning (prior to seating, at
+    anchorages/couplers immediately after anchor set, elsewhere after
+    set, service after losses).
+
+    ``f_py`` defaults to 0.90*f_pu (low-relaxation) or 0.85*f_pu
+    (stress-relieved / plain bar).  Midas reports these as the AFDL1 /
+    AFDL2 / AFLL1 allowables against the computed FDL1 / FDL2 / FLL1
+    tendon stresses."""
+    try:
+        rows = TENDON_STRESS_LIMITS[tendon_type]
+    except KeyError:
+        raise ValueError(
+            f"tendon_type must be one of {sorted(TENDON_STRESS_LIMITS)}, "
+            f"not {tendon_type!r}")
+    if f_py is None:
+        f_py = (0.90 if tendon_type == "low_relaxation" else 0.85) * f_pu
+    basis = {"f_pu": f_pu, "f_py": f_py}
+    return {cond: factor * basis[b] for cond, (factor, b) in rows.items()}
+
+
+@article("5.9.2.3.3", "Principal Tensile Stresses in Webs")
+def ps_principal_tension_check(
+    f_ci: float,
+    sigma_ps: float | None = None,
+    lam: float = 1.0,
+) -> CheckResult:
+    """Principal tensile stress limit in webs (5.9.2.3.3):
+    0.110*lam*sqrt(f'ci), the same for segmental and non-segmental
+    bridges.  At construction stages pass the strength at the time of
+    loading (f'ci); at service pass the specified f'c -- the article
+    covers both epochs with the same coefficient.  ``sigma_ps`` is the
+    maximum principal tensile stress (ksi, positive) from the biaxial
+    state (sigma_x, sigma_z, tau) -- e.g. via
+    :class:`civilpy.structural.mohrs_circle.MohrsCircle`."""
+    limit = 0.110 * lam * math.sqrt(f_ci)
+    return CheckResult(
+        article="5.9.2.3.3",
+        name="Principal Tensile Stresses in Webs",
+        capacity=limit,
+        demand=sigma_ps,
+        details={"f_ci": f_ci},
     )
 
 
