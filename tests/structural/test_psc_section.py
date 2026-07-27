@@ -22,6 +22,7 @@ from civilpy.structural.odot import ps_i_beam as psid
 from civilpy.structural.psc_section import (
     PSCShape,
     box_beam_shape,
+    box_standard_bars,
     i_beam_shape,
     midas_rebar_coordinates,
     midas_strand_coordinates,
@@ -29,6 +30,7 @@ from civilpy.structural.psc_section import (
     plot_psc_section,
     point_in_solid,
     rebar_row,
+    shipping_strands,
     solid_intervals,
     strands_by_count,
     strands_by_rows,
@@ -73,16 +75,53 @@ def test_box_strand_grid_matches_psbd_sheet_2():
     # PSBD-1-25 sheet 2 "STRAND LAYOUT AND BAR SPACING": 2 in and 4 in
     # rows at y = +-2..+-20 (9 SPA @ 2" from 4 in off each face, 4 in gap
     # astride the centerline -- no centerline strand); 6 in row only at
-    # the wall locations y = +-20.  17 in beams get 1.5 in void fillets.
+    # the wall locations y = +-20.  In the 2 in row, y = +-16 (8 in off
+    # each face) is one of the two minimum bottom #5 bars (note 2), not
+    # a strand.  17 in beams get 1.5 in void fillets.
     s = box_beam_shape("B17-48")
     row2 = sorted(y for y, z in s.strand_grid if z == 2.0)
     row4 = sorted(y for y, z in s.strand_grid if z == 4.0)
     row6 = sorted(y for y, z in s.strand_grid if z == 6.0)
     expect = [y for y in range(-20, 21, 2) if y != 0]
-    assert row2 == expect and row4 == expect
+    assert row2 == [y for y in expect if abs(y) != 16]
+    assert row4 == expect
     assert row6 == [-20.0, 20.0]
     assert all(y != 0.0 for y, _ in s.strand_grid)
-    assert len(s.strand_grid) == 42
+    assert len(s.strand_grid) == 40
+
+
+def test_box_standard_bars_note_2():
+    # PSBD-1-25 sheet 2 note 2: minimum longitudinal steel is (4) #5
+    # across the top flange + (2) #5 in the bottom; the bottom pair
+    # occupies the 2 in row's 8-in-off-face lattice points (y = +-16)
+    s = box_beam_shape("CB27-48")
+    bars = box_standard_bars(s)
+    assert bars.n == 6
+    assert all(b.size == 5 for b in bars.bars)
+    bot = sorted((b.y, b.z) for b in bars.bars if b.z == 2.0)
+    assert bot == [(-16.0, 2.0), (16.0, 2.0)]
+    top = [b for b in bars.bars if b.z > 20.0]
+    assert len(top) == 4
+    assert all(b.z == pytest.approx(24.5) for b in top)
+    # the displaced strand locations are not in the permissible grid
+    assert (16.0, 2.0) not in s.strand_grid
+    assert (-16.0, 2.0) not in s.strand_grid
+    with pytest.raises(ValueError):
+        box_standard_bars(i_beam_shape("WF36-49"))
+
+
+def test_shipping_strands_layout_and_merge():
+    wf = i_beam_shape("WF72-49")
+    ship = shipping_strands(wf)
+    assert ship.n == 6
+    assert all(z == pytest.approx(69.25) for _, z in ship.points)
+    combo = strands_by_count(wf, 30) + ship
+    assert combo.n == 36
+    assert combo.strand_diameter == pytest.approx(0.6)
+    with pytest.raises(ValueError):
+        shipping_strands(box_beam_shape("CB27-48"))
+    with pytest.raises(ValueError):
+        _ = combo + ship          # duplicate locations
 
 
 def test_box_strand_defaults_are_half_inch():

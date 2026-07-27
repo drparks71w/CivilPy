@@ -78,6 +78,10 @@ BOX_STRAND_EDGE_IN = 4.0
 BOX_FLANGE_IN = _psbd.BOX_WALL_THICKNESS_IN            # 5.5
 #: PSBD-1-25 sheet 2 sections: side walls are 6 in (void is 3'-0" wide).
 BOX_SIDE_WALL_IN = 6.0
+#: PSBD-1-25 sheet 2 "STRAND LAYOUT AND BAR SPACING": the two bottom
+#: longitudinal #5 bars sit in the 2 in strand row, 8 in from each
+#: outside face -- those lattice points are bars, not strands.
+BOX_BOTTOM_BAR_EDGE_IN = 8.0
 
 
 # ── shapes ────────────────────────────────────────────────────────────────
@@ -104,6 +108,9 @@ class PSCShape:
     strand_grid: tuple[Point, ...] = ()
     draped_required: tuple[Point, ...] = ()
     strand_row_heights: tuple[float, ...] = ()   # rows for generated fills
+    #: published top-flange shipping strand locations (Modified Type 4 /
+    #: WF I-beams; empty elsewhere)
+    shipping_strands: tuple[Point, ...] = ()
 
 
 def i_beam_shape(name: str) -> PSCShape:
@@ -118,6 +125,7 @@ def i_beam_shape(name: str) -> PSCShape:
         strand_grid=tuple(_psid.strand_grid(name)),
         draped_required=tuple(s.draped_required),
         strand_row_heights=tuple(z for z, _ in s.strand_rows),
+        shipping_strands=tuple(s.shipping_strand_locations),
     )
 
 
@@ -130,16 +138,22 @@ def _box_strand_grid(width: float) -> tuple[Point, ...]:
     beams: the 2 and 4 in rows run "9 SPA. @ 2" from 4 in off each face
     with a 4 in gap astride the centerline (y = +-2..+-20, **no**
     centerline strand); the 6 in row is the single wall location above
-    each row end (y = +-20).  Other widths reuse the same edge/gap rules
-    (unverified against a sheet -- PSBDD-3-26 territory)."""
+    each row end (y = +-20).  In the 2 in row the lattice point 8 in
+    from each face (y = +-16 on 48 in beams) is drawn as one of the two
+    minimum bottom longitudinal #5 bars (sheet 2 note 2), so it is *not*
+    a permissible strand location.  Other widths reuse the same
+    edge/gap/bar rules (unverified against a sheet -- PSBDD-3-26
+    territory)."""
     y_max = width / 2.0 - BOX_STRAND_EDGE_IN
+    y_bar = width / 2.0 - BOX_BOTTOM_BAR_EDGE_IN
     ys = []
     y = y_max
     while y >= STRAND_LATTICE_IN * 0.999:            # stop before y=0
         ys.extend((-y, y) if y else (y,))
         y -= STRAND_LATTICE_IN
     h2, h4, h6 = _psbdd.STRAND_ROW_HEIGHTS_IN
-    grid = [(y, z) for z in (h2, h4) for y in ys]
+    grid = [(y, h2) for y in ys if abs(y) != y_bar]
+    grid += [(y, h4) for y in ys]
     grid += [(-y_max, h6), (y_max, h6)]
     return tuple(grid)
 
@@ -279,6 +293,26 @@ class StrandLayout:
                 "section centroid before asking for eccentricity")
         return self.shape.yb_in - self.centroid_in
 
+    def __add__(self, other: "StrandLayout") -> "StrandLayout":
+        """Merge two patterns on the same shape (e.g. a bottom-flange
+        design pattern + the standard shipping strands).  Strand area
+        and f_pu must match -- a mixed-size group would make ``a_ps``
+        and the flexural helpers silently wrong."""
+        if other.shape.name != self.shape.name:
+            raise ValueError("cannot combine strand layouts on different "
+                             f"shapes ({self.shape.name} + {other.shape.name})")
+        if (other.strand_area != self.strand_area
+                or other.f_pu != self.f_pu):
+            raise ValueError("cannot combine strand layouts with different "
+                             "strand area / f_pu")
+        dup = set(self.points) & set(other.points)
+        if dup:
+            raise ValueError(f"strand locations occupied twice: {sorted(dup)}")
+        return StrandLayout(self.shape, self.points + other.points,
+                            self.strand_area, self.f_pu,
+                            f"{self.source} + {other.source}",
+                            self.strand_diameter)
+
 
 def _strand_props(shape: PSCShape,
                   strand_area: float | None) -> tuple[float, float]:
@@ -378,6 +412,25 @@ def strands_from_odot_design(box: str, span_ft: int,
                         strand_diameter=layout.strand_diameter)
 
 
+def shipping_strands(shape: PSCShape, *,
+                     strand_area: float | None = None) -> StrandLayout:
+    """The section's published top-flange shipping strand locations
+    (Modified AASHTO Type 4 / WF I-beams: six at +-6, +-8, +-10 in,
+    2-3/4 in below the top surface) as a :class:`StrandLayout`, so
+    ``design_pattern + shipping_strands(shape)`` previews the full
+    fabrication pattern.  Shipping strands stabilize the top flange for
+    handling and are tensioned per the PSID general notes, not as design
+    prestress -- exclude them from flexural checks unless the design
+    counts them."""
+    if not shape.shipping_strands:
+        raise ValueError(f"{shape.name} has no published shipping strand "
+                         "locations (AASHTO Type 2-4 top flanges carry "
+                         "none)")
+    area, dia = _strand_props(shape, strand_area)
+    return StrandLayout(shape, tuple(shape.shipping_strands), area,
+                        source="shipping strands", strand_diameter=dia)
+
+
 # ── rebar layouts ────────────────────────────────────────────────────────
 @dataclass(frozen=True)
 class RebarPoint:
@@ -473,6 +526,31 @@ def perimeter_bars(shape: PSCShape, size: int, spacing: float, *,
                               f"cover {cover:g} in")
 
 
+def box_standard_bars(shape: PSCShape) -> RebarLayout:
+    """The PSBD-1-25 minimum longitudinal reinforcing for a box beam
+    (sheet 2 note 2): four #5 across the top flange and two #5 in the
+    bottom.  Positions follow the "STRAND LAYOUT AND BAR SPACING"
+    detail: the bottom pair sits *in* the 2 in strand row 8 in from
+    each outside face (displacing those two strand locations -- see
+    :func:`_box_strand_grid`); the top four sit just under the top
+    surface, two near the walls and two inboard.  Everything else in
+    the section's bar cage (#4 A..T transverse bars, tie/stirrup legs)
+    is transverse steel and does not appear in a cross-section layout.
+    """
+    if shape.family != "box":
+        raise ValueError(f"{shape.name} is not a PSBD box beam")
+    w2 = max(y for y, _ in shape.outline)
+    y_bot = w2 - BOX_BOTTOM_BAR_EDGE_IN
+    z_top = shape.depth_in - 2.5
+    h2 = _psbdd.STRAND_ROW_HEIGHTS_IN[0]
+    bars = [RebarPoint(-y_bot, h2, 5), RebarPoint(y_bot, h2, 5)]
+    for y in (-(w2 - 4.0), -8.0, 8.0, w2 - 4.0):
+        bars.append(RebarPoint(y, z_top, 5))
+    return RebarLayout(shape, tuple(bars),
+                       source="PSBD-1-25 note 2 minimum longitudinal "
+                              "(4+2) #5")
+
+
 # ── preview ──────────────────────────────────────────────────────────────
 def plot_psc_section(shape: PSCShape,
                      strands: StrandLayout | None = None,
@@ -510,6 +588,11 @@ def plot_psc_section(shape: PSCShape,
             ax.plot([y for y, _ in draped_free],
                     [z for _, z in draped_free], "x", color="0.55",
                     ms=5, mew=0.9, zorder=3)
+        ship_free = [p for p in shape.shipping_strands if p not in occupied]
+        if ship_free:
+            ax.plot([y for y, _ in ship_free],
+                    [z for _, z in ship_free], "^", mfc="none",
+                    color="0.55", ms=5, mew=0.9, zorder=3)
     if rebar:
         for b in rebar.bars:
             ax.add_patch(Circle((b.y, b.z), _bar_diameter(b.size) / 2.0,
