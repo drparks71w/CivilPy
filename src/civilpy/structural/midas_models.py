@@ -563,6 +563,58 @@ def soil_spring_supports(
 # exporters behave identically.
 
 
+def midas_vehicle_payload(vehicle, *, lane_load_klf: float | None = None,
+                          plm_kip: float = 0.0, plv_kip: float = 0.0,
+                          im_percent: float = 0.0) -> dict:
+    """A ``/db/mvhl`` user-defined Truck/Lane vehicle record from a
+    :class:`~civilpy.structural.aashto.vehicles.RatingVehicle` -- the way
+    to run vehicles Midas's DB lacks (ODOT's FAST-Act EV2/EV3, custom
+    permit trains).
+
+    Schema verified live 2026-07-27: axles ride a ``LOAD_ITEMS`` array of
+    ``{POINT_LOAD, POINT_DIST}`` (distance to the NEXT axle; kips and
+    model length units); the lane component and concentrated moment/shear
+    loads (PLM/PLV) sit in ``VEH_DEFAULT``.  ``lane_load_klf`` defaults
+    to the vehicle's own definition; converted to kip/in.
+    """
+    if lane_load_klf is None:
+        lane_load_klf = vehicle.lane_load_klf
+    spac = list(vehicle.axle_spacings_ft) + [0.0]
+    items = [{"POINT_LOAD": float(p), "POINT_DIST": float(d) * 12.0}
+             for p, d in zip(vehicle.axle_loads_kip, spac)]
+    return {
+        "MVLD_CODE": 2, "VEHICLE_LOAD_NAME": vehicle.name,
+        "VEHICLE_LOAD_NUM": 2, "USER_LOAD_TYPE": "Truck/Lane",
+        "VEH_DEFAULT": {"UNIFORM_LOAD": lane_load_klf / 12.0,
+                        "PL": 0.0, "PLM": plm_kip, "PLV": plv_kip,
+                        "DYN_LOAD_ALLOWANCE": im_percent,
+                        "CENT_F": False},
+        "LOAD_ITEMS": items,
+    }
+
+
+def midas_standard_vehicle(type_name: str, *, name: str | None = None,
+                           standard_code: str = "AASHTO-LRFD",
+                           im_percent: float = 33.0) -> dict:
+    """A ``/db/mvhl`` standard-DB vehicle record.
+
+    Verified live 2026-07-27: ``STANDARD_CODE`` is REQUIRED for the DB
+    reference to resolve -- without it the record stores cleanly but the
+    vehicle applies zero load, silently.  LRFD DB names include
+    "HL-93TRK", "HL-93TDM", "HS20-FTG"; ``standard_code`` "OHDOT LOAD"
+    reaches the Ohio legal/permit set ("OH Legal load 5C1", 2F1, 3F1,
+    4F1 -- the BDM's EV vehicles are absent, use
+    :func:`midas_vehicle_payload` for those).
+    """
+    return {
+        "MVLD_CODE": 2, "VEHICLE_LOAD_NAME": name or type_name,
+        "VEHICLE_LOAD_NUM": 1, "VEHICLE_TYPE_NAME": type_name,
+        "STANDARD_CODE": standard_code,
+        "VEH_DEFAULT": {"DYN_LOAD_ALLOWANCE": im_percent,
+                        "CENT_F": False},
+    }
+
+
 def midas_payloads(model: "StructuralModel", *, node_start: int = 1,
                    elem_start: int = 1, material_name: str = "A709-50",
                    db_name: str | None = "AISC10(US)") -> dict:
