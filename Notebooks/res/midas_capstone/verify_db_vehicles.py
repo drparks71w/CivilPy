@@ -11,9 +11,10 @@ units that matter.
 
 PREREQUISITE -- one manual step, once per model:
     Analysis > Moving Load Analysis Control > OK
-``/db/MVCT`` rejects every write, including an empty body ("Wrong Field"),
-so the control record cannot be created from the API.  Once it exists this
-script runs unattended.
+``/db/MVCT`` is modify-only: PUT works normally once the record exists
+(full body, a single field, even an empty body), but while it is absent
+every PUT returns "Wrong Field".  Creating it is the UI's job.  Once it
+exists this script runs unattended.
 
 Usage:
     python verify_db_vehicles.py            # against the open model
@@ -39,8 +40,8 @@ def ensure_control(client) -> bool:
         return True
     print("BLOCKED: no Moving Load Analysis Control record.\n"
           "  In Civil NX: Analysis > Moving Load Analysis Control > OK,\n"
-          "  then re-run.  The API cannot create it (every write, including\n"
-          "  an empty body, returns 'Wrong Field').")
+          "  then re-run.  /db/MVCT is modify-only -- PUT works once the\n"
+          "  record exists, but returns 'Wrong Field' while it is absent.")
     return False
 
 
@@ -58,6 +59,10 @@ def build_lane(client) -> None:
 
 def push_pairs(client) -> dict[str, tuple[str, str]]:
     """One DB vehicle and one BDM-defined vehicle per rating load."""
+    # PUT appends rather than replacing, so clear first
+    for vid in sorted(client.request("GET", "db/mvhl").get("MVHL", {}),
+                      key=int, reverse=True):
+        client.request("DELETE", f"db/mvhl/{vid}")
     assign, pairs, vid = {}, {}, 1
     for name, (code, type_name) in BDM_908_STANDARD_DB.items():
         if name not in RATING_VEHICLES:
