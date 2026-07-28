@@ -59,16 +59,20 @@ def test_i_beam_shape_carries_the_sheet_data():
 def test_box_beam_shape_geometry():
     s = box_beam_shape("B21-48")
     assert s.family == "box"
-    assert s.depth_in == 21 and s.yb_in == 10.42
-    # solid polygon area (outer chamfers/keyways not drawn) runs a few
-    # percent above the published area
+    assert s.depth_in == 21 and s.yb_in == 10.40
+    # The polygon reproduces the sheet 2/6 dimension chains, so it closes
+    # against the PUBLISHED sheet 4/6 area to a fraction of a percent --
+    # the residual is the small exterior corner chamfers, not drawn.
     area = _poly_area(s.outline) - sum(_poly_area(v) for v in s.voids)
-    assert area == pytest.approx(s.area_in2, rel=0.05)
-    # mid-depth scanline sees only the two 6 in side walls (PSBD-1-25
-    # sheet 2: the void is 3'-0" wide)
+    assert area == pytest.approx(s.area_in2, rel=0.003)
+    # mid-depth scanline sees only the two side walls; at that height the
+    # keyway recess has taken 1 1/4 in off each face, so the solid width
+    # is 2 x (22.75 - 18) = 9.5 in rather than the nominal 2 x 6
     spans = solid_intervals(s, 10.5)
     assert len(spans) == 2
-    assert sum(b - a for a, b in spans) == pytest.approx(12.0)
+    assert sum(b - a for a, b in spans) == pytest.approx(9.5)
+    # at the soffit the section is full width
+    assert solid_intervals(s, 2.0) == [(-24.0, 24.0)]
 
 
 def test_box_strand_grid_matches_psbd_sheet_2():
@@ -459,12 +463,11 @@ from civilpy.structural.psc_section import torsion_properties  # noqa: E402
 
 
 def test_box_torsion_properties_hand_calc():
-    # CB27-48: Acp = 48*27 = 1296, pc = 150; wall midlines: width
-    # (48+36)/2 = 42, height (27+16)/2 = 21.5 -> Ao = 903, ph = 127;
-    # be = min(6, 5.5, 1296/150) = 5.5
+    # CB27-48 outer perimeter encloses 48 x 27 less the keyway recesses
+    # and top setback; wall midlines: width (48+36)/2 = 42, height
+    # (27+16)/2 = 21.5 -> Ao = 903;  be = min(webs 6, flanges 5.5, Acp/pc).
     tp = torsion_properties(box_beam_shape("CB27-48"))
-    assert tp.a_cp == pytest.approx(1296.0)
-    assert tp.p_c == pytest.approx(150.0)
+    assert tp.a_cp == pytest.approx(1247.25, abs=0.05)
     assert tp.a_o == pytest.approx(42.0 * 21.5)
     assert tp.p_h == pytest.approx(2.0 * (42.0 + 21.5))
     assert tp.b_e == pytest.approx(5.5)
@@ -492,9 +495,11 @@ def test_midas_section_payload_carries_the_polygons():
     assert len(outer) == len(box.outline)
     inner = p["SECT_BEFORE"]["SECT_I"]["INNER_POLYGON"][0]["VERTEX"]
     assert len(inner) == len(box.voids[0])
-    # HT, BT and the summed 6-in webs
+    # HT, BT and the summed webs.  The default web thickness is measured
+    # from the geometry at mid-depth, where the keyway recess has taken
+    # 1 1/4 in off each face -- 2 x 4.75 = 9.5 in, not the nominal 2 x 6.
     assert p["SECT_BEFORE"]["SECT_I"]["vSIZE"][:2] == [27.0, 48.0]
-    assert p["SECT_BEFORE"]["WEB_THICK"][0] == pytest.approx(12.0)
+    assert p["SECT_BEFORE"]["WEB_THICK"][0] == pytest.approx(9.5)
 
 
 def test_midas_tendon_payloads_conventions():

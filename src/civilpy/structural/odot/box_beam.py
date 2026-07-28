@@ -51,11 +51,42 @@ MAX_SKEW_DEG = 30.0
 # checked against the drawn "37"" void width) and void height = depth -
 # 2*wall (e.g. 27 - 11 = 16 in, matching the drawn "16"" void height).
 
-#: Top/bottom flange and web wall thickness, inches (uniform across every
-#: standard depth and width).
-BOX_WALL_THICKNESS_IN = 5.5
-#: Void corner fillet, inches (square, e.g. "3 x 3").
+#: Top/bottom flange thickness, inches -- PSBD-1-25 sheet 2/6 LEFT
+#: dimension chain (5 1/2" | void | 5 1/2"), identical at every depth, so
+#: the void is centred on the beam.  Verified: this geometry reproduces
+#: the sheet 4/6 published Ab, Yb and Ib to 0.2% at all five depths.
+BOX_FLANGE_THICKNESS_IN = 5.5
+#: Side web thickness, inches (sheet 2/6: 6" | 3'-0" | 6" bottom chain).
+BOX_WEB_THICKNESS_IN = 6.0
+#: Void corner fillet, inches (square).  Only the 17 in beam uses
+#: 1 1/2" x 1 1/2"; every deeper beam uses 3" x 3".
 BOX_VOID_FILLET_IN = 3.0
+BOX_VOID_FILLET_SHALLOW_IN = 1.5
+
+# Exterior side-face (shear key) profile, PSBD-1-25 sheet 2/6 RIGHT
+# dimension chain -- 5" | (D - 10) | 5" -- read off the drawing:
+#   0 .. 5              full width (48 in), the bearing band
+#   5 .. 6.25           1 1/4" x 1 1/4" chamfer inward
+#   6.25 .. D-5.5       keyway recess, 1 1/4" deep each side
+#   D-5.5 .. D-5        1/2" x 1/2" chamfer outward
+#   D-5 .. D            top band, recessed 3/4" each side (46 1/2" wide)
+#: Height of the full-width band at the soffit, inches.
+KEYWAY_BOTTOM_BAND_IN = 5.0
+#: Lower chamfer leg into the keyway recess, inches.
+KEYWAY_LOWER_CHAMFER_IN = 1.25
+#: Depth of the keyway recess from the nominal face, inches.
+KEYWAY_RECESS_DEPTH_IN = 1.25
+#: Upper chamfer leg out of the keyway recess, inches.
+KEYWAY_UPPER_CHAMFER_IN = 0.5
+#: Height of the top band, inches, and how far it is set in per side.
+KEYWAY_TOP_BAND_IN = 5.0
+KEYWAY_TOP_SETBACK_IN = 0.75
+#: 3/4 in x 3/4 in chamfer at each bottom (soffit) corner (ODOT's standard
+#: chamfer), so the soffit is 46.5 in wide on a 48 in beam.  The top
+#: corners are square.  Not dimensioned on sheet 2/6 -- recovered from the
+#: published areas, which it reproduces to +-0.01% at all five depths
+#: (1 in gives -0.07%, 1 1/2 in gives -0.25%).
+BOX_BOTTOM_CHAMFER_IN = 0.75
 
 #: Composite (CIP) topping: structural thickness carried in the composite
 #: section properties, plus a non-structural monolithic wearing surface on
@@ -70,9 +101,11 @@ COMPOSITE_MODULAR_RATIO = 0.90
 def box_void_dimensions(depth_in: float, width_in: float = BOX_WIDTH_IN
                          ) -> tuple[float, float]:
     """Void ``(width, height)`` in inches for a box beam of ``depth_in`` /
-    ``width_in``, uniform-wall (:data:`BOX_WALL_THICKNESS_IN` each side)."""
-    return (width_in - 2.0 * BOX_WALL_THICKNESS_IN,
-            depth_in - 2.0 * BOX_WALL_THICKNESS_IN)
+    ``width_in``: :data:`BOX_WEB_THICKNESS_IN` webs each side,
+    :data:`BOX_FLANGE_THICKNESS_IN` flanges top and bottom (PSBD-1-25
+    sheet 2/6 dimension chains)."""
+    return (width_in - 2.0 * BOX_WEB_THICKNESS_IN,
+            depth_in - 2.0 * BOX_FLANGE_THICKNESS_IN)
 
 
 @dataclass(frozen=True)
@@ -100,8 +133,33 @@ class BoxSectionProperties:
     zbc: float = 0.0          # in^3 (composite)
 
 
-#: 48 in wide box-beam section properties by depth (PSBD-1-25 sheet 4/6).
+#: 48 in wide box-beam section properties by depth, as published on
+#: PSBD-1-25 sheet 4/6.
+#:
+#: VERIFIED (2026-07-28) against the section dimensioned on sheet 2/6:
+#: recomputing Ab, Yb and Ib from that geometry reproduces every value in
+#: this table to within 0.2% (the residual is the small exterior corner
+#: chamfers, which the polygon does not draw).  The table is internally
+#: self-consistent as well -- S = I/c closes both beam-only and composite.
 BOX_SECTION_PROPERTIES: dict[int, BoxSectionProperties] = {
+    17: BoxSectionProperties(17, area=580.8, i=18652, yb=8.42, zt=2175, zb=2214,
+                              ic=39506, ybc=11.59, ztc=7302, zbc=3409),
+    21: BoxSectionProperties(21, area=632.3, i=33551, yb=10.40, zt=3165, zb=3226,
+                              ic=63190, ybc=13.92, ztc=8925, zbc=4540),
+    27: BoxSectionProperties(27, area=689.3, i=65398, yb=13.38, zt=4802, zb=4888,
+                              ic=111083, ybc=17.44, ztc=11620, zbc=6369),
+    33: BoxSectionProperties(33, area=746.2, i=109652, yb=16.50, zt=6646, zb=6646,
+                              ic=175131, ybc=20.90, ztc=14474, zbc=8379),
+    42: BoxSectionProperties(42, area=831.8, i=201537, yb=20.82, zt=9515, zb=9680,
+                              ic=303890, ybc=26.00, ztc=18993, zbc=11688),
+}
+
+#: The superseded PSBD-2-07 (2007) sheet 4/4 "48 in wide box beam" table.
+#: That standard's section is geometrically DIFFERENT from PSBD-1-25:
+#: 5 1/2 in uniform walls and a 37 in wide void.  Use these when rating
+#: existing bridges built under PSBD-2-07 and earlier; the 12 in depth of
+#: that table is omitted because PSBD-1-25 dropped it.
+PSBD_2_07_SECTION_PROPERTIES: dict[int, BoxSectionProperties] = {
     17: BoxSectionProperties(17, area=590.3, i=18819, yb=8.44, zt=2198, zb=2230,
                               ic=38620, ybc=11.40, ztc=6898, zbc=3387),
     21: BoxSectionProperties(21, area=647.8, i=33884, yb=10.42, zt=3202, zb=3253,

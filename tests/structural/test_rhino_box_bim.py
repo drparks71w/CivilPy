@@ -11,7 +11,8 @@ import json
 import pytest
 
 from civilpy.structural.odot import (
-    BOX_WALL_THICKNESS_IN,
+    BOX_FLANGE_THICKNESS_IN,
+    BOX_WEB_THICKNESS_IN,
     box_beam_design,
     box_section_properties,
     diaphragm_stations_ft,
@@ -58,19 +59,20 @@ def test_gdr_contract(emit):
 
 
 def test_hollow_tube_geometry(emit):
-    wall = BOX_WALL_THICKNESS_IN / 12.0
+    flange = BOX_FLANGE_THICKNESS_IN / 12.0
+    web = BOX_WEB_THICKNESS_IN / 12.0
     beam1 = [o for o in emit.of_type("box_beam")
              if o.tags["bim.id"].startswith("BB1-")]
     parts = {o.tags["box_beam.part"]: o for o in beam1}
     assert set(parts) == {"top_flange", "bottom_flange", "left_web",
                           "right_web"}
     top = parts["top_flange"]
-    assert min(p[2] for p in top.points) == pytest.approx(27.0 / 12.0 - wall)
-    assert top.vector[2] == pytest.approx(wall)
-    web = parts["left_web"]
-    ys = [p[1] for p in web.points]
-    assert max(ys) - min(ys) == pytest.approx(wall)
-    assert web.vector[2] == pytest.approx(27.0 / 12.0 - 2.0 * wall)
+    assert min(p[2] for p in top.points) == pytest.approx(27.0 / 12.0 - flange)
+    assert top.vector[2] == pytest.approx(flange)
+    left = parts["left_web"]
+    ys = [p[1] for p in left.points]
+    assert max(ys) - min(ys) == pytest.approx(web)
+    assert left.vector[2] == pytest.approx(27.0 / 12.0 - 2.0 * flange)
 
 
 def test_strand_rows_follow_design(emit):

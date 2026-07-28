@@ -42,7 +42,8 @@ from dataclasses import dataclass
 from civilpy.structural import bim
 from civilpy.structural.odot import (
     BEARING_PADS,
-    BOX_WALL_THICKNESS_IN,
+    BOX_FLANGE_THICKNESS_IN,
+    BOX_WEB_THICKNESS_IN,
     COMPOSITE_SLAB_STRUCTURAL_THICKNESS_IN,
     COMPOSITE_SLAB_WEARING_SURFACE_IN,
     TIE_ROD,
@@ -110,7 +111,8 @@ def box_beam_bridge_emit(inp: BoxBridgeInput, *,
 
     width_ft = section.width / 12.0
     depth_ft = design.depth / 12.0
-    wall_ft = BOX_WALL_THICKNESS_IN / 12.0
+    flange_ft = BOX_FLANGE_THICKNESS_IN / 12.0
+    web_ft = BOX_WEB_THICKNESS_IN / 12.0
     span = float(inp.span_ft)
     bridge_width_ft = inp.n_beams * width_ft
     beam_cy = section.area / 144.0 * span / 27.0
@@ -154,12 +156,12 @@ def box_beam_bridge_emit(inp: BoxBridgeInput, *,
         # hollow tube: top/bottom flange + both webs; the top flange
         # carries the member count (one per beam)
         walls = (
-            ("top_flange", y_lo, y_hi, depth_ft - wall_ft, depth_ft, 1),
-            ("bottom_flange", y_lo, y_hi, 0.0, wall_ft, None),
-            ("left_web", y_lo, y_lo + wall_ft, wall_ft,
-             depth_ft - wall_ft, None),
-            ("right_web", y_hi - wall_ft, y_hi, wall_ft,
-             depth_ft - wall_ft, None),
+            ("top_flange", y_lo, y_hi, depth_ft - flange_ft, depth_ft, 1),
+            ("bottom_flange", y_lo, y_hi, 0.0, flange_ft, None),
+            ("left_web", y_lo, y_lo + web_ft, flange_ft,
+             depth_ft - flange_ft, None),
+            ("right_web", y_hi - web_ft, y_hi, flange_ft,
+             depth_ft - flange_ft, None),
         )
         for part, yy0, yy1, zz0, zz1, count in walls:
             objects.append(_rect_prism(
@@ -194,7 +196,7 @@ def box_beam_bridge_emit(inp: BoxBridgeInput, *,
                             start=1):
         objects.append(_rect_prism(
             LAYER_DIAPHRAGMS, x_d - t_dia / 2.0, x_d + t_dia / 2.0,
-            0.0, bridge_width_ft, wall_ft, depth_ft - wall_ft,
+            0.0, bridge_width_ft, flange_ft, depth_ft - flange_ft,
             bim.diaphragm_tags(f"DIA-{k}",
                                thickness_in=DIAPHRAGM_THICKNESS_IN,
                                fc_psi=inp.fc_psi, pay=False)))

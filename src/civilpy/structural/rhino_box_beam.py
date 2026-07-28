@@ -54,7 +54,8 @@ from dataclasses import dataclass
 
 from civilpy.structural.odot import (
     BEARING_PADS,
-    BOX_WALL_THICKNESS_IN,
+    BOX_FLANGE_THICKNESS_IN,
+    BOX_WEB_THICKNESS_IN,
     COMPOSITE_SLAB_STRUCTURAL_THICKNESS_IN,
     COMPOSITE_SLAB_WEARING_SURFACE_IN,
     TIE_ROD,
@@ -145,7 +146,8 @@ def build_box_beams(*, out_path, box: str, span_ft: float, n_beams: int,
 
     width_ft = section.width / 12.0
     depth_ft = design.depth / 12.0
-    wall_ft = BOX_WALL_THICKNESS_IN / 12.0
+    flange_ft = BOX_FLANGE_THICKNESS_IN / 12.0
+    web_ft = BOX_WEB_THICKNESS_IN / 12.0
     bridge_width_ft = n_beams * width_ft
     composite = design.beam_type == "composite"
     self_weight_klf = section.area / 144.0 * concrete_pcf / 1000.0
@@ -179,10 +181,10 @@ def build_box_beams(*, out_path, box: str, span_ft: float, n_beams: int,
 
         # ── box-beam solid: four wall meshes (hollow tube, square voids) ──
         for (yy0, yy1, zz0, zz1) in (
-            (y_lo, y_hi, depth_ft - wall_ft, depth_ft),      # top flange
-            (y_lo, y_hi, 0.0, wall_ft),                       # bottom flange
-            (y_lo, y_lo + wall_ft, wall_ft, depth_ft - wall_ft),  # left web
-            (y_hi - wall_ft, y_hi, wall_ft, depth_ft - wall_ft),  # right web
+            (y_lo, y_hi, depth_ft - flange_ft, depth_ft),    # top flange
+            (y_lo, y_hi, 0.0, flange_ft),                     # bottom flange
+            (y_lo, y_lo + web_ft, flange_ft, depth_ft - flange_ft),  # left web
+            (y_hi - web_ft, y_hi, flange_ft, depth_ft - flange_ft),  # right web
         ):
             ba = _tag_common(r3, lay["beam"], "box_beam",
                               box=box, depth=design.depth, line=str(i + 1))
@@ -225,7 +227,7 @@ def build_box_beams(*, out_path, box: str, span_ft: float, n_beams: int,
                           **{"diaphragm.station": x_d})
         f.Objects.AddMesh(_box_mesh(
             r3, x_d - diaphragm_t_ft / 2, x_d + diaphragm_t_ft / 2,
-            y_lo_all, y_hi_all, wall_ft, depth_ft - wall_ft), da)
+            y_lo_all, y_hi_all, flange_ft, depth_ft - flange_ft), da)
         n_diaphragm_objects += 1
 
         ra = _tag_common(r3, lay["tie_rod"], "tie_rod",

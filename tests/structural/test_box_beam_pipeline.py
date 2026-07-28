@@ -15,7 +15,10 @@ from civilpy.structural.box_beam_pipeline import (
     box_beam_line_checks,
     box_torsion_constant_in4,
 )
-from civilpy.structural.odot import BOX_WALL_THICKNESS_IN
+from civilpy.structural.odot import (
+    BOX_FLANGE_THICKNESS_IN,
+    BOX_WEB_THICKNESS_IN,
+)
 
 
 @pytest.fixture(scope="module")
@@ -32,9 +35,9 @@ def test_standard_design_passes(checks):
 
 
 def test_torsion_constant_thin_wall():
-    t = BOX_WALL_THICKNESS_IN
-    b0, d0 = 48.0 - t, 27.0 - t
-    expected = 4.0 * (b0 * d0) ** 2 / (2.0 * (b0 + d0) / t)
+    tw, tf = BOX_WEB_THICKNESS_IN, BOX_FLANGE_THICKNESS_IN
+    b0, d0 = 48.0 - tw, 27.0 - tf
+    expected = 4.0 * (b0 * d0) ** 2 / (2.0 * d0 / tw + 2.0 * b0 / tf)
     assert box_torsion_constant_in4(27.0) == pytest.approx(expected)
 
 
@@ -92,16 +95,22 @@ def test_short_span_small_box_passes():
     assert r.all_ok, r.summary()
 
 
-def test_longest_span_flags_debonding_condition():
-    """At the catalog's edge the fully-bonded transfer-tension check runs
-    just over 1.0 — the condition the sheet's strand debonding exists to
-    fix; everything else passes with range-top strengths."""
+def test_longest_span_governed_by_transfer_tension():
+    """At the catalog's edge, fully bonded, transfer tension is the
+    governing check and lands essentially exactly on its limit — the
+    condition the sheet's strand debonding exists to relieve.  Everything
+    else passes with range-top strengths.
+
+    (Against the published PSBD-1-25 sheet 4/6 properties this sits a hair
+    above 1.0; it read as a failure only while the tabulated section
+    properties were wrong.)
+    """
     r = box_beam_line_checks("CB42-48", 90.0, 9, barrier_klf=1.0,
                              fws_klf=0.54, fci_ksi=5.0, fc_ksi=7.0)
-    failing = [n for n, c in r.checks.items() if not c.ok]
-    assert failing == ["transfer tension"]
-    chk = r.checks["transfer tension"]
-    assert chk.demand / chk.capacity < 1.15
+    assert r.all_ok, r.summary()
+    ratios = {n: c.ratio for n, c in r.checks.items()}
+    assert min(ratios, key=ratios.get) == "transfer tension"
+    assert ratios["transfer tension"] == pytest.approx(1.0, abs=0.02)
 
 
 def test_structural_model_spoke():

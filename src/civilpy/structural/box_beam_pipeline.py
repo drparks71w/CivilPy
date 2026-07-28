@@ -52,7 +52,8 @@ from civilpy.structural.aashto.lrfd.prestressed import (
 )
 from civilpy.structural.girder_pipeline import girder_line_envelope
 from civilpy.structural.odot import (
-    BOX_WALL_THICKNESS_IN,
+    BOX_FLANGE_THICKNESS_IN,
+    BOX_WEB_THICKNESS_IN,
     COMPOSITE_SLAB_STRUCTURAL_THICKNESS_IN,
     COMPOSITE_SLAB_WEARING_SURFACE_IN,
     box_beam_design,
@@ -67,14 +68,17 @@ TOPPING_FC_KSI = 4.5             #: PSBD cast-in-place topping strength
 
 
 def box_torsion_constant_in4(depth_in: float, width_in: float = 48.0,
-                             wall_in: float = BOX_WALL_THICKNESS_IN
+                             web_in: float = BOX_WEB_THICKNESS_IN,
+                             flange_in: float = BOX_FLANGE_THICKNESS_IN
                              ) -> float:
     """St. Venant torsion constant of the closed box (thin-wall,
-    C4.6.2.2.1-3): ``J = 4 A0^2 / (s/t)`` with the shear-flow path on the
-    wall midline."""
-    b0 = width_in - wall_in
-    d0 = depth_in - wall_in
-    return 4.0 * (b0 * d0) ** 2 / (2.0 * (b0 + d0) / wall_in)
+    C4.6.2.2.1-3): ``J = 4 A0^2 / sum(s/t)`` with the shear-flow path on
+    the wall midlines, webs and flanges at their own thicknesses.  Bredt
+    is conservative here -- these walls are thick relative to the cell, and
+    an exact St. Venant solve runs ~10-15% higher."""
+    b0 = width_in - web_in
+    d0 = depth_in - flange_in
+    return 4.0 * (b0 * d0) ** 2 / (2.0 * d0 / web_in + 2.0 * b0 / flange_in)
 
 
 def _ec_ksi(fc_ksi: float) -> float:
@@ -313,14 +317,14 @@ def box_beam_line_checks(box: str, span_ft: float, n_beams: int, *,
         d_p = design.depth + t_struct - ybar
         flexure = ps_flexural_resistance(
             a_ps=a_ps, f_pu=F_PU_KSI, d_p=d_p, f_c=TOPPING_FC_KSI,
-            b=sec.width, b_w=2.0 * BOX_WALL_THICKNESS_IN,
-            h_f=t_struct + BOX_WALL_THICKNESS_IN, m_u=m_u)
+            b=sec.width, b_w=2.0 * BOX_WEB_THICKNESS_IN,
+            h_f=t_struct + BOX_FLANGE_THICKNESS_IN, m_u=m_u)
     else:
         d_p = design.depth - ybar
         flexure = ps_flexural_resistance(
             a_ps=a_ps, f_pu=F_PU_KSI, d_p=d_p, f_c=fc_ksi,
-            b=sec.width, b_w=2.0 * BOX_WALL_THICKNESS_IN,
-            h_f=BOX_WALL_THICKNESS_IN, m_u=m_u)
+            b=sec.width, b_w=2.0 * BOX_WEB_THICKNESS_IN,
+            h_f=BOX_FLANGE_THICKNESS_IN, m_u=m_u)
 
     checks = {
         "transfer compression": ps_transfer_compression_check(

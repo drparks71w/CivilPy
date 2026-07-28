@@ -46,6 +46,10 @@ class TestSlabBridgeRecord:
         assert any("skew_deg" in p for p in problems)
 
     def test_to_input_drives_emit(self, record, tmp_path):
+        # writes a real .3dm, so it needs the optional Rhino interchange
+        # dependency (civilpy[rhino]); the CI matrix installs only
+        # [db,geo,web,jupyter,validation]
+        pytest.importorskip("rhino3dm")
         from civilpy.structural.rhino_slab import write_slab_bridge
         emit = write_slab_bridge(tmp_path / "s.3dm", record.to_input())
         # the standard's bar schedule came out of the table, not the record

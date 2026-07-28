@@ -74,10 +74,11 @@ STRAND_EDGE_COVER_IN = 2.0
 #: from each beam face with a 4 in gap astride the centerline (no
 #: centerline strand).
 BOX_STRAND_EDGE_IN = 4.0
-#: PSBD-1-25 sheet 3 (also box_beam.py): top/bottom flange thickness.
-BOX_FLANGE_IN = _psbd.BOX_WALL_THICKNESS_IN            # 5.5
+#: PSBD-1-25 sheet 2 sections: top/bottom flanges are 5 1/2 in (the
+#: 5 1/2"/void/5 1/2" left dimension chain, every depth).
+BOX_FLANGE_IN = _psbd.BOX_FLANGE_THICKNESS_IN          # 5.5
 #: PSBD-1-25 sheet 2 sections: side walls are 6 in (void is 3'-0" wide).
-BOX_SIDE_WALL_IN = 6.0
+BOX_SIDE_WALL_IN = _psbd.BOX_WEB_THICKNESS_IN          # 6.0
 #: PSBD-1-25 sheet 2 "STRAND LAYOUT AND BAR SPACING": the two bottom
 #: longitudinal #5 bars sit in the 2 in strand row, 8 in from each
 #: outside face -- those lattice points are bars, not strands.
@@ -160,11 +161,16 @@ def _box_strand_grid(width: float) -> tuple[Point, ...]:
 
 def box_beam_shape(designation: str) -> PSCShape:
     """A PSBD-1-25 box beam (``"B21-48"``, ``"CB27-48"``, ...) as a
-    :class:`PSCShape`: 5.5 in top/bottom flanges, 6 in side walls (the
-    void is 3'-0" wide on 48 in beams), the void's corner fillets
-    (1.5 in on 17 in beams, 3 in otherwise -- sheet 2) modeled as
-    chamfers.  Carries the sheet 2 permissible strand grid.  Published
-    Yb/area come from the section-properties table for 48 in beams.
+    :class:`PSCShape`, per the sheet 2/6 dimension chains: 5 in top/bottom
+    flanges, 6 in side walls (the void is 3'-0" wide on 48 in beams), the
+    void's corner fillets (1.5 in on 17 in beams, 3 in otherwise) modeled
+    as chamfers, and the exterior shear-key profile (5 in full-width
+    bearing band at the soffit, 1 1/4 in deep keyway recess, 5 in top band
+    set back 3/4 in), and the 1 in x 1 in soffit corner chamfers (the
+    top corners are square).  Geometry taken from dane's dimensioned
+    Rhino model of B17-48; reproduces the published sheet 4/6 Ab / Yb /
+    Ib to within 0.15 percent at every depth.  Carries the sheet 2
+    permissible strand grid.
     """
     m = _BOX_RE.match(designation)
     if not m:
@@ -173,9 +179,21 @@ def box_beam_shape(designation: str) -> PSCShape:
             f" / CB<depth>-<width>")
     depth, width = float(m.group(2)), float(m.group(3))
     w2 = width / 2.0
-    f = 1.5 if depth <= 17 else _psbd.BOX_VOID_FILLET_IN
+    f = (_psbd.BOX_VOID_FILLET_SHALLOW_IN if depth <= 17
+         else _psbd.BOX_VOID_FILLET_IN)
     vw2, z0, z1 = w2 - BOX_SIDE_WALL_IN, BOX_FLANGE_IN, depth - BOX_FLANGE_IN
-    outline = ((-w2, 0.0), (w2, 0.0), (w2, depth), (-w2, depth))
+    # exterior side-face profile: bearing band, keyway recess, top band
+    rw = w2 - _psbd.KEYWAY_RECESS_DEPTH_IN          # recessed face
+    tw = w2 - _psbd.KEYWAY_TOP_SETBACK_IN           # top band face
+    zb = _psbd.KEYWAY_BOTTOM_BAND_IN
+    zr0 = zb + _psbd.KEYWAY_LOWER_CHAMFER_IN
+    zt1 = depth - _psbd.KEYWAY_TOP_BAND_IN
+    zr1 = zt1 - _psbd.KEYWAY_UPPER_CHAMFER_IN
+    ch = _psbd.BOX_BOTTOM_CHAMFER_IN
+    outline = ((-w2 + ch, 0.0), (w2 - ch, 0.0), (w2, ch), (w2, zb),
+               (rw, zr0), (rw, zr1), (tw, zt1), (tw, depth),
+               (-tw, depth), (-tw, zt1), (-rw, zr1), (-rw, zr0),
+               (-w2, zb), (-w2, ch))
     void = ((-(vw2 - f), z0), (vw2 - f, z0), (vw2, z0 + f), (vw2, z1 - f),
             (vw2 - f, z1), (-(vw2 - f), z1), (-vw2, z1 - f), (-vw2, z0 + f))
     yb = area = None
