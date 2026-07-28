@@ -607,15 +607,15 @@ def midas_vehicle_payload(vehicle, *, lane_load_klf: float | None = None,
 
 #: Midas standard-DB entries for the ODOT BDM 908.3 rating vehicles,
 #: as ``{civilpy name: (STANDARD_CODE, VEHICLE_TYPE_NAME)}``.  Strings are
-#: verbatim from the Civil NX API manual (db/MVHL, "Vehicles - AASHTO
-#: LRFD", article 35957229130521) -- they are NOT guessable and the API
-#: will not validate them: a wrong name stores cleanly and then applies
-#: ZERO load silently, so always confirm nonzero envelopes after the
-#: first analysis.
+#: read back off a live model where dane added them through the UI
+#: (2026-07-28).  **Note the spaces**: the online API manual renders these
+#: with all spaces stripped ("AASHTOLegalType3", "OHDOTLOAD"), which is a
+#: rendering artifact -- those forms are wrong and, because the API does
+#: not validate names, would store cleanly and then apply ZERO load
+#: silently.  Always confirm nonzero envelopes after the first analysis.
 #:
-#: EV2/EV3 live under a FAST-Act EV standard code that the manual page
-#: predates; the two ODOT state permit loads (S-PL60T/S-PL65T) have no DB
-#: entry at all.  Build those with :func:`midas_vehicle_payload` -- but
+#: The two ODOT state permit loads (S-PL60T/S-PL65T) have no DB entry at
+#: all.  Build those with :func:`midas_vehicle_payload` -- but
 #: note the IM caveat there.
 #:
 #: .. warning::
@@ -631,17 +631,19 @@ def midas_vehicle_payload(vehicle, *, lane_load_klf: float | None = None,
 #:    IS checked against BDM Figures 908.3-1..-5) before using the DB
 #:    entry for a rating.
 BDM_908_STANDARD_DB = {
-    "2F1": ("OHDOTLOAD", "OHLegalload2F1"),
-    "3F1": ("OHDOTLOAD", "OHLegalload3F1"),
-    "4F1": ("OHDOTLOAD", "OHLegalload4F1"),
-    "5C1": ("OHDOTLOAD", "OHLegalload5C1"),
-    "Type 3": ("AASHTOLEGAL/PERMITLOAD", "AASHTOLegalType3"),
-    "Type 3S2": ("AASHTOLEGAL/PERMITLOAD", "AASHTOLegalType3S2"),
-    "Type 3-3": ("AASHTOLEGAL/PERMITLOAD", "AASHTOLegalType3-3"),
-    "SU4": ("AASHTOLEGAL/PERMITLOAD", "AASHTOPostingloadSU4"),
-    "SU5": ("AASHTOLEGAL/PERMITLOAD", "AASHTOPostingloadSU5"),
-    "SU6": ("AASHTOLEGAL/PERMITLOAD", "AASHTOPostingloadSU6"),
-    "SU7": ("AASHTOLEGAL/PERMITLOAD", "AASHTOPostingloadSU7"),
+    "2F1": ("OHDOT LOAD", "OH Legal load 2F1"),
+    "3F1": ("OHDOT LOAD", "OH Legal load 3F1"),
+    "4F1": ("OHDOT LOAD", "OH Legal load 4F1"),
+    "5C1": ("OHDOT LOAD", "OH Legal load 5C1"),
+    "Type 3": ("AASHTO LEGAL/PERMIT LOAD", "AASHTO Legal Type 3"),
+    "Type 3S2": ("AASHTO LEGAL/PERMIT LOAD", "AASHTO Legal Type 3S2"),
+    "Type 3-3": ("AASHTO LEGAL/PERMIT LOAD", "AASHTO Legal Type 3-3"),
+    "SU4": ("AASHTO LEGAL/PERMIT LOAD", "AASHTO Posting load SU4"),
+    "SU5": ("AASHTO LEGAL/PERMIT LOAD", "AASHTO Posting load SU5"),
+    "SU6": ("AASHTO LEGAL/PERMIT LOAD", "AASHTO Posting load SU6"),
+    "SU7": ("AASHTO LEGAL/PERMIT LOAD", "AASHTO Posting load SU7"),
+    "EV2": ("FAST ACT EV LOADS", "Type EV2"),
+    "EV3": ("FAST ACT EV LOADS", "Type EV3"),
 }
 
 
