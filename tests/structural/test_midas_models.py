@@ -360,3 +360,68 @@ def test_push_midas_keeps_going_on_table_error():
     report = mm.push_midas(m, midas=FlakyMidas())
     assert "error" in report["CONS"]
     assert report["NODE"] == {"sent": 3}     # other tables still sent
+
+
+class TestLoadOhVehicles:
+    """The ODOT BDM Section 908 vehicle loader."""
+
+    class _FakeClient:
+        def __init__(self, existing=None):
+            self.existing = dict(existing or {})
+            self.deleted, self.put = [], None
+
+        def request(self, method, command, body=None, **kw):
+            if method == "GET":
+                return {"MVHL": self.existing}
+            if method == "DELETE":
+                self.deleted.append(command.rsplit("/", 1)[-1])
+                return {}
+            self.put = body
+            self.existing = {
+                k: {"VEHICLE_LOAD_NAME": v.get("VEHICLE_LOAD_NAME")}
+                for k, v in body["Assign"].items()}
+            return {}
+
+    def _load(self, **kw):
+        from civilpy.structural.midas_models import load_oh_vehicles
+        c = self._FakeClient()
+        return c, load_oh_vehicles(c, **kw)
+
+    def test_loads_exactly_the_bdm_set(self):
+        from civilpy.structural.aashto.vehicles import BDM_908_RATING_LOADS
+        c, out = self._load(include_design=False)
+        names = set(out["pushed"].values())
+        assert names == set(BDM_908_RATING_LOADS)
+
+    def test_excludes_vehicles_the_bdm_does_not_specify(self):
+        c, out = self._load()
+        names = set(out["pushed"].values())
+        for unused in ("AASHTO National Rating Load", "4F1", "AML",
+                       "H15-44", "HS-25"):
+            assert unused not in names
+
+    def test_design_loads_only_with_standard_db(self):
+        # the 908.2 design loads are DB-only; asking for them without
+        # use_standard_db must not silently invent axle trains
+        c, out = self._load(include_design=True, use_standard_db=False)
+        assert "HL-93 truck" not in out["pushed"].values()
+        c, out = self._load(include_design=True, use_standard_db=True)
+        assert "HL-93 truck" in out["pushed"].values()
+
+    def test_defaults_to_user_defined_with_explicit_axles(self):
+        c, out = self._load(include_design=False)
+        assert out["standard_db"] == []
+        assert out["im_applied"] is False        # IM dropped on user records
+        body = c.put["Assign"]["1"]
+        assert body["USER_LOAD_TYPE"] == "Truck/Lane"
+        assert body["LOAD_ITEMS"]
+
+    def test_permit_loads_are_user_defined_even_in_db_mode(self):
+        c, out = self._load(include_design=False, use_standard_db=True)
+        assert set(out["user_defined"]) == {"S-PL60T", "S-PL65T"}
+
+    def test_replace_clears_existing_first(self):
+        from civilpy.structural.midas_models import load_oh_vehicles
+        c = self._FakeClient({"1": {}, "2": {}, "3": {}})
+        load_oh_vehicles(c, replace=True, include_design=False)
+        assert c.deleted == ["3", "2", "1"]

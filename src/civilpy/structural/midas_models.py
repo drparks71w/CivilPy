@@ -863,3 +863,105 @@ def push_midas(model: "StructuralModel", midas=None, **client_kwargs) -> dict:
         except Exception as exc:            # MidasApiError, transport, etc.
             report[table] = {"error": str(exc)}
     return report
+
+
+#: The design loads ODOT BDM 908.2 specifies for inventory/operating
+#: ratings, as ``{label: (STANDARD_CODE, VEHICLE_TYPE_NAME)}``.  Figures
+#: 908.2-1/-2 reproduce the standard AASHTO definitions unchanged (HS20
+#: lane 0.640 klf with the 18 kip moment / 26 kip shear concentrated
+#: loads; HL-93 tandem 25 kip axles at 4 ft), so the DB entries apply.
+BDM_908_DESIGN_DB = {
+    "HL-93 truck": ("AASHTO-LRFD", "HL-93TRK"),
+    "HL-93 tandem": ("AASHTO-LRFD", "HL-93TDM"),
+    "HS20-44 truck": ("AASHTO-STD", "HS20-44"),
+    "HS20-44 lane": ("AASHTO-STD", "HS20-44L"),
+}
+
+
+def load_oh_vehicles(client, *, im_percent: float = 33.0,
+                     include_design: bool = True,
+                     use_standard_db: bool = False,
+                     replace: bool = False) -> dict:
+    """Push every vehicle ODOT BDM Section 908 specifies into a live model.
+
+    Loads exactly the BDM set and nothing else -- the ten commercial legal
+    vehicles and two emergency vehicles of 908.3, the two state permit
+    loads of 908.3.3, and (with ``include_design``) the 908.2
+    inventory/operating design loads.  Vehicles Midas offers but the BDM
+    does not call for -- the AASHTO National Rating Load, the H15/H20/HS15/
+    HS25/AML standard set, Ohio 4F1 -- are deliberately excluded.
+
+    Parameters
+    ----------
+    client:
+        A live :class:`~civilpy.structural.midas.MidasCivil`.
+    im_percent:
+        Dynamic load allowance written onto standard-DB records.  **It is
+        silently discarded on user-defined records** -- see
+        :func:`midas_vehicle_payload` -- so when ``use_standard_db`` is
+        False the returned ``"im_applied"`` is False and the allowance
+        must be applied downstream.
+    include_design:
+        Also load the 908.2 HL-93 / HS20 design loads.
+    use_standard_db:
+        Reference Midas's built-in definitions instead of writing explicit
+        axle trains.  Default False: the built-ins are a vendor
+        transcription frozen at some past spec revision (Midas's ODOT
+        standard box sections are demonstrably out of date), a DB record
+        stores only its type name so the API cannot read back what will
+        actually be applied, and an unresolved name applies ZERO load
+        silently.  The user-defined axle trains come from
+        :data:`~civilpy.structural.aashto.vehicles.RATING_VEHICLES`, which
+        is checked against BDM Figures 908.3-1..-5.  The two permit loads
+        have no DB entry and are always user-defined.
+    replace:
+        Delete every vehicle already in the model first.
+
+    Returns
+    -------
+    dict
+        ``{"pushed": {id: label}, "im_applied": bool, "user_defined": [...],
+        "standard_db": [...]}``.
+    """
+    from civilpy.structural.aashto.vehicles import (
+        BDM_908_RATING_LOADS, RATING_VEHICLES)
+
+    if replace:
+        existing = client.request("GET", "db/mvhl").get("MVHL", {})
+        for vid in sorted(existing, key=int, reverse=True):
+            client.request("DELETE", f"db/mvhl/{vid}")
+
+    assign, user_defined, standard_db = {}, [], []
+    next_id = 1
+
+    def _add(label, body, kind):
+        nonlocal next_id
+        assign[str(next_id)] = body
+        (user_defined if kind == "user" else standard_db).append(label)
+        next_id += 1
+
+    if include_design and use_standard_db:
+        for label, (code, type_name) in BDM_908_DESIGN_DB.items():
+            _add(label, midas_standard_vehicle(
+                type_name, name=label, standard_code=code,
+                im_percent=im_percent), "db")
+
+    for name in BDM_908_RATING_LOADS:
+        db = BDM_908_STANDARD_DB.get(name) if use_standard_db else None
+        if db:
+            code, type_name = db
+            _add(name, midas_standard_vehicle(
+                type_name, name=name, standard_code=code,
+                im_percent=im_percent), "db")
+        else:
+            _add(name, midas_vehicle_payload(
+                RATING_VEHICLES[name], im_percent=im_percent), "user")
+
+    client.request("PUT", "db/mvhl", {"Assign": assign})
+    stored = client.request("GET", "db/mvhl").get("MVHL", {})
+    return {
+        "pushed": {k: v.get("VEHICLE_LOAD_NAME") for k, v in stored.items()},
+        "im_applied": bool(standard_db) and not user_defined,
+        "user_defined": user_defined,
+        "standard_db": standard_db,
+    }
