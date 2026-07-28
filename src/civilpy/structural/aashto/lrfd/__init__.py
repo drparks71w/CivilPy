@@ -56,6 +56,8 @@ from civilpy.structural.aashto.lrfd.steel import (
     shear_connector_transverse_spacing,
     nonslender_element_limit,
     connection_element_shear,
+    classify_composite_positive,
+    classify_web_negative,
 )
 from civilpy.structural.aashto.lrfd.concrete import (
     rc_rectangular_flexural_resistance,
@@ -131,6 +133,13 @@ from civilpy.structural.aashto.lrfd.appendix_b6 import (
     b6_bracing_limit,
     b6_effective_plastic_moment,
     b6_redistribution_moment,
+)
+from civilpy.structural.aashto.lrfd.appendix_d6 import (
+    PlasticMomentResult,
+    plastic_moment,
+    YieldMomentResult,
+    yield_moment_composite,
+    web_compression_depth_elastic,
 )
 from civilpy.structural.aashto.lrfd.splices import (
     flange_splice_design_force,

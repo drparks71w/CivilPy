@@ -1203,3 +1203,85 @@ def stability_bracing_torsional(
             "validate_against_brr": True,
         },
     )
+
+
+@article("6.10.6.2.2", "Composite Section Classification — Positive Flexure")
+def classify_composite_positive(
+    d_cp: float,
+    t_w: float,
+    f_yc: float,
+    f_yt: float,
+    d_web: float,
+    straight: bool = True,
+    has_longitudinal_stiffeners: bool = False,
+) -> CheckResult:
+    """Compact / noncompact classification of a composite section in
+    positive flexure (6.10.6.2.2).  Compact requires all of: a straight
+    bridge, both flange yield strengths <= 70 ksi, the web proportion
+    limit of 6.10.2.1.1 (no longitudinal stiffeners), and
+    2*Dcp/tw <= 3.76*sqrt(E/Fyc).
+
+    ``d_cp`` is the depth of web in compression at the plastic moment
+    (D6.3.2 — zero when the PNA is in or above the top flange, which is
+    why most composite positive sections classify compact trivially).
+    ``capacity`` is 1.0 when compact; per-condition booleans in details.
+    """
+    lam_w = 2.0 * d_cp / t_w
+    lam_pw = 3.76 * math.sqrt(E_STEEL / f_yc)
+    checks = {
+        "straight_bridge": straight,
+        "fy_flanges_le_70": max(f_yc, f_yt) <= 70.0,
+        "web_proportion_61021": (not has_longitudinal_stiffeners
+                                 and d_web / t_w <= 150.0),
+        "web_slenderness_2Dcp_tw": lam_w <= lam_pw,
+    }
+    compact = all(checks.values())
+    return CheckResult(
+        article="6.10.6.2.2",
+        name="Composite Section Classification — Positive Flexure",
+        capacity=1.0 if compact else 0.0,
+        demand=1.0,
+        details={**checks, "2Dcp/tw": lam_w, "3.76sqrt(E/Fyc)": lam_pw,
+                 "classification": "compact" if compact else "noncompact"},
+    )
+
+
+@article("6.10.6.2.3", "Web Classification — Negative Flexure")
+def classify_web_negative(
+    d_c: float,
+    t_w: float,
+    f_yc: float,
+    f_yt: float,
+    i_yc: float,
+    i_yt: float,
+    straight: bool = True,
+) -> CheckResult:
+    """Slender-web screen for composite sections in negative flexure and
+    noncomposite sections (6.10.6.2.3): sections of straight bridges with
+    flange yields <= 70 ksi, web slenderness 2*Dc/tw < 5.7*sqrt(E/Fyc),
+    and Iyc/Iyt >= 0.3 may use the Appendix A6 provisions (web
+    plastification, resistances up to Mp); anything else takes the
+    slender-web 6.10.8 stress-based path.
+
+    ``d_c`` is the *elastic* depth of web in compression (D6.3.1).
+    ``capacity`` is 1.0 when A6-eligible (nonslender); details carry the
+    slenderness numbers.
+    """
+    lam_w = 2.0 * d_c / t_w
+    lam_rw = 5.7 * math.sqrt(E_STEEL / f_yc)
+    checks = {
+        "straight_bridge": straight,
+        "fy_flanges_le_70": max(f_yc, f_yt) <= 70.0,
+        "web_nonslender_2Dc_tw": lam_w < lam_rw,
+        "flange_inertia_Iyc_Iyt": i_yc / i_yt >= 0.3,
+    }
+    eligible = all(checks.values())
+    return CheckResult(
+        article="6.10.6.2.3",
+        name="Web Classification — Negative Flexure",
+        capacity=1.0 if eligible else 0.0,
+        demand=1.0,
+        details={**checks, "2Dc/tw": lam_w, "5.7sqrt(E/Fyc)": lam_rw,
+                 "classification": ("nonslender (A6 eligible)" if eligible
+                                    else "slender web (use 6.10.8)")},
+    )
