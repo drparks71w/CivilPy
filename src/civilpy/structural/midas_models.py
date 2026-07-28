@@ -877,6 +877,13 @@ BDM_908_DESIGN_DB = {
     "HS20-44 lane": ("AASHTO-STD", "HS20-44L"),
 }
 
+#: Entries in :data:`BDM_908_DESIGN_DB` that are a LANE load rather than a
+#: truck or tandem.  BDM 924.4.C: "Dynamic load allowance shall only be
+#: applied to the truck or tandem portion of HL93 loading (dynamic load
+#: allowance shall not be provided to the lane portion)."  These get
+#: IM = 0.
+BDM_908_LANE_LOADS = frozenset({"HS20-44 lane"})
+
 
 def load_oh_vehicles(client, *, im_percent: float = 33.0,
                      include_design: bool = True,
@@ -896,10 +903,19 @@ def load_oh_vehicles(client, *, im_percent: float = 33.0,
     client:
         A live :class:`~civilpy.structural.midas.MidasCivil`.
     im_percent:
-        Dynamic load allowance written onto standard-DB records.  **It is
-        silently discarded on user-defined records** -- see
-        :func:`midas_vehicle_payload` -- so when ``use_standard_db`` is
-        False the returned ``"im_applied"`` is False and the allowance
+        Dynamic load allowance written onto standard-DB records, per BDM
+        924.4.A (33% for all non-buried bridges).  Two rules from that
+        article are applied automatically: lane loads get IM = 0
+        (924.4.C, :data:`BDM_908_LANE_LOADS`), and the state permit loads
+        get IM = 0 (924.4.E allows the allowance to be ignored for
+        permit loads under controlled conditions).  The rest of 924.4 is
+        bridge-specific and must be handled by the caller: 15% for
+        fatigue (B), no IM on wood components (D), and the buried-
+        structure reduction IM = 33(1 - 0.125*DE) (F).
+
+        **The value is silently discarded on user-defined records** --
+        see :func:`midas_vehicle_payload` -- so when ``use_standard_db``
+        is False the returned ``"im_applied"`` is False and the allowance
         must be applied downstream.
     include_design:
         Also load the 908.2 HL-93 / HS20 design loads.
@@ -942,17 +958,22 @@ def load_oh_vehicles(client, *, im_percent: float = 33.0,
 
     if include_design and use_standard_db:
         for label, (code, type_name) in BDM_908_DESIGN_DB.items():
+            # BDM 924.4.C -- no dynamic load allowance on a lane load
+            im = 0.0 if label in BDM_908_LANE_LOADS else im_percent
             _add(label, midas_standard_vehicle(
                 type_name, name=label, standard_code=code,
-                im_percent=im_percent), "db")
+                im_percent=im), "db")
 
     for name in BDM_908_RATING_LOADS:
         db = BDM_908_STANDARD_DB.get(name) if use_standard_db else None
         if db:
             code, type_name = db
+            # BDM 924.4.E -- IM may be ignored for permit loads under
+            # controlled conditions
+            im = 0.0 if name.startswith("S-PL") else im_percent
             _add(name, midas_standard_vehicle(
                 type_name, name=name, standard_code=code,
-                im_percent=im_percent), "db")
+                im_percent=im), "db")
         else:
             _add(name, midas_vehicle_payload(
                 RATING_VEHICLES[name], im_percent=im_percent), "user")

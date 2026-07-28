@@ -425,3 +425,12 @@ class TestLoadOhVehicles:
         c = self._FakeClient({"1": {}, "2": {}, "3": {}})
         load_oh_vehicles(c, replace=True, include_design=False)
         assert c.deleted == ["3", "2", "1"]
+
+    def test_lane_load_gets_no_impact_bdm_924_4_c(self):
+        """BDM 924.4.C: no dynamic load allowance on the lane portion."""
+        c, out = self._load(include_design=True, use_standard_db=True)
+        by_name = {v["VEHICLE_LOAD_NAME"]: v
+                   for v in c.put["Assign"].values()}
+        assert by_name["HS20-44 lane"]["VEH_DEFAULT"]["DYN_LOAD_ALLOWANCE"] == 0.0
+        assert by_name["HL-93 truck"]["VEH_DEFAULT"]["DYN_LOAD_ALLOWANCE"] == 33.0
+        assert by_name["HL-93 tandem"]["VEH_DEFAULT"]["DYN_LOAD_ALLOWANCE"] == 33.0
