@@ -231,9 +231,22 @@ EMERGENCY_VEHICLES = {
     "EV2": RatingVehicle(
         "EV2", (24.0, 33.5), (0.0, 15.0),
         reference="FHWA FAST Act EV; AASHTO MBE interim"),
+    # ODOT does not alter the EV3 axle train, but does treat it
+    # differently from the other legal loads (BDM Section 900):
+    #   * legal on the Interstate system only (BDM definition of "Ohio
+    #     Legal Vehicles" -- EV2 is legal everywhere, EV3 is not)
+    #   * gamma_LL = 1.20 on Interstate bridges, 1.10 elsewhere
+    #     (BDM 924.3 table, footnote ***) rather than the MBE legal-load
+    #     factor used for the commercial vehicles
+    #   * placed alone in one lane with the heaviest COMMERCIAL legal
+    #     loads in the remaining lanes, not other EV3s (BDM 916.D)
+    #   * posting threshold RF < 1.00, vs 1.08 for commercial legal loads
+    #     (BDM 919.1)
     "EV3": RatingVehicle(
         "EV3", (24.0, 31.0, 31.0), (0.0, 15.0, 19.0),
-        reference="FHWA FAST Act EV; AASHTO MBE interim"),
+        reference="FHWA FAST Act EV; ODOT BDM Fig. 908.3-4 "
+                  "(axles unmodified; see BDM 916.D / 919.1 / 924.3 "
+                  "for ODOT-specific application)"),
 }
 
 #: Ohio legal loads (ODOT BDM Section 908): the 2F1/3F1/4F1 single-unit
@@ -294,9 +307,9 @@ RATING_VEHICLES = {
 #: commercial legal vehicles, the two emergency vehicles, and the two
 #: state permit loads.
 BDM_908_RATING_LOADS = (
-    "2F1", "3F1", "5C1",                       # S-2F1, S-3F1, S-5C1
-    "SU4", "SU5", "SU6", "SU7",
-    "Type 3", "Type 3S2", "Type 3-3",
-    "EV2", "EV3",
-    "S-PL60T", "S-PL65T",
+    "2F1", "3F1", "5C1",                       # Ohio legal (S-2F1 ...)
+    "Type 3", "Type 3S2", "Type 3-3",          # AASHTO legal
+    "SU4", "SU5", "SU6", "SU7",                # specialized hauling (SHV)
+    "EV2", "EV3",                              # FAST Act emergency
+    "S-PL60T", "S-PL65T",                      # ODOT state permit
 )
