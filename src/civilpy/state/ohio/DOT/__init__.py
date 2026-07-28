@@ -11,5 +11,27 @@ AssetWise (:mod:`.AssetWise`, :mod:`.assetwise_client`) — plus standard
 bridge design-data tables (:mod:`.bridge`), plan-review checklists
 (:mod:`.OSE`, :mod:`.stage_2_comments`), and plan-sheet ML/OCR helpers
 (:mod:`.title_sheet`, :mod:`.gemini`).
+
+The Midas bridge workflow (:mod:`.midas_bridge`) is re-exported here, so
+either spelling of the package name reaches it::
+
+    from civilpy.state.ohio.dot import midas_ohio_legal_loads
+    from civilpy.state.ohio.DOT import midas_ohio_legal_loads
 """
+
+from civilpy.state.ohio.DOT.midas_bridge import (  # noqa: F401
+    API_MANUAL_ARTICLES,
+    GirderModel,
+    add_girder,
+    add_moving_load_case,
+    analyze,
+    check_nonzero_envelopes,
+    connect,
+    ensure_base_stage,
+    generate_lane_load,
+    midas_ohio_legal_loads,
+    moving_load_envelopes,
+    new_model,
+    set_moving_load_control,
+)
 
