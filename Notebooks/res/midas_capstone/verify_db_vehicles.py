@@ -29,7 +29,6 @@ from civilpy.structural.midas_models import (
     BDM_908_STANDARD_DB, midas_standard_vehicle, midas_vehicle_payload,
 )
 
-LANE = "L1"
 GROUP = "GIRDER"
 
 
@@ -45,16 +44,31 @@ def ensure_control(client) -> bool:
     return False
 
 
-def build_lane(client) -> None:
-    client.request("PUT", "db/LLAN", {"Assign": {"1": {
-        "LANE_NAME": LANE,
-        "COMMON": {"VEHICULAR_LOAD": "LANE", "ECCEN": 0.0,
-                   "IMPACT_FACTOR": 0.0, "SKEW": 0.0,
-                   "WIDTH": 12.0 * 12.0, "CENT_F": 0.001,
-                   "LOAD_DIST": "CROSS", "GROUP_NAME": GROUP},
-        "LANE_ITEMS": [{"ELEM": e, "ECCEN": 0.0}
-                       for e in range(1, 15)],
+def lane_name(client, n_elems: int = 14) -> str:
+    """Name of the traffic lane, creating one only if none exists.
+
+    Schema read off a UI-created record (2026-07-28) -- LL_NAME lives
+    inside COMMON, LOAD_DIST is "LANE", and the items carry
+    ECC/FACT/SPAN_START/ECCEN_VERT_LOAD/CENT_F.  Like /db/MVCT, this
+    table rejects every write with "Wrong Field" until a record exists,
+    so a missing lane has to be added once through the UI
+    (Load > Moving Load > Traffic Line Lanes, Lane Element method --
+    Cross Beam needs transverse members a line-girder model lacks).
+    """
+    got = client.request("GET", "db/llan").get("LLAN", {})
+    if got:
+        return got[sorted(got, key=int)[0]]["COMMON"]["LL_NAME"]
+    client.request("PUT", "db/llan", {"Assign": {"1": {
+        "COMMON": {"LL_NAME": "Lane1", "LOAD_DIST": "LANE",
+                   "GROUP_NAME": "", "SKEW_START": 0, "SKEW_END": 0,
+                   "MOVING": "BOTH", "WHEEL_SPACE": 72.0,
+                   "WIDTH": 120.0, "OPT_AUTO_LANE": False,
+                   "ALLOW_WIDTH": 120.0},
+        "LANE_ITEMS": [{"ELEM": e, "ECC": 0, "FACT": 0,
+                        "SPAN_START": False, "ECCEN_VERT_LOAD": 0,
+                        "CENT_F": 0.5} for e in range(1, n_elems + 1)],
     }}})
+    return "Lane1"
 
 
 def push_pairs(client) -> dict[str, tuple[str, str]]:
@@ -79,20 +93,35 @@ def push_pairs(client) -> dict[str, tuple[str, str]]:
     return pairs
 
 
-def push_cases(client, pairs) -> dict[str, tuple[str, str]]:
-    """One single-lane moving load case per vehicle, no multiple presence."""
+def push_cases(client, pairs, lane: str) -> dict[str, tuple[str, str]]:
+    """One single-lane moving load case per vehicle.
+
+    Body per the API manual for db/MVLD (article 35959068573209), AASHTO
+    LRFD example.  Note ``COMB_OPTION`` is the STRING "INDEPENDENT" and
+    the lane counts are ``MIN_LOADED_LANE``/``MAX_LOADED_LANE`` -- both
+    are easy to get wrong, and a wrong field yields "Wrong Field" with no
+    hint which one.  Both variants of a vehicle get an identical case, so
+    the multiple-presence factors cancel in the comparison.
+    """
+    # drop anything already there so ids and names are predictable
+    for cid in sorted(client.request("GET", "db/mvld").get("MVLD", {}),
+                      key=int, reverse=True):
+        client.request("DELETE", f"db/mvld/{cid}")
+
     assign, cases, cid = {}, {}, 1
     for name, (db_name, bdm_name) in pairs.items():
         for veh in (db_name, bdm_name):
             assign[str(cid)] = {
-                "LCNAME": veh, "TYPE": 0,
+                "LCNAME": veh, "DESC": "", "TYPE": 0,
                 "DEFAULT": {
-                    "COMB_OPTION": 0, "LANE_FACTOR_TYPE": 0,
-                    "SCALE_FACTORS": [1.0],
+                    "SCALE_FACTORS": [1.2, 1, 0.85, 0.65, 0.65, 0.65],
+                    "COMB_OPTION": "INDEPENDENT",
+                    "LANE_FACTOR_TYPE": 1,
                     "SUB_LOAD_DATAS": [{
                         "VEHICLE_TYPE": "VL", "VEHICLE_NAME": veh,
-                        "MIN_NUM": 1, "MAX_NUM": 1,
-                        "LANE_NAMES": [LANE],
+                        "SCALE_FACTOR": 1,
+                        "MIN_LOADED_LANE": 1, "MAX_LOADED_LANE": 1,
+                        "LANE_NAMES": [lane],
                     }],
                 },
             }
@@ -102,23 +131,32 @@ def push_cases(client, pairs) -> dict[str, tuple[str, str]]:
     return cases
 
 
-def midspan_moment(client, case_name: str) -> float | None:
-    """Max |My| envelope on the midspan element for one moving load case."""
+def midspan_envelopes(client) -> dict[str, float]:
+    """Max |My| at midspan for every moving load case, keyed by case name.
+
+    Pulled in one request with no load-case filter, then grouped by the
+    table's own Load column -- Midas decorates moving-load case names
+    (e.g. "SU5(MV:all)"), so matching on a guessed suffix is fragile.
+    """
     resp = client.result_table(
         "BeamForce", table_type="BEAMFORCE",
         components=["Elem", "Load", "Moment-y"],
-        node_elems={"KEYS": [7, 8]},
-        load_case_names=[f"{case_name}(MV:all)"])
-    rows = parse_result_table(resp)
-    vals = []
-    for r in rows:
-        for k, v in r.items():
+        node_elems={"KEYS": [7, 8]})
+    out: dict[str, float] = {}
+    for row in parse_result_table(resp):
+        load = next((str(v) for k, v in row.items()
+                     if str(k).strip().lower() == "load"), None)
+        if not load:
+            continue
+        case = load.split("(")[0].strip()
+        for k, v in row.items():
             if "Moment-y" in str(k):
                 try:
-                    vals.append(abs(float(v)))
+                    m = abs(float(v))
                 except (TypeError, ValueError):
-                    pass
-    return max(vals) if vals else None
+                    continue
+                out[case] = max(out.get(case, 0.0), m)
+    return out
 
 
 def main() -> int:
@@ -127,18 +165,21 @@ def main() -> int:
         return 1
     print("pushing vehicle pairs ...")
     pairs = push_pairs(client)
-    build_lane(client)
-    cases = push_cases(client, pairs)
+    lane = lane_name(client)
+    print(f"using traffic lane {lane!r}")
+    cases = push_cases(client, pairs, lane)
     print(f"analyzing ({2 * len(cases)} moving load cases) ...")
     client.analyze()
+    env = midspan_envelopes(client)
+    print(f"result table returned {len(env)} load cases")
 
     print(f"\n{'vehicle':<10}{'DB (kip-ft)':>14}{'BDM (kip-ft)':>14}"
           f"{'diff':>9}  verdict")
     print("-" * 60)
     worst = 0.0
     for name, (db_name, bdm_name) in cases.items():
-        m_db = midspan_moment(client, db_name)
-        m_bdm = midspan_moment(client, bdm_name)
+        m_db = env.get(db_name)
+        m_bdm = env.get(bdm_name)
         if not m_db or not m_bdm:
             print(f"{name:<10}{'-':>14}{'-':>14}{'':>9}  NO RESULT "
                   f"(unresolved vehicle name applies zero load)")
