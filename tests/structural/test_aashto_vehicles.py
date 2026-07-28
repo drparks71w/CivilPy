@@ -11,6 +11,8 @@ from civilpy.structural.aashto.vehicles import (
     HS20Load,
     LEGAL_TRUCKS,
     OHIO_LEGAL_TRUCKS,
+    OHIO_PERMIT_TRUCKS,
+    BDM_908_RATING_LOADS,
     PedestrianLoad,
     RATING_VEHICLES,
     RatingVehicle,
@@ -99,6 +101,9 @@ class TestRatingVehicleCatalog(unittest.TestCase):
         "3F1": (46.0, 14.0),
         "4F1": (54.0, 18.0),
         "5C1": (80.0, 51.0),
+        # ODOT state permit loads, BDM Figure 908.3-5
+        "S-PL60T": (120.0, 65.083),
+        "S-PL65T": (130.0, 48.0),
     }
 
     def test_catalog_complete(self):
@@ -113,11 +118,30 @@ class TestRatingVehicleCatalog(unittest.TestCase):
 
     def test_groups_partition_catalog(self):
         merged = {**LEGAL_TRUCKS, **SHV_TRUCKS, **EMERGENCY_VEHICLES,
-                  **OHIO_LEGAL_TRUCKS}
+                  **OHIO_LEGAL_TRUCKS, **OHIO_PERMIT_TRUCKS}
         self.assertEqual(len(merged), len(LEGAL_TRUCKS) + len(SHV_TRUCKS)
-                         + len(EMERGENCY_VEHICLES) + len(OHIO_LEGAL_TRUCKS))
+                         + len(EMERGENCY_VEHICLES) + len(OHIO_LEGAL_TRUCKS)
+                         + len(OHIO_PERMIT_TRUCKS))
         for name in merged:
             self.assertIn(name, RATING_VEHICLES)
+
+    def test_bdm_908_rating_loads_all_present(self):
+        """Everything ODOT BDM 908.3 requires a rating for, verified
+        against the axle diagrams in Figures 908.3-1 .. -5."""
+        self.assertEqual(len(BDM_908_RATING_LOADS), 14)
+        for name in BDM_908_RATING_LOADS:
+            self.assertIn(name, RATING_VEHICLES)
+
+    def test_ohio_permit_loads_match_bdm_figure(self):
+        pl60 = RATING_VEHICLES["S-PL60T"]
+        self.assertAlmostEqual(pl60.gvw_kip, 120.0)
+        self.assertEqual(pl60.axle_loads_kip,
+                         (13.0, 24.25, 24.25, 19.5, 19.5, 19.5))
+        self.assertAlmostEqual(pl60.wheelbase_ft, 65.083)
+        pl65 = RATING_VEHICLES["S-PL65T"]
+        self.assertAlmostEqual(pl65.gvw_kip, 130.0)
+        self.assertEqual(pl65.axle_loads_kip, (10.0,) + (20.0,) * 6)
+        self.assertAlmostEqual(pl65.wheelbase_ft, 48.0)
 
     def test_type_3s2_axles(self):
         v = LEGAL_TRUCKS["Type 3S2"]

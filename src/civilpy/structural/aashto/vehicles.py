@@ -254,6 +254,21 @@ OHIO_LEGAL_TRUCKS = {
         reference="ODOT BDM Section 908"),
 }
 
+#: Ohio state permit loads (ODOT BDM Figure 908.3-5).  BDM 908.3: "ODOT
+#: bridges shall also be rated for state permit loads shown in this
+#: section by policy"; rating for these is used for internal planning and
+#: screening.
+OHIO_PERMIT_TRUCKS = {
+    "S-PL60T": RatingVehicle(
+        "S-PL60T", (13.0, 24.25, 24.25, 19.5, 19.5, 19.5),
+        (0.0, 14.5, 18.75, 56.083, 60.583, 65.083),
+        reference="ODOT BDM Figure 908.3-5 (120 kip / 60 ton)"),
+    "S-PL65T": RatingVehicle(
+        "S-PL65T", (10.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0),
+        (0.0, 10.0, 14.0, 18.0, 40.0, 44.0, 48.0),
+        reference="ODOT BDM Figure 908.3-5 (130 kip / 65 ton)"),
+}
+
 #: Design-load trucks in axle-train form.  The HS-20 truck is the Standard
 #: Spec design/rating baseline; the HL-93 entry is the design truck at the
 #: 14-ft (governing short/medium-span) rear spacing with its lane load —
@@ -272,5 +287,16 @@ DESIGN_TRUCKS = {
 #: Every rating vehicle above, keyed by name.
 RATING_VEHICLES = {
     **DESIGN_TRUCKS, **LEGAL_TRUCKS, **SHV_TRUCKS,
-    **EMERGENCY_VEHICLES, **OHIO_LEGAL_TRUCKS,
+    **EMERGENCY_VEHICLES, **OHIO_LEGAL_TRUCKS, **OHIO_PERMIT_TRUCKS,
 }
+
+#: Everything ODOT BDM 908.3 requires a bridge to be rated for: the ten
+#: commercial legal vehicles, the two emergency vehicles, and the two
+#: state permit loads.
+BDM_908_RATING_LOADS = (
+    "2F1", "3F1", "5C1",                       # S-2F1, S-3F1, S-5C1
+    "SU4", "SU5", "SU6", "SU7",
+    "Type 3", "Type 3S2", "Type 3-3",
+    "EV2", "EV3",
+    "S-PL60T", "S-PL65T",
+)

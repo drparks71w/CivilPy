@@ -576,6 +576,18 @@ def midas_vehicle_payload(vehicle, *, lane_load_klf: float | None = None,
     model length units); the lane component and concentrated moment/shear
     loads (PLM/PLV) sit in ``VEH_DEFAULT``.  ``lane_load_klf`` defaults
     to the vehicle's own definition; converted to kip/in.
+
+    .. warning::
+       ``im_percent`` is **silently discarded** for user-defined
+       vehicles.  Verified live 2026-07-28: a standard-DB record
+       (:func:`midas_standard_vehicle`) stores
+       ``VEH_DEFAULT.DYN_LOAD_ALLOWANCE``, but on a ``Truck/Lane`` user
+       vehicle Midas drops the field entirely -- it is absent from the
+       record on read-back, i.e. IM = 0.  Apply the dynamic load
+       allowance downstream instead (moving-load-case scale factor, or
+       the load combination), or the live load effect will be low by the
+       full IM.  The parameter is kept so the axle loads stay nominal and
+       auditable against the source figure.
     """
     if lane_load_klf is None:
         lane_load_klf = vehicle.lane_load_klf
