@@ -605,6 +605,46 @@ def midas_vehicle_payload(vehicle, *, lane_load_klf: float | None = None,
     }
 
 
+#: Midas standard-DB entries for the ODOT BDM 908.3 rating vehicles,
+#: as ``{civilpy name: (STANDARD_CODE, VEHICLE_TYPE_NAME)}``.  Strings are
+#: verbatim from the Civil NX API manual (db/MVHL, "Vehicles - AASHTO
+#: LRFD", article 35957229130521) -- they are NOT guessable and the API
+#: will not validate them: a wrong name stores cleanly and then applies
+#: ZERO load silently, so always confirm nonzero envelopes after the
+#: first analysis.
+#:
+#: EV2/EV3 live under a FAST-Act EV standard code that the manual page
+#: predates; the two ODOT state permit loads (S-PL60T/S-PL65T) have no DB
+#: entry at all.  Build those with :func:`midas_vehicle_payload` -- but
+#: note the IM caveat there.
+#:
+#: .. warning::
+#:    These map a BDM vehicle NAME to a Midas DB entry; they do **not**
+#:    assert that Midas's axle train matches the current BDM figure.
+#:    Midas's built-in definitions are a vendor transcription frozen at
+#:    some past spec revision -- their ODOT standard box sections are
+#:    known to be out of date, and the same risk applies here.  A DB
+#:    vehicle also hides its axle data: the stored record carries only
+#:    the type name, so the API cannot read back what Midas will
+#:    actually apply.  Verify each against
+#:    :data:`~civilpy.structural.aashto.vehicles.RATING_VEHICLES` (which
+#:    IS checked against BDM Figures 908.3-1..-5) before using the DB
+#:    entry for a rating.
+BDM_908_STANDARD_DB = {
+    "2F1": ("OHDOTLOAD", "OHLegalload2F1"),
+    "3F1": ("OHDOTLOAD", "OHLegalload3F1"),
+    "4F1": ("OHDOTLOAD", "OHLegalload4F1"),
+    "5C1": ("OHDOTLOAD", "OHLegalload5C1"),
+    "Type 3": ("AASHTOLEGAL/PERMITLOAD", "AASHTOLegalType3"),
+    "Type 3S2": ("AASHTOLEGAL/PERMITLOAD", "AASHTOLegalType3S2"),
+    "Type 3-3": ("AASHTOLEGAL/PERMITLOAD", "AASHTOLegalType3-3"),
+    "SU4": ("AASHTOLEGAL/PERMITLOAD", "AASHTOPostingloadSU4"),
+    "SU5": ("AASHTOLEGAL/PERMITLOAD", "AASHTOPostingloadSU5"),
+    "SU6": ("AASHTOLEGAL/PERMITLOAD", "AASHTOPostingloadSU6"),
+    "SU7": ("AASHTOLEGAL/PERMITLOAD", "AASHTOPostingloadSU7"),
+}
+
+
 def midas_standard_vehicle(type_name: str, *, name: str | None = None,
                            standard_code: str = "AASHTO-LRFD",
                            im_percent: float = 33.0) -> dict:
