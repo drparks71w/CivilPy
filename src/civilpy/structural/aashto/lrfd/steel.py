@@ -535,18 +535,20 @@ def shear_connector_fatigue_pitch(
     pitch: float | None = None,
 ) -> CheckResult:
     """Required stud pitch for fatigue (6.10.10.1.2): p <= n*Zr/Vsr, where
-    the fatigue resistance of one stud is Zr = alpha*d^2 with
-    alpha = 34.5 - 4.28*log10(N) (Fatigue II), or Zr = 5.5*d^2/2 for
-    infinite life (Fatigue I, ``n_cycles`` omitted).
+    the fatigue resistance of one stud is Zr = 5.5*d^2 for Fatigue I
+    (infinite life, ``n_cycles`` omitted) or Zr = alpha*d^2 with
+    alpha = 34.5 - 4.28*log10(N) for Fatigue II (6.10.10.2).  (The old
+    4th-edition single-combination rule floored alpha*d^2 at 5.5*d^2/2;
+    the floor died with the Fatigue I/II split.)
 
     ``shear_flow`` is the fatigue shear flow Vsr = Vf*Q/I (kip/in).
     ``capacity`` is the maximum permitted pitch (in); pass the actual
     ``pitch`` as demand — note larger-is-worse, so ok means pitch <= max."""
     if n_cycles is None:
-        z_r = 5.5 * d_stud**2 / 2.0
+        z_r = 5.5 * d_stud**2
     else:
         alpha = 34.5 - 4.28 * math.log10(n_cycles)
-        z_r = max(alpha * d_stud**2, 5.5 * d_stud**2 / 2.0)
+        z_r = alpha * d_stud**2
     p_max = n_per_row * z_r / shear_flow
     return CheckResult(
         article="6.10.10.1.2",
@@ -997,10 +999,10 @@ def shear_connector_fatigue_resistance(
     n_cycles: float | None = None,
 ) -> CheckResult:
     """Fatigue shear resistance of one stud (6.10.10.2): Fatigue I
-    (infinite life, ``n_cycles=None``): Zr = 5.5*d^2/2.  Fatigue II:
-    Zr = alpha*d^2 with alpha = 34.5 - 4.28*log10(N)."""
+    (infinite life, ``n_cycles=None``): Zr = 5.5*d^2 (6.10.10.2-1).
+    Fatigue II: Zr = alpha*d^2 with alpha = 34.5 - 4.28*log10(N)."""
     if n_cycles is None:
-        z_r = 5.5 * d_stud**2 / 2.0
+        z_r = 5.5 * d_stud**2
         details = {"combination": "Fatigue I"}
     else:
         alpha = 34.5 - 4.28 * math.log10(n_cycles)

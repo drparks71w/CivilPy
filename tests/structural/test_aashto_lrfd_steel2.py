@@ -262,7 +262,7 @@ class TestShearConnectors:
         inf = lrfd.shear_connector_fatigue_pitch(
             d_stud=0.875, n_per_row=3, shear_flow=1.2
         )
-        assert inf.details["Zr"] == pytest.approx(5.5 * 0.875**2 / 2.0)
+        assert inf.details["Zr"] == pytest.approx(5.5 * 0.875**2)
 
 
 class TestBlockShear:
