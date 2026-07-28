@@ -466,9 +466,20 @@ def pile_tags(bid: str, *, shape: str, length_ft: float, grade: str = "50",
 
 def rebar_tags(bid: str, *, size: int, coating: str = "epoxy", mat: str = "top",
                bend: str = "straight", length_ft: float | None = None,
-               scd: str | None = None) -> dict:
+               scd: str | None = None, spacing_in: float | None = None,
+               count: int | None = None, host: str | None = None) -> dict:
+    """``spacing_in``/``count``/``host`` describe the *run* this bar belongs
+    to (c/c spacing, bars in the run, host component) so a viewer can build
+    the construction callout — ``18 #5 bars @ 16" O.C.`` — from the tags of
+    any single bar."""
     tags = {**_base("rebar", bid, scd=scd), "rebar.mat": mat,
             "rebar.bend": bend, **rebar_mat(size, coating)}
+    if spacing_in is not None:
+        tags["rebar.spacing_in"] = f"{spacing_in:g}"
+    if count is not None:
+        tags["rebar.count"] = str(count)
+    if host is not None:
+        tags["rebar.host"] = host
     if length_ft is not None:
         tags["rebar.length_ft"] = f"{length_ft:g}"
         item = REBAR_PAY_ITEM.get(coating.lower())

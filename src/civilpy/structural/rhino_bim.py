@@ -358,8 +358,12 @@ def girder_bridge_emit(inp: BridgeInput, *,
                 x += pitch_ft
 
     # ── deck rebar: both mats, crown-following ────────────────────────────
-    for i, seg in enumerate(deck_rebar_segments(layout,
-                                                side_cover_in=side_cover_in)):
+    deck_segs = deck_rebar_segments(layout, side_cover_in=side_cover_in)
+    set_counts: dict[int, int] = {}
+    for seg in deck_segs:
+        set_counts[id(seg.rebar_set)] = set_counts.get(id(seg.rebar_set),
+                                                       0) + 1
+    for i, seg in enumerate(deck_segs):
         rs = seg.rebar_set
         objects.append(EmitObject(
             kind="polyline", layer=LAYER_REBAR, points=seg.points,
@@ -367,7 +371,8 @@ def girder_bridge_emit(inp: BridgeInput, *,
                 f"BAR-{rs.direction[:4].upper()}-{rs.mat.upper()}-{i + 1}",
                 size=rs.size, coating=rebar_coating, mat=rs.mat,
                 bend="crown-crank" if len(seg.points) > 2 else "straight",
-                length_ft=seg.length_ft)))
+                length_ft=seg.length_ft, spacing_in=rs.spacing_in,
+                count=set_counts[id(rs)], host="deck")))
 
     # ── parapets on both deck edges: true single-slope SCD profile ────────
     if rail.height and rail.base_width:
@@ -687,6 +692,8 @@ def _sbr1_cage(br, s: float, B: float, T: float, H: float, L: float,
 
     out: list[EmitObject] = []
     step = SBR1_VERT_SPACING_IN / 12.0
+    n_vert = (int((L - step) / step + 1e-9) + 1
+              if L >= step - 1e-9 else 0)
     n = 0
     x = step / 2.0
     while x <= L - step / 2.0 + 1e-9:
@@ -709,7 +716,8 @@ def _sbr1_cage(br, s: float, B: float, T: float, H: float, L: float,
                 f"PARBAR-{br.edge}-Y601-{n}", size=SBR1_VERT_SIZE,
                 coating="epoxy", mat="parapet", bend="Y601",
                 length_ft=leg + embed + H - c + SBR1_Y601_TOP_BEND_IN / 12.0,
-                scd="SBR-1-20")))
+                scd="SBR-1-20", spacing_in=SBR1_VERT_SPACING_IN,
+                count=n_vert, host="parapet")))
         out.append(EmitObject(
             kind="polyline", layer=LAYER_REBAR,
             points=tuple((x + x0 + dy * tan_skew, y0 + dy, z) for dy, z in (
@@ -724,19 +732,22 @@ def _sbr1_cage(br, s: float, B: float, T: float, H: float, L: float,
                 coating="epoxy", mat="parapet", bend="Y602",
                 length_ft=leg + embed + H - c
                 + (SBR1_Y602_HOOK_OVER_IN + SBR1_Y602_HOOK_DOWN_IN) / 12.0,
-                scd="SBR-1-20")))
+                scd="SBR-1-20", spacing_in=SBR1_VERT_SPACING_IN,
+                count=n_vert, host="parapet")))
         x += step
 
     # longitudinal #4 GFRP: 5 per face + the 2-X401 pair at the top
-    runs: list[tuple[float, float, str]] = []
+    runs: list[tuple[float, float, str, float | None, int]] = []
     for k in range(SBR1_FACE_BARS_PER_FACE):
         z_rel = (SBR1_FACE_BAR_START_IN + k * SBR1_FACE_BAR_SPACING_IN) / 12.0
-        runs.append((s * c, z_rel, f"X4-BACK-{k + 1}"))
-        runs.append((face_y(z_rel) - s * c, z_rel, f"X4-FACE-{k + 1}"))
+        runs.append((s * c, z_rel, f"X4-BACK-{k + 1}",
+                     SBR1_FACE_BAR_SPACING_IN, SBR1_FACE_BARS_PER_FACE))
+        runs.append((face_y(z_rel) - s * c, z_rel, f"X4-FACE-{k + 1}",
+                     SBR1_FACE_BAR_SPACING_IN, SBR1_FACE_BARS_PER_FACE))
     z_top_rel = H - SBR1_TOP_BAR_DROP_IN / 12.0
-    runs.append((s * c + s * 2.0 / 12.0, z_top_rel, "X401-1"))
-    runs.append((face_y(z_top_rel) - s * c, z_top_rel, "X401-2"))
-    for dy, z_rel, mark in runs:
+    runs.append((s * c + s * 2.0 / 12.0, z_top_rel, "X401-1", None, 2))
+    runs.append((face_y(z_top_rel) - s * c, z_top_rel, "X401-2", None, 2))
+    for dy, z_rel, mark, spacing_in, n_run in runs:
         pts = ((x0 + dy * tan_skew, y0 + dy, z0 + z_rel),
                (x0 + L + dy * tan_skew, y0 + dy, z0 + z_rel))
         out.append(EmitObject(
@@ -744,7 +755,8 @@ def _sbr1_cage(br, s: float, B: float, T: float, H: float, L: float,
             tags=bim.rebar_tags(
                 f"PARBAR-{br.edge}-{mark}", size=SBR1_FACE_BAR_SIZE,
                 coating="GFRP", mat="parapet", bend="straight",
-                length_ft=L, scd="SBR-1-20")))
+                length_ft=L, scd="SBR-1-20", spacing_in=spacing_in,
+                count=n_run, host="parapet")))
     return out
 
 
@@ -905,10 +917,13 @@ def _cap_rebar(geom, cap_type: str, spec: SubRebarSpec) -> list[EmitObject]:
                 tags=bim.rebar_tags(
                     f"{pid}-CAPBAR-{k + 1}", size=cap.tie_bar_size,
                     coating=spec.coating, mat=cap_type, bend="straight",
-                    length_ft=length)))
+                    length_ft=length, count=cap.tie_bar_count,
+                    host=cap_type)))
 
     half_w = cap.width_ft / 2.0 - c
     step = spec.stirrup_spacing_in / 12.0
+    n_stir = (int((cap.length_ft - step) / step + 1e-9) + 1
+              if cap.length_ft >= step - 1e-9 else 0)
     k, s = 0, step / 2.0
     while s <= cap.length_ft - step / 2.0 + 1e-9:
         k += 1
@@ -925,7 +940,8 @@ def _cap_rebar(geom, cap_type: str, spec: SubRebarSpec) -> list[EmitObject]:
             tags=bim.rebar_tags(
                 f"{pid}-STIR-{k}", size=spec.stirrup_size,
                 coating=spec.coating, mat=cap_type, bend="stirrup",
-                length_ft=hoop_len)))
+                length_ft=hoop_len, spacing_in=spec.stirrup_spacing_in,
+                count=n_stir, host=cap_type)))
         s += step
     return out
 
@@ -975,8 +991,10 @@ def _column_rebar(col, pid: str, index: int,
             tags=bim.rebar_tags(
                 f"{pid}-COL{index}-V{k}", size=spec.column_bar_size,
                 coating=spec.coating, mat="column", bend="straight",
-                length_ft=col.height_ft)))
+                length_ft=col.height_ft, count=count, host="column")))
     step = spec.column_tie_spacing_in / 12.0
+    n_tie = (int((col.height_ft - step) / step + 1e-9) + 1
+             if col.height_ft >= step - 1e-9 else 0)
     k, z = 0, col.z_bot + step / 2.0
     while z <= col.z_top - step / 2.0 + 1e-9:
         k += 1
@@ -986,7 +1004,8 @@ def _column_rebar(col, pid: str, index: int,
             tags=bim.rebar_tags(
                 f"{pid}-COL{index}-T{k}", size=spec.column_tie_size,
                 coating=spec.coating, mat="column", bend="hoop",
-                length_ft=tie_len)))
+                length_ft=tie_len, spacing_in=spec.column_tie_spacing_in,
+                count=n_tie, host="column")))
         z += step
     return out
 
@@ -1002,6 +1021,10 @@ def _wall_rebar(wall, pid: str, name: str, mat: str,
     faces = (wall.thickness_ft / 2.0 - c, -(wall.thickness_ft / 2.0 - c))
     out: list[EmitObject] = []
     step = spec.wall_bar_spacing_in / 12.0
+    n_vert = (int((wall.length_ft - step) / step + 1e-9) + 1
+              if wall.length_ft >= step - 1e-9 else 0)
+    n_horiz = (int((z_hi - z_lo - step) / step + 1e-9) + 1
+               if z_hi - z_lo >= step - 1e-9 else 0)
     for fi, dm in enumerate(faces):
         fx, fy = x0 + dm * m[0], y0 + dm * m[1]
         k, s = 0, step / 2.0
@@ -1014,7 +1037,9 @@ def _wall_rebar(wall, pid: str, name: str, mat: str,
                 tags=bim.rebar_tags(
                     f"{pid}-{name}-F{fi + 1}-V{k}", size=spec.wall_bar_size,
                     coating=spec.coating, mat=mat, bend="straight",
-                    length_ft=z_hi - z_lo)))
+                    length_ft=z_hi - z_lo,
+                    spacing_in=spec.wall_bar_spacing_in, count=n_vert,
+                    host=mat)))
             s += step
         k, z = 0, z_lo + step / 2.0
         length = wall.length_ft - 2.0 * c
@@ -1028,7 +1053,9 @@ def _wall_rebar(wall, pid: str, name: str, mat: str,
                 tags=bim.rebar_tags(
                     f"{pid}-{name}-F{fi + 1}-H{k}", size=spec.wall_bar_size,
                     coating=spec.coating, mat=mat, bend="straight",
-                    length_ft=length)))
+                    length_ft=length,
+                    spacing_in=spec.wall_bar_spacing_in, count=n_horiz,
+                    host=mat)))
             z += step
     return out
 
