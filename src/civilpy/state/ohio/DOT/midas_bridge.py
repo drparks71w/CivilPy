@@ -214,7 +214,8 @@ def new_model(client, *, path: str | None = DEFAULT_MODEL_PATH) -> None:
 
 
 # ── geometry ─────────────────────────────────────────────────────────────
-def add_girder(client, designation: str, *, span_ft: float, n_beams: int,
+def add_girder(client, designation: str, *, span_ft: float,
+               n_lanes: int | None = None, n_beams: int | None = None,
                spacing_ft: float | None = None, push: bool = True,
                **kwargs) -> GirderModel:
     """Build an ODOT standard superstructure and send it to Midas.
@@ -227,6 +228,14 @@ def add_girder(client, designation: str, *, span_ft: float, n_beams: int,
     Type 4"``                   PSID-1-13 prestressed I-beam
     ``"W36X150"``               steel plate/rolled girder (BridgeInput)
     ==========================  ==========================================
+
+    **Say how much traffic, not how many beams.**  ``n_lanes`` sizes the
+    deck -- lanes at ``lane_width_ft`` (12 ft, LRFD 3.6.1.1.1), plus
+    ``shoulder_ft`` each side, plus the cataloged base width of the
+    railing, rounded up to whole boxes -- and then works out where those
+    lanes have to sit to produce the governing case.  ``n_beams`` is still
+    accepted for a deck whose width is already fixed; give one or the
+    other, not both.
 
     Extra keyword arguments pass through to the underlying hub builder.
     For a box-beam bridge that is
@@ -256,7 +265,9 @@ def add_girder(client, designation: str, *, span_ft: float, n_beams: int,
         from civilpy.structural.box_beam_pipeline import (
             structural_model_from_box)
         hub = structural_model_from_box(designation, span_ft, n_beams,
-                                        **kwargs)
+                                        n_lanes=n_lanes, **kwargs)
+        n_beams = len({e.metadata["gdr.line"] for e in hub.elements.values()
+                       if getattr(e, "role", None) == "girder"})
     elif fam == "ps-i":
         from civilpy.structural.ps_i_beam_pipeline import (
             structural_model_from_ps_i)

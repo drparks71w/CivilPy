@@ -263,7 +263,9 @@ class TestShearKeyAndDeck:
 
         # 11 beams x 4 ft = 44 ft out-to-out, 40.5 ft clear -> 3 lanes
         m = structural_model_from_box("CB27-48", 70.0, 11)
-        assert m.metadata["lane.offsets_ft"] == [10.0, 22.0, 34.0]
+        # packed against the railing -- the governing placement, not
+        # centred (LRFD 3.6.1.1.1 leaves the position open)
+        assert m.metadata["lane.offsets_ft"] == [7.5, 19.5, 31.5]
         lane_elems = [e for e in m.elements.values() if e.role == "lane-line"]
         assert {e.metadata["lane.index"] for e in lane_elems} == {1, 2, 3}
         # weightless dummies, and they share deck nodes (no extra constraint)
@@ -327,3 +329,131 @@ class TestDesignLanePlacement:
             lanes = design_lane_offsets_ft(44.0, align=align)
             assert all(b - a == pytest.approx(12.0)
                        for a, b in zip(lanes, lanes[1:])), align
+
+
+class TestDeckSizedFromTraffic:
+    """The designer says how much traffic; civilpy sizes the deck."""
+
+    def test_lanes_shoulders_and_railing_drive_the_beam_count(self):
+        from civilpy.structural.box_beam_pipeline import layout_deck
+
+        L = layout_deck(2)                       # 2 lanes, 8 ft shoulders
+        assert L.roadway_ft == 2 * 12 + 8 + 8    # 40 ft face to face
+        assert L.barrier_width_ft == 1.5         # BR-1 base width, 18 in
+        assert L.required_ft == 43.0
+        assert L.n_beams == 11                   # ceil(43 / 4)
+        assert L.deck_width_ft == 44.0
+        assert L.spare_ft == 1.0
+
+    def test_beam_count_rounds_up_never_down(self):
+        from civilpy.structural.box_beam_pipeline import layout_deck
+
+        for n in range(1, 6):
+            L = layout_deck(n)
+            assert L.deck_width_ft >= L.required_ft
+            assert L.deck_width_ft - L.required_ft < L.beam_width_ft
+
+    def test_designer_values_flow_through(self):
+        from civilpy.structural.box_beam_pipeline import layout_deck
+
+        narrow = layout_deck(2, shoulder_ft=2.0, barrier=None)
+        assert narrow.barrier_width_ft == 0.0
+        assert narrow.required_ft == 2 * 12 + 4
+        assert narrow.n_beams == 7               # ceil(28 / 4)
+        # a wider railing costs deck
+        wide = layout_deck(2, barrier="SBR-2 (57 in median)")
+        assert wide.barrier_width_ft > 1.5
+        assert wide.n_beams >= 11
+
+    def test_asymmetric_shoulders(self):
+        from civilpy.structural.box_beam_pipeline import layout_deck
+
+        L = layout_deck(2, shoulder_ft=(10.0, 4.0))
+        assert L.shoulder_ft == (10.0, 4.0)
+        assert L.roadway_ft == 2 * 12 + 14
+
+    def test_rejects_a_bridge_with_no_lanes(self):
+        from civilpy.structural.box_beam_pipeline import layout_deck
+
+        with pytest.raises(ValueError, match="at least one lane"):
+            layout_deck(0)
+
+
+class TestWorstLanePlacement:
+    """LRFD 3.6.1.1.1 leaves the transverse position open; the analysis
+    has to be run at the one that governs, not at a tidy centred layout."""
+
+    def test_lanes_end_up_packed_against_a_barrier(self):
+        from civilpy.structural.box_beam_pipeline import worst_lane_placement
+
+        lanes, n_loaded, frac = worst_lane_placement(
+            3, 14, barrier_width=1.5)
+        # first lane centre sits half a lane in from the railing face
+        assert lanes[0] == pytest.approx(1.5 + 6.0)
+        assert all(b - a == pytest.approx(12.0)
+                   for a, b in zip(lanes, lanes[1:]))
+        assert 1 <= n_loaded <= 3 and frac > 0
+
+    def test_packed_beats_centred_on_the_fascia_beam(self):
+        """The point of the search: a centred layout understates the
+        exterior beam and no amount of lane combination recovers it."""
+        from civilpy.structural.box_beam_pipeline import (
+            _exterior_lane_fraction, design_lane_offsets_ft,
+            worst_lane_placement)
+
+        packed = worst_lane_placement(3, 14, barrier_width=1.5)
+        centred = design_lane_offsets_ft(56.0, barrier_width_ft=1.5)
+        assert packed[2] > _exterior_lane_fraction(centred, 14, 4.0)
+
+    def test_two_lanes_can_govern_over_three(self):
+        """Multiple presence drops from 1.00 to 0.85 at the third lane."""
+        from civilpy.structural.box_beam_pipeline import worst_lane_placement
+
+        _, n_loaded, _ = worst_lane_placement(3, 14, barrier_width=1.5)
+        assert n_loaded == 2
+
+    def test_refuses_lanes_that_do_not_fit(self):
+        from civilpy.structural.box_beam_pipeline import worst_lane_placement
+
+        with pytest.raises(ValueError, match="do not fit"):
+            worst_lane_placement(4, 8, barrier_width=1.5)   # 32 ft deck
+
+
+class TestLaneDrivenModel:
+    def test_n_lanes_sizes_the_model(self):
+        from civilpy.structural.box_beam_pipeline import (
+            layout_deck, structural_model_from_box)
+
+        m = structural_model_from_box("CB27-48", 70.0, n_lanes=3)
+        lines = {e.metadata["gdr.line"] for e in m.elements.values()
+                 if e.role == "girder"}
+        assert len(lines) == layout_deck(3).n_beams == 14
+        assert m.metadata["lane.offsets_ft"] == [7.5, 19.5, 31.5]
+
+    def test_conflicting_inputs_are_refused(self):
+        from civilpy.structural.box_beam_pipeline import (
+            structural_model_from_box)
+
+        with pytest.raises(ValueError, match="not both"):
+            structural_model_from_box("CB27-48", 70.0, 9, n_lanes=3)
+
+    def test_one_of_the_two_is_required(self):
+        from civilpy.structural.box_beam_pipeline import (
+            structural_model_from_box)
+
+        with pytest.raises(ValueError, match="either n_lanes"):
+            structural_model_from_box("CB27-48", 70.0)
+
+
+def test_narrow_roadway_still_gets_one_design_lane():
+    """LRFD 3.6.1.1.1: a roadway under 12 ft does not lose its design
+    lane -- the lane narrows to the roadway.  A 3-box deck is 12 ft out
+    to out, 9 ft between BR-1 railings."""
+    from civilpy.structural.box_beam_pipeline import (
+        structural_model_from_box, worst_lane_placement)
+
+    lanes, n_loaded, frac = worst_lane_placement(1, 3, barrier_width=1.5)
+    assert lanes == (6.0,)                  # centred in the 9 ft roadway
+    assert n_loaded == 1 and frac > 0
+    m = structural_model_from_box("CB27-48", 70.0, 3, mesh_ft=0)
+    assert m.metadata["lane.offsets_ft"] == [6.0]

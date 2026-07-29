@@ -280,7 +280,11 @@ def box_beam_dead_loads(box: str, span_ft: float, n_beams: int, *,
         fws=loads["fws"], sources=src)
 
 
-def structural_model_from_box(box: str, span_ft: float, n_beams: int, *,
+def structural_model_from_box(box: str, span_ft: float,
+                              n_beams: int | None = None, *,
+                              n_lanes: int | None = None,
+                              lane_width_ft: float = 12.0,
+                              shoulder_ft: float | tuple[float, float] = 8.0,
                               ties: bool = True, dead_loads: bool = True,
                               shear_keys: bool = True,
                               deck: bool | None = None,
@@ -288,7 +292,6 @@ def structural_model_from_box(box: str, span_ft: float, n_beams: int, *,
                               lane_offsets_ft: list[float] | None = None,
                               barrier: str | None = "BR-1 (36 in)",
                               n_barriers: int = 2,
-                              barrier_width_ft: float = 1.75,
                               barrier_klf: float | None = None,
                               fws_klf: float | None = None,
                               fws_ksf: float | None = None,
@@ -359,6 +362,25 @@ def structural_model_from_box(box: str, span_ft: float, n_beams: int, *,
 
     design = box_beam_design(box, int(span_ft))
     sec = box_section_properties(design.depth)
+    # Size the deck from the traffic, not the other way round: the designer
+    # says how many lanes, civilpy works out how many boxes that takes and
+    # where those lanes have to sit to govern.
+    layout = None
+    if n_lanes is not None:
+        layout = layout_deck(n_lanes, lane_width_ft=lane_width_ft,
+                             shoulder_ft=shoulder_ft, barrier=barrier,
+                             beam_width_ft=sec.width / 12.0,
+                             skew_deg=skew_deg)
+        if n_beams is not None and n_beams != layout.n_beams:
+            raise ValueError(
+                f"{n_lanes} lanes need {layout.n_beams} boxes, not {n_beams}; "
+                f"pass one or the other, not both")
+        n_beams = layout.n_beams
+        if lane_offsets_ft is None:
+            lane_offsets_ft = list(layout.lane_offsets_ft)
+    elif n_beams is None:
+        raise ValueError("give either n_lanes (and civilpy sizes the deck) "
+                         "or n_beams (and it takes the width as given)")
     composite = design.beam_type == "composite"
     span = float(span_ft)
     width_ft = sec.width / 12.0
@@ -473,10 +495,18 @@ def structural_model_from_box(box: str, span_ft: float, n_beams: int, *,
     deck_grid: dict[tuple[int, int], str] = {}
     lane_ys: list[float] = []
     if lanes and deck:
-        lane_ys = [round(y, 6) for y in (
-            lane_offsets_ft if lane_offsets_ft is not None
-            else design_lane_offsets_ft(n_beams * width_ft,
-                                        barrier_width_ft=barrier_width_ft))]
+        if lane_offsets_ft is None:
+            # no lane count given -- take the deck as built, fit as many
+            # design lanes as LRFD 3.6.1.1.1 allows, and still place them
+            # where they govern rather than centred
+            bw = barrier_width_ft(barrier)
+            # one design lane minimum -- LRFD 3.6.1.1.1 narrows the lane to
+            # the roadway rather than dropping it (handled downstream)
+            fit = max(1, int((n_beams * width_ft - 2 * bw) // lane_width_ft))
+            lane_offsets_ft = list(worst_lane_placement(
+                fit, n_beams, lane_width_ft=lane_width_ft,
+                beam_width_ft=width_ft, barrier_width=bw)[0])
+        lane_ys = [round(y, 6) for y in lane_offsets_ft]
     if deck:
         # a deck column over every girder line AND every joint, so the keys
         # tie into the slab they are cast against instead of dangling -- plus
@@ -580,6 +610,201 @@ def structural_model_from_box(box: str, span_ft: float, n_beams: int, *,
         model.metadata["dead_loads"] = w
 
     return model
+
+
+@dataclass(frozen=True)
+class DeckLayout:
+    """A deck sized from the traffic it has to carry.
+
+    The designer states lanes, shoulders and railing; everything else --
+    how wide the deck has to be, how many boxes that takes, and where the
+    lanes have to sit to govern -- follows.
+    """
+
+    n_lanes: int
+    lane_width_ft: float
+    shoulder_ft: tuple[float, float]      # (left, right)
+    barrier: str | None
+    barrier_width_ft: float               # per run, from the ODOT catalog
+    n_beams: int
+    beam_width_ft: float
+    deck_width_ft: float                  # out to out
+    roadway_ft: float                     # face to face of the parapets
+    required_ft: float                    # what the designer asked for
+    spare_ft: float                       # deck - required, from rounding up
+    lane_offsets_ft: tuple[float, ...]    # the governing placement
+    governing_loaded_lanes: int
+    exterior_lane_fraction: float         # lanes carried by the fascia beam
+
+    def summary(self) -> str:
+        sl, sr = self.shoulder_ft
+        return "\n".join([
+            f"  {self.n_lanes} x {self.lane_width_ft:g} ft lanes"
+            f" + {sl:g} / {sr:g} ft shoulders"
+            f" = {self.roadway_ft:g} ft roadway",
+            f"  + 2 x {self.barrier_width_ft:g} ft {self.barrier or 'no'}"
+            f" railing = {self.required_ft:g} ft required",
+            f"  -> {self.n_beams} x {self.beam_width_ft:g} ft boxes"
+            f" = {self.deck_width_ft:g} ft deck"
+            + (f" ({self.spare_ft:g} ft spare)" if self.spare_ft else ""),
+            f"  governing lane placement {list(self.lane_offsets_ft)} ft,"
+            f" {self.governing_loaded_lanes} loaded",
+            f"  fascia beam carries {self.exterior_lane_fraction:.3f} lanes"
+            f" (LRFD C4.6.2.2.2d rigid section, m included)",
+        ])
+
+
+def barrier_width_ft(barrier: str | None) -> float:
+    """Base width of one railing run, feet, from the ODOT catalog
+    (``BR-1 (36 in)`` is 18 in, ``SBR-1 (42 in)`` 21 in, ...)."""
+    if not barrier:
+        return 0.0
+    from civilpy.structural.odot import railing
+
+    return railing(barrier).base_width / 12.0
+
+
+def layout_deck(n_lanes: int, *,
+                lane_width_ft: float = 12.0,
+                shoulder_ft: float | tuple[float, float] = 8.0,
+                barrier: str | None = "BR-1 (36 in)",
+                beam_width_ft: float = 4.0,
+                skew_deg: float = 0.0,
+                radius_ft: float | None = None) -> DeckLayout:
+    """Size an adjacent box-beam deck from the traffic it carries.
+
+    ``n_lanes`` design lanes at ``lane_width_ft`` (LRFD 3.6.1.1.1 uses
+    12 ft), plus ``shoulder_ft`` each side, plus a railing run each side
+    at its cataloged base width, rounded **up** to a whole number of
+    boxes -- you cannot buy two thirds of a beam.
+
+    ``shoulder_ft`` is the designer's, not the code's: the BDM does not
+    set shoulder widths, the L&D Manual does, by route class.  The 8 ft
+    default is ODOT's usual mainline value and should be checked, not
+    assumed.
+
+    On a **skewed** bridge the beams stay square to the abutments and the
+    deck simply runs longer, so the width is unaffected.  A **curved**
+    alignment is different: BDM 302.1 allows box beams only where the
+    mid-ordinate is 6 in or less, and the chorded beams need that
+    mid-ordinate added to the width, so ``radius_ft`` widens the deck by
+    ``L^2 / 8R`` and refuses the layout outright past the 6 in limit.
+    """
+    from civilpy.structural.odot import BOX_WIDTH_IN
+
+    sl, sr = ((shoulder_ft, shoulder_ft)
+              if isinstance(shoulder_ft, (int, float)) else shoulder_ft)
+    if n_lanes < 1:
+        raise ValueError(f"a bridge needs at least one lane, got {n_lanes}")
+    bw = barrier_width_ft(barrier)
+    roadway = n_lanes * float(lane_width_ft) + float(sl) + float(sr)
+    required = roadway + 2.0 * bw
+
+    n_beams = int(math.ceil(round(required / beam_width_ft, 6)))
+    deck = n_beams * beam_width_ft
+    spare = round(deck - required, 6)
+
+    lanes, loaded, frac = worst_lane_placement(
+        n_lanes, n_beams, lane_width_ft=lane_width_ft,
+        beam_width_ft=beam_width_ft, barrier_width=bw)
+    return DeckLayout(
+        n_lanes=n_lanes, lane_width_ft=float(lane_width_ft),
+        shoulder_ft=(float(sl), float(sr)), barrier=barrier,
+        barrier_width_ft=bw, n_beams=n_beams,
+        beam_width_ft=float(beam_width_ft), deck_width_ft=deck,
+        roadway_ft=roadway, required_ft=required, spare_ft=spare,
+        lane_offsets_ft=lanes, governing_loaded_lanes=loaded,
+        exterior_lane_fraction=frac)
+
+
+def worst_lane_placement(n_lanes: int, n_beams: int, *,
+                         lane_width_ft: float = 12.0,
+                         beam_width_ft: float = 4.0,
+                         barrier_width: float = 0.0,
+                         step_ft: float = 0.25
+                         ) -> tuple[tuple[float, ...], int, float]:
+    """Where to put the lanes so the analysis finds the governing case.
+
+    LRFD 3.6.1.1.1 fixes how many design lanes there are but deliberately
+    leaves *where* they go -- they are placed wherever produces the
+    extreme force effect, and a roadway wider than ``n_lanes x 12 ft``
+    leaves slack to slide them in.
+
+    This sweeps the lane group across that slack and scores each position
+    with the rigid cross-section reaction of LRFD C4.6.2.2.2d --
+    ``R = N_L/N_b + x_ext * sum(e) / sum(x^2)`` -- times the multiple
+    presence factor of Table 3.6.1.1.2-1, over every number of loaded
+    lanes.  It returns the placement, the governing lane count, and the
+    lanes the fascia beam carries there.
+
+    The answer always comes out **packed against one barrier**, which is
+    worth knowing because it means one analysis covers everything: with
+    the lanes packed, the subset MIDAS loads for ``N_L = 1`` is already
+    the worst single-lane position, the subset for ``N_L = 2`` the worst
+    pair, and so on.  A centred layout -- the obvious default, and what
+    this used to do -- cannot reach any of them, and understates the
+    fascia beam.
+
+    Do **not** instead hand MIDAS extra candidate positions and let its
+    lane-combination search choose: it treats lanes as independent and
+    will load two that overlap, which is not conservative but fictitious.
+    """
+    from civilpy.state.ohio.DOT.midas_bridge import MULTIPLE_PRESENCE
+
+    deck = n_beams * beam_width_ft
+    lo, hi = barrier_width, deck - barrier_width          # roadway limits
+    roadway = hi - lo
+    if n_lanes == 1 and roadway < lane_width_ft:
+        # LRFD 3.6.1.1.1: "Where the traffic lanes are less than 12.0 ft
+        # wide, the number of design lanes shall be equal to the number of
+        # traffic lanes, and the width of the design lane shall be taken as
+        # the width of the traffic lane."  One narrow lane, not zero.
+        lane_width_ft = roadway
+    travel = roadway - n_lanes * lane_width_ft
+    if travel < -1e-9:
+        raise ValueError(
+            f"{n_lanes} x {lane_width_ft:g} ft lanes do not fit between the "
+            f"railings on a {deck:g} ft deck ({roadway:g} ft of roadway)")
+
+    best = (None, 0, -1.0)
+    n_steps = max(1, int(round(travel / step_ft)))
+    for s in range(n_steps + 1):
+        start = lo + travel * s / n_steps
+        cs = [start + (k + 0.5) * lane_width_ft for k in range(n_lanes)]
+        frac, n_l = _exterior_lane_fraction(cs, n_beams, beam_width_ft,
+                                            with_count=True)
+        if frac > best[2]:
+            best = (tuple(round(c, 4) for c in cs), n_l, frac)
+    return best
+
+
+def _exterior_lane_fraction(lane_centres, n_beams: int,
+                            beam_width_ft: float = 4.0,
+                            with_count: bool = False):
+    """Design lanes the fascia beam carries at this lane placement.
+
+    The rigid cross-section reaction of LRFD C4.6.2.2.2d,
+    ``R = N_L/N_b + x_ext * sum(e) / sum(x^2)``, times the multiple
+    presence factor of Table 3.6.1.1.2-1, maximized over how many lanes
+    are loaded and which -- for the fascia beam that is always the ones
+    nearest it, so only the two end-loaded subsets need checking.
+    """
+    from civilpy.state.ohio.DOT.midas_bridge import MULTIPLE_PRESENCE
+
+    centre = n_beams * beam_width_ft / 2.0
+    xs = [(b + 0.5) * beam_width_ft - centre for b in range(n_beams)]
+    sum_x2 = sum(x * x for x in xs)
+    x_ext = max(abs(xs[0]), abs(xs[-1]))
+
+    best, best_n = -1.0, 0
+    for n_l in range(1, len(lane_centres) + 1):
+        m = MULTIPLE_PRESENCE[min(n_l, len(MULTIPLE_PRESENCE)) - 1]
+        for grp in (lane_centres[:n_l], lane_centres[-n_l:]):
+            sum_e = sum(c - centre for c in grp)
+            r = m * (n_l / n_beams + x_ext * abs(sum_e) / sum_x2)
+            if r > best:
+                best, best_n = r, n_l
+    return (best, best_n) if with_count else best
 
 
 def design_lane_offsets_ft(deck_width_ft: float, *,
