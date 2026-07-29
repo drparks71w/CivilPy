@@ -62,6 +62,7 @@ from typing import Any
 
 __all__ = [
     "API_MANUAL_ARTICLES",
+    "DEFAULT_MODEL_PATH",
     "GirderModel",
     "add_girder",
     "add_moving_load_case",
@@ -73,6 +74,7 @@ __all__ = [
     "midas_ohio_legal_loads",
     "moving_load_envelopes",
     "new_model",
+    "save_model",
     "set_moving_load_code",
     "set_moving_load_control",
 ]
@@ -94,6 +96,10 @@ API_MANUAL_ARTICLES = {
 #: (LRFD Table 3.6.1.1.2-1).  Midas expects the whole set on every
 #: moving load case.
 MULTIPLE_PRESENCE = [1.2, 1.0, 0.85, 0.65, 0.65, 0.65]
+
+#: Where :func:`new_model` parks a scratch model so the solver never has to
+#: ask.  Any writable path on the Civil NX machine will do.
+DEFAULT_MODEL_PATH = r"C:\Temp\civilpy_model.mcb"
 
 
 @dataclass
@@ -174,10 +180,18 @@ def ensure_base_stage(client) -> bool:
         return False
 
 
-def new_model(client) -> None:
-    """``POST /doc/new``.  The empty-``Argument`` body is required -- a null
-    body returns HTTP 500."""
+def new_model(client, *, path: str | None = DEFAULT_MODEL_PATH) -> None:
+    """``POST /doc/new``, then give the model a filename.
+
+    The empty-``Argument`` body is required -- a null body returns HTTP
+    500.  Naming the file immediately matters: a model that has never been
+    saved makes ``/doc/ANAL`` pop a *Save As* dialog, which silently
+    blocks the whole API (see :func:`analyze`).  Pass ``path=None`` to skip
+    the save, e.g. when a file is already open.
+    """
     client.request("POST", "/doc/new", {"Argument": {}})
+    if path:
+        save_model(client, path=path)
 
 
 # ── geometry ─────────────────────────────────────────────────────────────
@@ -516,9 +530,17 @@ def set_moving_load_control(client, *, concurrent_forces: bool = True,
 
 
 # ── run and read ─────────────────────────────────────────────────────────
-def analyze(client) -> dict:
-    """``POST /doc/ANAL``.  Long timeout: the app queues behind the UI and
-    even a small model can exceed 60 s.
+def analyze(client, *, save_as: str | None = None) -> dict:
+    """Save the model, then ``POST /doc/ANAL``.
+
+    **The save is not optional.** Analysing a model that has never been
+    written to disk makes Civil NX raise a *Save As* dialog, and because
+    the API is serialized behind the UI that dialog blocks every
+    subsequent request -- the analysis appears to run for as long as
+    anyone is willing to wait, and a plain ``GET /db/UNIT`` times out
+    alongside it. Nothing in any response says a dialog is up.
+    :func:`new_model` therefore names the file up front, and this saves
+    again before every solve.
 
     .. note::
        **A read timeout here is not a failure.** Civil NX keeps solving
@@ -527,7 +549,7 @@ def analyze(client) -> dict:
        normally, after blowing a 600 s budget. Catch
        :class:`~civilpy.structural.midas.MidasTimeoutError`, reconnect and
        read the result table before deciding anything went wrong; retrying
-       ``/doc/ANAL`` blind is what pops the modal error dialog that then
+       ``/doc/ANAL`` blind is what pops the modal *error* dialog that then
        blocks every later solve.
 
        What *is* a failure, and looks like success: a returned
@@ -535,8 +557,20 @@ def analyze(client) -> dict:
        solve aborted -- a rigid-link master/slave chain will do it -- and
        the next ``/doc/ANAL`` answers ``"Analysis is not allowed."``
     """
+    save_model(client, path=save_as)
     return client.request("POST", "/doc/ANAL", {"Argument": {}},
                           timeout=getattr(client, "ANALYSIS_TIMEOUT", 600))
+
+
+def save_model(client, path: str | None = None) -> dict:
+    """``POST /doc/SAVE``, or ``/doc/SAVEAS`` when ``path`` is given.
+
+    Call this before analysing anything -- see :func:`analyze` for what an
+    unsaved model costs you.
+    """
+    if path:
+        return client.request("POST", "/doc/SAVEAS", {"Argument": str(path)})
+    return client.request("POST", "/doc/SAVE", {})
 
 
 def moving_load_envelopes(client, *, elements: list[int] | None = None,

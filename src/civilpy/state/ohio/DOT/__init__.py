@@ -20,6 +20,7 @@ either spelling of the package name reaches it::
 """
 
 from civilpy.state.ohio.DOT.midas_bridge import (  # noqa: F401
+    DEFAULT_MODEL_PATH,
     API_MANUAL_ARTICLES,
     GirderModel,
     add_girder,
@@ -32,6 +33,7 @@ from civilpy.state.ohio.DOT.midas_bridge import (  # noqa: F401
     midas_ohio_legal_loads,
     moving_load_envelopes,
     new_model,
+    save_model,
     set_moving_load_code,
     set_moving_load_control,
 )
