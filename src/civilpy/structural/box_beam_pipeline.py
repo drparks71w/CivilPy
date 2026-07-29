@@ -584,20 +584,37 @@ def structural_model_from_box(box: str, span_ft: float, n_beams: int, *,
 
 def design_lane_offsets_ft(deck_width_ft: float, *,
                            barrier_width_ft: float = 1.75,
-                           lane_width_ft: float = 12.0) -> list[float]:
+                           lane_width_ft: float = 12.0,
+                           align: str = "center") -> list[float]:
     """Transverse centreline of each design lane, from the deck edge.
 
-    LRFD 3.6.1.1.1 sets the count -- ``INT(clear roadway / 12 ft)`` -- and
-    3.6.1.1.1/3.6.1.3.1 leave the transverse position to whatever produces
-    the extreme force effect.  This returns the lanes packed adjacent and
-    centred on the roadway, which is the usual starting point; for the
-    exterior-beam check, shift them against one barrier by passing
-    ``lane_offsets_ft`` explicitly.
+    LRFD 3.6.1.1.1 fixes the **count** -- ``INT(clear roadway / 12 ft)``,
+    so three lanes on the 40.5 ft clear roadway of an 11-beam bridge -- but
+    deliberately leaves the **position** open: 3.6.1.1.1 has the lanes
+    placed wherever produces the extreme force effect, and on a 40.5 ft
+    roadway three 12 ft lanes leave 4.5 ft of slack to slide them in.
+
+    ``align`` picks the placement:
+
+    ``"center"`` (default)
+        lanes packed adjacent and centred, the usual starting point and
+        the worst case for an interior beam;
+    ``"left"`` / ``"right"``
+        packed against one barrier -- the case that governs the **exterior**
+        beam, and the one a centred layout will never find.
+
+    .. warning::
+       Do not try to cover both by handing MIDAS extra candidate lane
+       positions and letting the combination search choose.  It treats
+       lanes as independent and will happily load two that overlap, which
+       is worse than the real governing case rather than equal to it.  Run
+       the placements as separate analyses and envelope them yourself.
     """
     clear = float(deck_width_ft) - 2.0 * float(barrier_width_ft)
     n = max(1, int(clear // lane_width_ft))
-    used = n * lane_width_ft
-    start = barrier_width_ft + (clear - used) / 2.0
+    slack = clear - n * lane_width_ft
+    start = barrier_width_ft + {"center": slack / 2.0, "left": 0.0,
+                                "right": slack}[align]
     return [round(start + (k + 0.5) * lane_width_ft, 4) for k in range(n)]
 
 

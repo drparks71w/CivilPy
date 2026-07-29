@@ -290,3 +290,40 @@ def test_summary_readable(checks):
     text = checks.summary()
     assert "CB27-48 @ 60 ft" in text
     assert "PASS" in text and "losses" in text
+
+
+class TestDesignLanePlacement:
+    """LRFD 3.6.1.1.1 fixes the lane COUNT; the position is open, and the
+    two extremes govern different beams."""
+
+    def test_count_from_the_clear_roadway(self):
+        from civilpy.structural.box_beam_pipeline import design_lane_offsets_ft
+
+        # 11 x 4 ft = 44 ft out-to-out, less two 1.75 ft parapets = 40.5 clear
+        assert len(design_lane_offsets_ft(44.0)) == 3        # INT(40.5 / 12)
+        assert len(design_lane_offsets_ft(28.0)) == 2        # 24.5 clear
+        assert len(design_lane_offsets_ft(16.0)) == 1        # 12.5 clear
+
+    def test_alignment_slides_the_lanes_within_the_slack(self):
+        from civilpy.structural.box_beam_pipeline import design_lane_offsets_ft
+
+        left = design_lane_offsets_ft(44.0, align="left")
+        centre = design_lane_offsets_ft(44.0, align="center")
+        right = design_lane_offsets_ft(44.0, align="right")
+        assert centre == [10.0, 22.0, 34.0]
+        # 4.5 ft of slack on a 40.5 ft roadway, so 4.5 ft of travel
+        assert left == [7.75, 19.75, 31.75]
+        assert right == [12.25, 24.25, 36.25]
+        assert right[0] - left[0] == pytest.approx(4.5)
+        # every lane stays inside the barriers whichever way they slide
+        for lanes in (left, centre, right):
+            assert lanes[0] - 6.0 >= 1.75 - 1e-9
+            assert lanes[-1] + 6.0 <= 44.0 - 1.75 + 1e-9
+
+    def test_lanes_never_overlap(self):
+        from civilpy.structural.box_beam_pipeline import design_lane_offsets_ft
+
+        for align in ("left", "center", "right"):
+            lanes = design_lane_offsets_ft(44.0, align=align)
+            assert all(b - a == pytest.approx(12.0)
+                       for a, b in zip(lanes, lanes[1:])), align
