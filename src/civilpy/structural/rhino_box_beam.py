@@ -94,6 +94,8 @@ class BoxBeamBridgeModel:
     bearing_type: str
     composite: bool
     self_weight_klf_per_beam: float
+    #: ``diaphragm_count`` -- the INTERMEDIATE diaphragms only.  The bridge
+    #: also has two end diaphragms, so ``n_diaphragm_objects`` is this + 2.
     n_diaphragms: int
     n_beam_solids: int
     n_tendons: int

@@ -125,7 +125,13 @@ def test_structural_model_spoke():
     n_dia = len(diaphragm_stations_ft(60.0, 27))
     stations = sorted({round(n.x, 4) for n in m.nodes.values()
                        if (n.label or "").startswith("BB")})
-    assert stations == [0.0, 2.5, 3.25, 56.75, 57.5, 60.0]
+    # 60 ft: end diaphragms 2.5 / 57.5 inside the 3'-3" end blocks, two
+    # intermediates at the third points of the length between them, each
+    # with its own 18 in solid block
+    assert stations == [0.0, 2.5, 3.25,
+                        20.0833, 20.8333, 21.5833,
+                        38.4167, 39.1667, 39.9167,
+                        56.75, 57.5, 60.0]
     girders = [e for e in m.elements.values() if e.role == "girder"]
     rods = [e for e in m.elements.values() if e.role == "tie-rod"]
     assert len(girders) == 9 * (len(stations) - 1)
@@ -134,7 +140,8 @@ def test_structural_model_spoke():
     # the void stops at the end blocks
     solid = [e for e in girders if e.metadata["gdr.cell"] == "solid"]
     assert {e.section for e in solid} == {"CB27-48-SOLID"}
-    assert len(solid) == 9 * 4          # 2 elements inside each end block
+    # 2 elements inside each of the 4 solid blocks (2 end + 2 intermediate)
+    assert len(solid) == 9 * 8
     g = next(e for e in girders if e.metadata["gdr.cell"] == "open")
     assert g.section == "CB27-48"
     sec = box_section_properties(27)

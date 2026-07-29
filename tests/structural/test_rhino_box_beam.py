@@ -28,8 +28,10 @@ class TestBuildBoxBeams:
         assert m.n_tendons == 4 * 2              # 2 active rows x 4 beams
         assert m.n_bearing_pads == 4 * 2         # 2 ends x 4 beams
         assert m.n_diaphragms == 1               # span 50 ft <= 50
-        assert m.n_diaphragm_objects == 1
-        assert m.n_tie_rods == 1
+        # n_diaphragms is the INTERMEDIATE count; the bridge also has two
+        # end diaphragms, so three get drawn and three tie-rod runs with them
+        assert m.n_diaphragm_objects == 3
+        assert m.n_tie_rods == 3
         assert m.composite is True
         assert m.n_slab == 1
 
@@ -51,8 +53,8 @@ class TestBuildBoxBeams:
         # CB33-48 @ 80 ft -> span > 75 ft => 3 diaphragms
         m = build_box_beams(out_path=out, box="CB33-48", span_ft=80, n_beams=3)
         assert m.n_diaphragms == 3
-        assert m.n_diaphragm_objects == 3
-        assert m.n_tie_rods == 3
+        assert m.n_diaphragm_objects == 5        # 3 intermediate + 2 end
+        assert m.n_tie_rods == 5        # one run per diaphragm
 
     def test_unknown_span_rejected(self, tmp_path):
         with pytest.raises(KeyError, match="no PSBDD-1-25 design"):
@@ -85,7 +87,9 @@ class TestBuildBoxBeams:
         assert all(p["attrs"]["bearing_pad.type"] == "B1" for p in pads)
 
         diaphragms = [r for r in rows if r["kind"] == "diaphragm"]
-        assert diaphragms[0]["attrs"]["diaphragm.station"] == pytest.approx(25.0)
+        # stations are sorted: the first is the END diaphragm 2'-6" in
+        assert diaphragms[0]["attrs"]["diaphragm.station"] == pytest.approx(2.5)
+        assert diaphragms[1]["attrs"]["diaphragm.station"] == pytest.approx(25.0)
 
         tie_rods = [r for r in rows if r["kind"] == "tie_rod"]
         assert tie_rods[0]["attrs"]["tie_rod.max_beams_per_rod"] == pytest.approx(3.0)
