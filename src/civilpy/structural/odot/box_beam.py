@@ -375,20 +375,50 @@ def diaphragm_end_offset(beam_depth: int) -> float:
     return 24.0 if beam_depth <= 21 else 30.0
 
 
-def diaphragm_stations_ft(span_ft: float, beam_depth: int) -> tuple[float, ...]:
-    """Longitudinal station (ft, from the beam start) of each intermediate
-    diaphragm: :func:`diaphragm_count` of them, evenly spaced between the
-    :func:`diaphragm_end_offset` inset from each end (a single diaphragm sits
-    at midspan). The drawing (sheet 4/6) states the count and the end offset
-    but not an explicit multi-diaphragm spacing rule; even spacing between
-    the end-offset points is the standard detailing assumption.
+def end_diaphragm_stations_ft(span_ft: float,
+                              beam_depth: int) -> tuple[float, float]:
+    """Station (ft) of the two end diaphragms, one
+    :func:`diaphragm_end_offset` in from each beam end (PSBD-1-25 sheet
+    4/6).  These are cast inside the solid end blocks -- see
+    :func:`solid_end_block_in` -- not in the voided length."""
+    offset_ft = diaphragm_end_offset(beam_depth) / 12.0
+    return (offset_ft, span_ft - offset_ft)
+
+
+def intermediate_diaphragm_stations_ft(span_ft: float, beam_depth: int
+                                       ) -> tuple[float, ...]:
+    """Station (ft) of each **intermediate** diaphragm.
+
+    :func:`diaphragm_count` of them, dividing the length between the two
+    end diaphragms into equal bays: one lands at midspan, two at the third
+    points of that length, three at the quarter points.  The drawing states
+    the count and the end offset but not an explicit multi-diaphragm
+    spacing rule; equal bays is the standard detailing assumption.
+
+    .. note::
+       This used to be folded into ``diaphragm_stations_ft`` with an
+       ``k / (n - 1)`` interpolation, which for two diaphragms returned the
+       two **end** stations and so produced no intermediate diaphragms at
+       all -- a 70 ft span came back as ``(2.5, 67.5)``.  A model built on
+       that had its tie rods buried in the end blocks and no diaphragm
+       anywhere in the span.
     """
     n = diaphragm_count(span_ft)
-    offset_ft = diaphragm_end_offset(beam_depth) / 12.0
-    if n == 1:
-        return (span_ft / 2.0,)
-    lo, hi = offset_ft, span_ft - offset_ft
-    return tuple(lo + (hi - lo) * k / (n - 1) for k in range(n))
+    lo, hi = end_diaphragm_stations_ft(span_ft, beam_depth)
+    return tuple(lo + (hi - lo) * (k + 1) / (n + 1) for k in range(n))
+
+
+def diaphragm_stations_ft(span_ft: float, beam_depth: int) -> tuple[float, ...]:
+    """Station (ft, from the beam start) of **every** diaphragm, sorted:
+    the two end diaphragms plus :func:`diaphragm_count` intermediate ones.
+
+    A 70 ft CB27-48 therefore has four -- ends at 2.5 and 67.5 ft,
+    intermediates at 24.17 and 45.83 -- which is what PSBD-1-25 sheet 4/6
+    details and what the beam is cast solid at.
+    """
+    return tuple(sorted(
+        (*end_diaphragm_stations_ft(span_ft, beam_depth),
+         *intermediate_diaphragm_stations_ft(span_ft, beam_depth))))
 
 
 @dataclass(frozen=True)

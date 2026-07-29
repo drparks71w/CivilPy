@@ -30,6 +30,8 @@ from civilpy.structural.odot import (
     diaphragm_count,
     diaphragm_end_offset,
     diaphragm_stations_ft,
+    end_diaphragm_stations_ft,
+    intermediate_diaphragm_stations_ft,
     layout_load_plate,
     load_plate_bevel,
     strand_group_height_in,
@@ -277,21 +279,38 @@ class TestSectionProperties:
 
 
 class TestDiaphragmStations:
-    def test_single_diaphragm_at_midspan(self):
-        assert diaphragm_stations_ft(40.0, 27) == (20.0,)
+    """Every diaphragm: the two ends plus ``diaphragm_count`` intermediate.
 
-    def test_two_diaphragms_symmetric(self):
-        stations = diaphragm_stations_ft(60.0, 27)
-        assert len(stations) == 2
-        assert stations[0] == pytest.approx(60.0 - stations[1])
-        offset_ft = 30.0 / 12.0
-        assert stations[0] == pytest.approx(offset_ft)
-        assert stations[1] == pytest.approx(60.0 - offset_ft)
+    A 70 ft beam has FOUR (dane, 2026-07-29).  The old placement
+    interpolated ``k / (n - 1)`` across the end-diaphragm stations, so for
+    two it returned those two stations back and the span got no
+    intermediate diaphragm at all.
+    """
 
-    def test_three_diaphragms_include_midspan(self):
-        stations = diaphragm_stations_ft(90.0, 33)
+    def test_single_intermediate_sits_at_midspan(self):
+        assert intermediate_diaphragm_stations_ft(40.0, 27) == (20.0,)
+        assert diaphragm_stations_ft(40.0, 27) == (2.5, 20.0, 37.5)
+
+    def test_seventy_foot_beam_has_four_diaphragms(self):
+        assert end_diaphragm_stations_ft(70.0, 27) == (2.5, 67.5)
+        interm = intermediate_diaphragm_stations_ft(70.0, 27)
+        assert len(interm) == 2
+        # third points of the end-diaphragm-to-end-diaphragm length
+        assert interm == pytest.approx((2.5 + 65 / 3, 2.5 + 130 / 3))
+        assert len(diaphragm_stations_ft(70.0, 27)) == 4
+
+    def test_intermediates_are_symmetric_and_interior(self):
+        for span in (60.0, 70.0, 90.0):
+            lo, hi = end_diaphragm_stations_ft(span, 27)
+            interm = intermediate_diaphragm_stations_ft(span, 27)
+            assert all(lo < s < hi for s in interm), span
+            assert interm[0] == pytest.approx(span - interm[-1])
+
+    def test_three_intermediates_include_midspan(self):
+        stations = intermediate_diaphragm_stations_ft(90.0, 33)
         assert len(stations) == 3
         assert stations[1] == pytest.approx(45.0)
+        assert len(diaphragm_stations_ft(90.0, 33)) == 5
 
 
 class TestStrandGroupHeight:
