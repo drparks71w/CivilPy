@@ -120,14 +120,22 @@ def test_structural_model_spoke():
 
     m = structural_model_from_box("CB27-48", 60.0, 9, barrier_klf=1.0,
                                   shear_keys=False, deck=False, mesh_ft=0)
-    n_sta = len(diaphragm_stations_ft(60.0, 27)) + 2
-    assert len(m.nodes) == 9 * n_sta
+    # a node at every section change: the two 3'-3" end blocks (PSBD sheet
+    # 3) plus the diaphragm stations inside them
+    n_dia = len(diaphragm_stations_ft(60.0, 27))
+    stations = sorted({round(n.x, 4) for n in m.nodes.values()
+                       if (n.label or "").startswith("BB")})
+    assert stations == [0.0, 2.5, 3.25, 56.75, 57.5, 60.0]
     girders = [e for e in m.elements.values() if e.role == "girder"]
-    ties = [e for e in m.elements.values() if e.role == "diaphragm"]
-    assert len(girders) == 9 * (n_sta - 1)
-    assert len(ties) == 8 * (n_sta - 2)          # interior stations only
+    rods = [e for e in m.elements.values() if e.role == "tie-rod"]
+    assert len(girders) == 9 * (len(stations) - 1)
+    assert len(rods) == 8 * n_dia                # one rod run per diaphragm
     assert len(m.restraints) == 18
-    g = girders[0]
+    # the void stops at the end blocks
+    solid = [e for e in girders if e.metadata["gdr.cell"] == "solid"]
+    assert {e.section for e in solid} == {"CB27-48-SOLID"}
+    assert len(solid) == 9 * 4          # 2 elements inside each end block
+    g = next(e for e in girders if e.metadata["gdr.cell"] == "open")
     assert g.section == "CB27-48"
     sec = box_section_properties(27)
     assert g.metadata["section.area_in2"] == sec.area
@@ -224,6 +232,38 @@ class TestShearKeyAndDeck:
 
         with pytest.raises(ValueError, match="non-composite"):
             structural_model_from_box("B21-48", 50.0, 6, deck=True)
+
+    def test_no_rigid_link_chaining(self):
+        """A node may not be both master and slave.
+
+        MIDAS rejects the chain without saying so: ``/doc/ANAL`` returns
+        normally, writes no results, and leaves a modal "Analysis is not
+        allowed" behind that blocks every later solve.  The lane lines
+        therefore ride the deck's own nodes rather than hanging off them.
+        """
+        from civilpy.structural.box_beam_pipeline import (
+            structural_model_from_box)
+
+        for n_beams in (6, 11):
+            m = structural_model_from_box("CB27-48", 70.0, n_beams)
+            masters = {ln.master for ln in m.rigid_links}
+            slaves = {s for ln in m.rigid_links for s in ln.slaves}
+            assert not masters & slaves, n_beams
+
+    def test_lane_lines_sit_on_design_lane_centrelines(self):
+        from civilpy.structural.box_beam_pipeline import (
+            structural_model_from_box)
+
+        # 11 beams x 4 ft = 44 ft out-to-out, 40.5 ft clear -> 3 lanes
+        m = structural_model_from_box("CB27-48", 70.0, 11)
+        assert m.metadata["lane.offsets_ft"] == [10.0, 22.0, 34.0]
+        lane_elems = [e for e in m.elements.values() if e.role == "lane-line"]
+        assert {e.metadata["lane.index"] for e in lane_elems} == {1, 2, 3}
+        # weightless dummies, and they share deck nodes (no extra constraint)
+        assert all(e.metadata["matl.dummy"] for e in lane_elems)
+        deck_nodes = {n for e in m.elements.values()
+                      if e.midas_type == "PLATE" for n in e.nodes}
+        assert all(n in deck_nodes for e in lane_elems for n in e.nodes)
 
     def test_no_node_is_left_unconnected(self):
         """A dangling key node makes the stiffness matrix singular."""

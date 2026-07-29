@@ -113,6 +113,9 @@ class GirderModel:
     elements_by_line: dict[int, list[int]] = field(default_factory=dict)
     report: dict = field(default_factory=dict)
     deck_width_ft: float = 0.0        # out-to-out, for the design lane count
+    #: dummy lane-line elements by lane index, the traffic lanes ride these
+    lane_elements: dict[int, list[int]] = field(default_factory=dict)
+    lane_offsets_ft: list[float] = field(default_factory=list)
 
     @property
     def all_elements(self) -> list[int]:
@@ -120,17 +123,13 @@ class GirderModel:
 
     @property
     def design_lanes(self) -> int:
-        """Number of design lanes, LRFD 3.6.1.1.1: ``INT(w / 12 ft)``.
+        """Number of design lanes, LRFD 3.6.1.1.1: ``INT(clear / 12 ft)``.
 
-        This is **not** the number of traffic lane *positions* in the
-        model.  :func:`generate_lane_load` lays one lane line down each
-        girder so a wheel can be put over any beam, which on a six-beam
-        adjacent box bridge is six positions across 24 ft of roadway --
-        but only two of them may be loaded at once.  Feeding the position
-        count to ``MAX_LOADED_LANE`` asks MIDAS for six trucks abreast on
-        a 24 ft bridge: an envelope no real loading produces, and 63 lane
-        combinations per vehicle instead of 21.
+        Taken from the lane lines the builder laid down when it has them,
+        so it is the same number in the model and in the load case.
         """
+        if self.lane_elements:
+            return len(self.lane_elements)
         return max(1, int(self.deck_width_ft // 12.0)) if self.deck_width_ft \
             else 0
 
@@ -243,7 +242,11 @@ def add_girder(client, designation: str, *, span_ft: float, n_beams: int,
     model = GirderModel(designation=designation, family=fam,
                         span_ft=float(span_ft), n_beams=int(n_beams), hub=hub,
                         elements_by_line=_element_lines(hub, n_beams),
-                        deck_width_ft=_deck_width_ft(hub))
+                        deck_width_ft=_deck_width_ft(hub),
+                        lane_elements=_lane_lines(hub),
+                        lane_offsets_ft=list(
+                            getattr(hub, "metadata", {}).get(
+                                "lane.offsets_ft", [])))
     if push:
         model.report = push_midas(hub, client)
     return model
@@ -257,6 +260,18 @@ def _family(designation: str) -> str:
     if re.match(r"^W\d+X\d+$", designation, re.I):
         return "steel"
     return "ps-i"
+
+
+def _lane_lines(hub) -> dict[int, list[int]]:
+    """Lane index -> 1-based Midas element ids of that lane's dummy line."""
+    order = {id(e): i + 1 for i, e in
+             enumerate(getattr(hub, "elements", {}).values())}
+    lines: dict[int, list[int]] = {}
+    for e in getattr(hub, "elements", {}).values():
+        if getattr(e, "role", None) != "lane-line":
+            continue
+        lines.setdefault(int(e.metadata["lane.index"]), []).append(order[id(e)])
+    return {k: sorted(v) for k, v in sorted(lines.items())}
 
 
 def _deck_width_ft(hub) -> float:
@@ -354,17 +369,21 @@ def generate_lane_load(client, girder: GirderModel | None = None, *,
     ``ELEM/ECC/FACT/SPAN_START/ECCEN_VERT_LOAD/CENT_F``.  ``CENT_F`` must be
     strictly inside (0, 1) -- 0.0 is rejected.
 
-    Lanes ride the girder lines, which is the line-girder idealization: it
-    exercises each girder directly but never places a wheel *between*
-    girders, so transverse distribution is not tested. Use the grillage
-    model and a transverse lane layout when that matters.
+    Lanes ride the **dummy lane lines** :func:`add_girder` lays down on the
+    design-lane centrelines (LRFD 3.6.1.1.1) -- weightless stringers at deck
+    level, rigid-linked to the slab.  Falling back to the girder lines, as
+    this did before, is wrong twice over: it puts every wheel directly over
+    a beam, which no real lane does, and it offers as many "lanes" as there
+    are beams -- six on a 24 ft deck that holds two.
 
     ``WIDTH`` and ``WHEEL_SPACE`` go out in the model's own length unit,
     read off ``/db/UNIT`` -- a lane 12x too wide stores without complaint.
     """
     from civilpy.structural.midas_models import model_length_unit
 
-    lines = elements or (girder.elements_by_line if girder else None)
+    lines = elements
+    if lines is None and girder is not None:
+        lines = girder.lane_elements or girder.elements_by_line
     if not lines:
         raise ValueError("no girder elements -- pass a GirderModel or elements")
     per_model_unit = {"in": 12.0, "ft": 1.0, "m": 0.3048,

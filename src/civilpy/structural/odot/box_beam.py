@@ -97,6 +97,46 @@ COMPOSITE_SLAB_WEARING_SURFACE_IN = 1.0
 #: properties (PSBD-1-25 sheet 4/6 note).
 COMPOSITE_MODULAR_RATIO = 0.90
 
+# ── solid (voidless) blocks ──────────────────────────────────────────────
+# The void does not run the full length: the beam is cast solid at each end
+# and through each intermediate diaphragm (PSBD-1-25 sheets 3 and 4).  The
+# end block houses the end diaphragm, the anchor dowels and the lifting
+# inserts; the intermediate block is the diaphragm itself.  A model that
+# runs the voided section end to end understates the end reaction by ~30%.
+
+#: Length of the solid block at each beam end, inches: 3'-3" on the 27/33/42
+#: in beams, 2'-9" on the 17/21 in beams (PSBD-1-25 sheet 3).
+SOLID_END_BLOCK_IN = 39.0
+SOLID_END_BLOCK_SHALLOW_IN = 33.0
+
+#: Longitudinal length of the solid block at an intermediate diaphragm,
+#: inches, at zero skew (PSBD-1-25 sheet 4).  Skewed beams widen it to
+#: ``X/2 + 6`` where ``X = width * tan(theta)``.
+SOLID_DIAPHRAGM_BLOCK_IN = 18.0
+
+
+def solid_end_block_in(depth_in: int) -> float:
+    """Length of the solid end block for a beam of ``depth_in``."""
+    if depth_in not in BOX_BEAM_DEPTHS:
+        raise ValueError(f"non-standard beam depth {depth_in} in")
+    return (SOLID_END_BLOCK_SHALLOW_IN if depth_in <= 21
+            else SOLID_END_BLOCK_IN)
+
+
+def solid_diaphragm_block_in(skew_deg: float = 0.0,
+                             width_in: float = BOX_WIDTH_IN) -> float:
+    """Longitudinal length of an intermediate diaphragm's solid block.
+
+    Zero skew gives :data:`SOLID_DIAPHRAGM_BLOCK_IN`; a skewed beam needs
+    ``X/2 + 6`` inches, ``X = width * tan(skew)``, so the block still
+    contains the full diaphragm once it runs on the bias.
+    """
+    if not skew_deg:
+        return SOLID_DIAPHRAGM_BLOCK_IN
+    x = width_in * math.tan(math.radians(float(skew_deg)))
+    return max(SOLID_DIAPHRAGM_BLOCK_IN, x / 2.0 + 6.0)
+
+
 # ── BDM dead-load rules ──────────────────────────────────────────────────
 # The wearing surface a box beam carries is decided by BDM 309.1, and it
 # is NOT a free choice -- it follows from composite vs. non-composite:

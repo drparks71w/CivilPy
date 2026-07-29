@@ -159,7 +159,7 @@ def _box_strand_grid(width: float) -> tuple[Point, ...]:
     return tuple(grid)
 
 
-def box_beam_shape(designation: str) -> PSCShape:
+def box_beam_shape(designation: str, *, solid: bool = False) -> PSCShape:
     """A PSBD-1-25 box beam (``"B21-48"``, ``"CB27-48"``, ...) as a
     :class:`PSCShape`, per the sheet 2/6 dimension chains: 5 in top/bottom
     flanges, 6 in side walls (the void is 3'-0" wide on 48 in beams), the
@@ -171,6 +171,13 @@ def box_beam_shape(designation: str) -> PSCShape:
     Rhino model of B17-48; reproduces the published sheet 4/6 Ab / Yb /
     Ib to within 0.15 percent at every depth.  Carries the sheet 2
     permissible strand grid.
+
+    ``solid=True`` returns the same outline with **no void** -- the beam as
+    it is actually cast at the ends and at each intermediate diaphragm
+    (PSBD-1-25 sheets 3 and 4).  Those blocks are what carry the bearing
+    reaction, the anchor dowels, the lifting inserts and the tie rods, and
+    a model that runs the voided section end to end understates the end
+    reaction badly; use both sections and switch at the block boundaries.
     """
     m = _BOX_RE.match(designation)
     if not m:
@@ -197,11 +204,12 @@ def box_beam_shape(designation: str) -> PSCShape:
     void = ((-(vw2 - f), z0), (vw2 - f, z0), (vw2, z0 + f), (vw2, z1 - f),
             (vw2 - f, z1), (-(vw2 - f), z1), (-vw2, z1 - f), (-vw2, z0 + f))
     yb = area = None
-    if width == _psbd.BOX_WIDTH_IN:
+    if width == _psbd.BOX_WIDTH_IN and not solid:
         props = _psbd.box_section_properties(int(depth))
         yb, area = props.yb, props.area
     return PSCShape(
-        name=designation, family="box", outline=outline, voids=(void,),
+        name=f"{designation}-SOLID" if solid else designation,
+        family="box", outline=outline, voids=() if solid else (void,),
         depth_in=depth, yb_in=yb, area_in2=area,
         strand_grid=_box_strand_grid(width),
         strand_row_heights=tuple(_psbdd.STRAND_ROW_HEIGHTS_IN),

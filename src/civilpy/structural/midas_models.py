@@ -328,7 +328,11 @@ def hub_section_material_blocks(model, *, sect_start: int = 1,
             mid = matl_start + len(grades)
             grades[grade] = mid
             fc_psi = meta.get("matl.fc_psi")
-            if fc_psi is not None:
+            if meta.get("matl.dummy"):
+                matl.update(steel_material_block(
+                    name=grade, matl_id=mid, props=DUMMY_PROPS,
+                    length_unit=length_unit))
+            elif fc_psi is not None:
                 matl.update(concrete_material_block(
                     name=grade, matl_id=mid, fc_psi=float(fc_psi),
                     unit_wt_pcf=float(meta.get("matl.unit_wt_pcf", 145.0)),
@@ -360,9 +364,12 @@ def _section_block_for(elem, label: str, sect_id: int, length_unit: str,
         the exact outline and void polygons, not a parametric shape.
     ``sect.kind = "rect"``
         a solid rectangle ``sect.width_in`` x ``sect.height_in``.
+    ``sect.kind = "round"``
+        a solid circle of ``sect.diameter_in`` -- a tie rod, a dowel.
     """
     meta = getattr(elem, "metadata", None) or {}
     kind = meta.get("sect.kind")
+    scale = 1.0 / (12.0 * _length_ft_per(length_unit))       # inches -> model
     if kind == "psc":
         from civilpy.structural import psc_section as _psc
 
@@ -373,17 +380,44 @@ def _section_block_for(elem, label: str, sect_id: int, length_unit: str,
         elif family == "i-beam":
             shape = _psc.i_beam_shape(designation)
         else:
-            shape = _psc.box_beam_shape(designation)
+            shape = _psc.box_beam_shape(
+                designation, solid=bool(meta.get("sect.solid")))
         return {str(sect_id): _psc.midas_section_payload(
             shape, name=label, length_unit=length_unit)}
     if kind == "rect":
-        scale = 1.0 / (12.0 * _length_ft_per(length_unit))   # inches -> model
         return solid_rect_section_block(
             float(meta["sect.width_in"]) * scale,
             float(meta["sect.height_in"]) * scale,
             sect_id=sect_id, name=label)
+    if kind == "round":
+        return solid_round_section_block(
+            float(meta["sect.diameter_in"]) * scale,
+            sect_id=sect_id, name=label)
     return rolled_i_section_block(label, sect_id=sect_id,
                                   length_unit=length_unit, db_name=db_name)
+
+
+def solid_round_section_block(diameter: float, *, sect_id: int = 1,
+                              name: str | None = None) -> dict:
+    """A solid-round (``SR``) ``/db/SECT`` body -- the honest section for a
+    tie rod or anchor dowel, which is a bar, not a rectangle."""
+    return {str(sect_id): {
+        "SECTTYPE": "DBUSER", "SECT_NAME": name or f"ROUND-{diameter:g}",
+        "SECT_BEFORE": {"SHAPE": "SR", "DATATYPE": 2,
+                        "SECT_I": {"vSIZE": [round(diameter, 6)]}},
+    }}
+
+
+#: A709 Grade 50 is the default steel; tie rods are ASTM A307 Grade 307A.
+#: Same modulus and density -- the grade matters for capacity, not for the
+#: stiffness this model carries.
+ROD_STEEL_PROPS = dict(STEEL_PROPS)
+
+
+#: A weightless, near-rigid-free material for dummy elements (traffic lane
+#: lines).  They exist to carry a lane definition and must not attract load
+#: or add stiffness: 1 ksi and zero density.
+DUMMY_PROPS = {"ELAST": 144.0, "POISN": 0.3, "THERMAL": 0.0, "DEN": 0.0}
 
 
 def constraint_assign(cons_by_id: dict[int, str]) -> dict:
@@ -1078,7 +1112,14 @@ def load_oh_vehicles(client, *, im_percent: float = 33.0,
         (user_defined if kind == "user" else standard_db).append(label)
         next_id += 1
 
-    if include_design and use_standard_db:
+    # The 908.2 design loads ALWAYS go in as standard-DB records, whatever
+    # use_standard_db says.  HL-93 is not a vehicle Midas can be handed as
+    # an axle train: LRFD 3.6.1.3.1 superimposes the 0.640 klf design lane
+    # ON the truck (or tandem), where a user "Truck/Lane" record takes the
+    # ENVELOPE of the two.  Writing HL-93 by hand would understate it by
+    # the whole lane component.  Only the code-driven DB entry combines
+    # them, so that is what gets pushed.
+    if include_design:
         for label, (code, type_name) in BDM_908_DESIGN_DB.items():
             # BDM 924.4.C -- no dynamic load allowance on a lane load
             im = 0.0 if label in BDM_908_LANE_LOADS else im_percent
@@ -1108,5 +1149,6 @@ def load_oh_vehicles(client, *, im_percent: float = 33.0,
         "im_applied": bool(standard_db) and not user_defined,
         "user_defined": user_defined,
         "standard_db": standard_db,
+        "design_loads": [n for n in BDM_908_DESIGN_DB if n in standard_db],
         "length_unit": length_unit,
     }

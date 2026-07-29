@@ -172,7 +172,9 @@ class BoxBeamDeadLoads:
 
 
 def box_beam_dead_loads(box: str, span_ft: float, n_beams: int, *,
-                        barrier_klf: float = 0.0,
+                        barrier: str | None = "BR-1 (36 in)",
+                        n_barriers: int = 2,
+                        barrier_klf: float | None = None,
                         fws_ksf: float | None = None,
                         asphalt_in: float | None = None,
                         deck_in: float | None = None,
@@ -194,17 +196,29 @@ def box_beam_dead_loads(box: str, span_ft: float, n_beams: int, *,
     two cases that exempt it (temporary structures, BDM 501, and the dead
     load used for shop camber, BDM 308.2.2.1.f).
 
-    ``barrier_klf`` is the bridge total and is shared equally across the
-    beams, which is the standard's own assumption for adjacent units and
-    what BDM 308.2.2.1.f endorses for camber.  Deck and wearing-surface
-    loads are computed on each beam's own 4 ft width, so a deck
-    overhanging the fascia beams (up to 8 in per side, BDM 308.2.3.3.c)
-    is not included -- add it to ``barrier_klf`` if you carry it.
+    The **parapets** come from the ODOT railing catalog: ``barrier`` names
+    a standard (``"BR-1 (36 in)"`` = 0.441 klf per run, ``"SBR-1 (42 in)"``
+    = 0.613, ...) and ``n_barriers`` how many runs the deck carries, so
+    they are in the dead load by default rather than something a caller has
+    to remember.  ``barrier_klf`` overrides with an explicit bridge total;
+    ``barrier=None`` with no override means no parapet at all.  Either way
+    the total is shared equally across the beams -- the standard's own
+    assumption for adjacent units, and what BDM 308.2.2.1.f endorses for
+    camber.
+
+    Deck and wearing-surface loads are computed on each beam's own 4 ft
+    width, so a deck overhanging the fascia beams (up to 8 in per side,
+    BDM 308.2.3.3.c) is not included -- add it to ``barrier_klf``.
     """
+    from civilpy.structural.line_girder_tool import barrier_weight_klf
     from civilpy.structural.odot import (
         BDM_ASPHALT_MAX_IN, BDM_ASPHALT_MIN_IN, BDM_ASPHALT_PCF,
         BDM_CONCRETE_PCF, BDM_FUTURE_WEARING_SURFACE_KSF,
     )
+
+    if barrier_klf is None:
+        barrier_klf = (n_barriers * barrier_weight_klf(barrier)
+                       if barrier else 0.0)
 
     design = box_beam_design(box, int(span_ft))
     sec = box_section_properties(design.depth)
@@ -256,8 +270,10 @@ def box_beam_dead_loads(box: str, span_ft: float, n_beams: int, *,
                 f"carries no CIP deck; pass composite=True to override")
 
     if barrier_klf:
-        src["barrier"] = (f"{barrier_klf:g} klf bridge total / {n_beams} "
-                          f"beams (BDM 308.2.2.1.f)")
+        src["barrier"] = (
+            f"{barrier_klf:g} klf bridge total / {n_beams} beams "
+            f"(BDM 308.2.2.1.f)"
+            + (f" -- {n_barriers} x {barrier}" if barrier else ""))
     return BoxBeamDeadLoads(
         beam=loads["beam"], deck=loads.get("deck", 0.0),
         barrier=barrier_klf / n_beams, asphalt=loads.get("asphalt", 0.0),
@@ -268,12 +284,18 @@ def structural_model_from_box(box: str, span_ft: float, n_beams: int, *,
                               ties: bool = True, dead_loads: bool = True,
                               shear_keys: bool = True,
                               deck: bool | None = None,
-                              barrier_klf: float = 0.0,
+                              lanes: bool = True,
+                              lane_offsets_ft: list[float] | None = None,
+                              barrier: str | None = "BR-1 (36 in)",
+                              n_barriers: int = 2,
+                              barrier_width_ft: float = 1.75,
+                              barrier_klf: float | None = None,
                               fws_klf: float | None = None,
                               fws_ksf: float | None = None,
                               asphalt_in: float | None = None,
                               deck_in: float | None = None,
                               fc_ksi: float = 5.5,
+                              skew_deg: float = 0.0,
                               mesh_ft: float = 5.0):
     """Build the :class:`~civilpy.structural.structural_model
     .StructuralModel` hub for an adjacent box-beam bridge — the MIDAS
@@ -350,7 +372,9 @@ def structural_model_from_box(box: str, span_ft: float, n_beams: int, *,
             f"puts asphalt on it, not a CIP deck); pass deck=False")
 
     fc_psi = 1000.0 * float(fc_ksi)
-    stations = _stations_ft(span, design.depth, mesh_ft)
+    stations = _stations_ft(span, design.depth, mesh_ft, skew_deg=skew_deg)
+    solid_spans = _solid_spans_ft(span, design.depth, skew_deg=skew_deg,
+                                  width_in=sec.width)
 
     # z = 0 at top of beam; each node line sits at its section's centroid
     z_girder = (sec.yb - depth_in) / 12.0
@@ -364,14 +388,19 @@ def structural_model_from_box(box: str, span_ft: float, n_beams: int, *,
                 st, y_c, z_girder, label=f"BB{b + 1}_S{i}").id
         elems = []
         for i in range(len(stations) - 1):
+            mid = 0.5 * (stations[i] + stations[i + 1])
+            is_solid = any(a <= mid <= c for a, c in solid_spans)
             e = model.add_element(
                 grid[(b, i)], grid[(b, i + 1)], role="girder",
-                midas_type="BEAM", section=box,
+                midas_type="BEAM",
+                section=f"{box}-SOLID" if is_solid else box,
                 material=f"PS-{fc_psi:.0f}psi")
             e.metadata.update({
                 "gdr.line": str(b + 1), "gdr.family": "box",
+                "gdr.cell": "solid" if is_solid else "open",
                 "sect.kind": "psc", "sect.family": "box",
                 "sect.designation": box,
+                "sect.solid": is_solid,
                 "matl.fc_psi": fc_psi,
                 "matl.unit_wt_pcf": _bdm_concrete_pcf(),
                 "section.area_in2": sec.area, "section.i_in4": sec.i,
@@ -405,36 +434,57 @@ def structural_model_from_box(box: str, span_ft: float, n_beams: int, *,
                     "matl.fc_psi": 5000.0,
                     "matl.unit_wt_pcf": _bdm_concrete_pcf()})
 
-    # ── transverse ties, split at the key so it picks up vertical shear ───
+    # ── transverse tie rods: STEEL, at their own elevation ────────────────
+    # PSBD-1-25 sheets 1 and 4: 1 in diameter ASTM A307 Grade 307A rod,
+    # torqued to 250 ft-lb, running through the diaphragm blocks 9 in above
+    # the soffit (14 in on the 33/42 in beams).  It is a steel rod, not a
+    # concrete member -- and it sits well below the girder centroid, so it
+    # gets its own node line and a rigid link up to the girder.
     if ties:
-        tie_meta = {"gdr.kind": "tie", "sect.kind": "rect",
-                    "sect.width_in": 6.0, "sect.height_in": depth_in - 11.0,
-                    "matl.fc_psi": fc_psi,
-                    "matl.unit_wt_pcf": _bdm_concrete_pcf()}
+        from civilpy.structural.odot import TIE_ROD
+
+        z_rod = (TIE_ROD.vertical_position(int(depth_in)) - depth_in) / 12.0
+        tie_meta = {"gdr.kind": "tie-rod", "sect.kind": "round",
+                    "sect.diameter_in": TIE_ROD.diameter,
+                    "matl.grade": "A307"}
         tie_at = _tie_station_indices(stations, span, design.depth)
+        rod_grid: dict[tuple[int, int], str] = {}
+        for b in range(n_beams):
+            for i in tie_at:
+                rod_grid[(b, i)] = model.add_node(
+                    stations[i], (b + 0.5) * width_ft, z_rod,
+                    label=f"ROD{b + 1}_S{i}").id
+                model.add_rigid_link(grid[(b, i)], [rod_grid[(b, i)]],
+                                     dof="111111")
         for b in range(n_beams - 1):
             for i in tie_at:
-                waypoints = ([grid[(b, i)], key_grid[(b, i)],
-                              grid[(b + 1, i)]] if key_grid
-                             else [grid[(b, i)], grid[(b + 1, i)]])
-                for a, c in zip(waypoints, waypoints[1:]):
-                    e = model.add_element(a, c, role="diaphragm",
-                                          midas_type="BEAM",
-                                          section=f"TIE-{box}",
-                                          material=f"PS-{fc_psi:.0f}psi")
-                    e.metadata.update(tie_meta)
+                e = model.add_element(rod_grid[(b, i)], rod_grid[(b + 1, i)],
+                                      role="tie-rod", midas_type="BEAM",
+                                      section=f"ROD-{TIE_ROD.diameter:g}in",
+                                      material="A307-rod")
+                e.metadata.update(tie_meta)
 
     # ── composite deck: plates at mid-surface, rigid-linked to the boxes ──
+    t_struct = (COMPOSITE_SLAB_STRUCTURAL_THICKNESS_IN if deck_in is None
+                else float(deck_in) - COMPOSITE_SLAB_WEARING_SURFACE_IN)
+    z_deck = (t_struct / 2.0) / 12.0
+    columns: list[float] = []
+    col_of_y: dict[float, int] = {}
+    deck_grid: dict[tuple[int, int], str] = {}
+    lane_ys: list[float] = []
+    if lanes and deck:
+        lane_ys = [round(y, 6) for y in (
+            lane_offsets_ft if lane_offsets_ft is not None
+            else design_lane_offsets_ft(n_beams * width_ft,
+                                        barrier_width_ft=barrier_width_ft))]
     if deck:
-        t_struct = (COMPOSITE_SLAB_STRUCTURAL_THICKNESS_IN if deck_in is None
-                    else float(deck_in) - COMPOSITE_SLAB_WEARING_SURFACE_IN)
-        z_deck = (t_struct / 2.0) / 12.0
         # a deck column over every girder line AND every joint, so the keys
-        # tie into the slab they are cast against instead of dangling
-        columns = [round(0.5 * k * width_ft, 6)
-                   for k in range(2 * n_beams + 1)]
+        # tie into the slab they are cast against instead of dangling -- plus
+        # one on each lane centreline, so the lane lines can ride deck nodes
+        # rather than hang off them (see below)
+        columns = sorted({round(0.5 * k * width_ft, 6)
+                          for k in range(2 * n_beams + 1)} | set(lane_ys))
         col_of_y = {y: c for c, y in enumerate(columns)}
-        deck_grid: dict[tuple[int, int], str] = {}
         for c, y in enumerate(columns):
             for i, st in enumerate(stations):
                 deck_grid[(c, i)] = model.add_node(
@@ -478,9 +528,44 @@ def structural_model_from_box(box: str, span_ft: float, n_beams: int, *,
                         "matl.fc_psi": 5000.0,
                         "matl.unit_wt_pcf": _bdm_concrete_pcf()})
 
+    # ── dummy lane lines: where the traffic actually is ───────────────────
+    # A traffic lane has to ride an element line, and the girder lines are
+    # the wrong ones: they put every wheel directly over a beam, which no
+    # real lane does, and they offer as many "lanes" as there are beams.
+    # These are weightless, near-zero-stiffness stringers at deck level on
+    # the design-lane centrelines (LRFD 3.6.1.1.1), hung off the deck.
+    # They ride the deck's OWN nodes -- the lane centreline is a deck column
+    # by construction -- so there is not a single extra constraint.  Hanging
+    # them off the deck with rigid links instead is what killed the first
+    # 11-girder solve: the deck nodes over girders are already SLAVES of the
+    # girder, and MIDAS rejects a node that is both master and slave.  It
+    # does not say so -- /doc/ANAL returns normally, writes no results, and
+    # leaves a modal "Analysis is not allowed" behind.  Re-pointing the link
+    # at the girder node would clear the conflict and be worse: it would
+    # rigidly dump the whole lane onto one beam instead of letting the deck
+    # distribute it.
+    lane_lines: list[str] = []
+    if lane_ys:
+        for ln, y in enumerate(lane_ys):
+            c = col_of_y[y]
+            for i in range(len(stations) - 1):
+                e = model.add_element(
+                    deck_grid[(c, i)], deck_grid[(c, i + 1)],
+                    role="lane-line", midas_type="BEAM",
+                    section="DUMMY-LANE", material="DUMMY")
+                e.metadata.update({
+                    "gdr.kind": "lane-line", "sect.kind": "rect",
+                    "sect.width_in": 1.0, "sect.height_in": 1.0,
+                    "matl.dummy": True, "lane.index": ln + 1,
+                    "lane.offset_ft": y})
+            lane_lines.append(f"Lane{ln + 1}")
+        model.metadata["lane.names"] = lane_lines
+        model.metadata["lane.offsets_ft"] = list(lane_ys)
+
     if dead_loads:
         w = box_beam_dead_loads(
             box, span, n_beams, barrier_klf=barrier_klf,
+            barrier=barrier, n_barriers=n_barriers,
             fws_ksf=(fws_klf / n_beams / width_ft if fws_ksf is None
                      and fws_klf is not None else fws_ksf),
             asphalt_in=asphalt_in,
@@ -492,8 +577,28 @@ def structural_model_from_box(box: str, span_ft: float, n_beams: int, *,
                     model.add_beam_load(eid, -w.dc2, case="DC2")
                 if w.dw:
                     model.add_beam_load(eid, -w.dw, case="DW")
+        model.metadata["dead_loads"] = w
 
     return model
+
+
+def design_lane_offsets_ft(deck_width_ft: float, *,
+                           barrier_width_ft: float = 1.75,
+                           lane_width_ft: float = 12.0) -> list[float]:
+    """Transverse centreline of each design lane, from the deck edge.
+
+    LRFD 3.6.1.1.1 sets the count -- ``INT(clear roadway / 12 ft)`` -- and
+    3.6.1.1.1/3.6.1.3.1 leave the transverse position to whatever produces
+    the extreme force effect.  This returns the lanes packed adjacent and
+    centred on the roadway, which is the usual starting point; for the
+    exterior-beam check, shift them against one barrier by passing
+    ``lane_offsets_ft`` explicitly.
+    """
+    clear = float(deck_width_ft) - 2.0 * float(barrier_width_ft)
+    n = max(1, int(clear // lane_width_ft))
+    used = n * lane_width_ft
+    start = barrier_width_ft + (clear - used) / 2.0
+    return [round(start + (k + 0.5) * lane_width_ft, 4) for k in range(n)]
 
 
 def _bdm_concrete_pcf() -> float:
@@ -508,13 +613,46 @@ def _psbd_recess_in() -> float:
     return KEYWAY_RECESS_DEPTH_IN
 
 
-def _stations_ft(span: float, depth_in: float, mesh_ft: float) -> list[float]:
-    """Longitudinal node stations: the diaphragm stations, subdivided to
-    roughly ``mesh_ft``."""
+def _solid_spans_ft(span: float, depth_in: int, *, skew_deg: float = 0.0,
+                    width_in: float = 48.0) -> list[tuple[float, float]]:
+    """``(start, end)`` in feet of every solid (voidless) length of beam:
+    the two end blocks and one block per intermediate diaphragm
+    (PSBD-1-25 sheets 3 and 4)."""
+    from civilpy.structural.odot import (
+        diaphragm_stations_ft, solid_diaphragm_block_in, solid_end_block_in)
+
+    end = solid_end_block_in(int(depth_in)) / 12.0
+    half = solid_diaphragm_block_in(skew_deg, width_in) / 24.0
+    spans = [(0.0, end), (span - end, span)]
+    spans += [(max(0.0, s - half), min(span, s + half))
+              for s in diaphragm_stations_ft(span, depth_in)]
+    # The end diaphragms are cast INSIDE the end blocks -- on a short span
+    # their blocks land wholly within them -- so overlapping runs have to
+    # merge or they leave phantom nodes at a section change that is not one.
+    merged: list[tuple[float, float]] = []
+    for a, b in sorted(spans):
+        if merged and a <= merged[-1][1] + 1e-9:
+            merged[-1] = (merged[-1][0], max(merged[-1][1], b))
+        else:
+            merged.append((a, b))
+    return merged
+
+
+def _stations_ft(span: float, depth_in: float, mesh_ft: float, *,
+                 skew_deg: float = 0.0) -> list[float]:
+    """Longitudinal node stations.
+
+    Every solid-block boundary is a node -- the section changes there, so
+    an element that straddles one would have to be a lie either way -- plus
+    the diaphragm stations, subdivided to roughly ``mesh_ft`` between."""
     from civilpy.structural.odot import diaphragm_stations_ft
 
+    edges = [x for pair in _solid_spans_ft(span, int(depth_in),
+                                           skew_deg=skew_deg)
+             for x in pair]
     key = sorted(set(round(s, 6) for s in
-                     [0.0, *diaphragm_stations_ft(span, depth_in), span]))
+                     [0.0, *diaphragm_stations_ft(span, depth_in), *edges,
+                      span]))
     if not mesh_ft or mesh_ft <= 0:
         return key
     out: list[float] = []

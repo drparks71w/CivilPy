@@ -400,13 +400,27 @@ class TestLoadOhVehicles:
                        "H15-44", "HS-25"):
             assert unused not in names
 
-    def test_design_loads_only_with_standard_db(self):
-        # the 908.2 design loads are DB-only; asking for them without
-        # use_standard_db must not silently invent axle trains
-        c, out = self._load(include_design=True, use_standard_db=False)
+    def test_design_loads_always_go_in_as_db_records(self):
+        """HL-93 must be pushed even with ``use_standard_db=False``.
+
+        LRFD 3.6.1.3.1 superimposes the 0.640 klf design lane ON the truck
+        (or tandem); a user-defined "Truck/Lane" record takes the ENVELOPE
+        of the two instead, so a hand-written HL-93 is low by the whole
+        lane component.  Only the code-driven DB entry combines them --
+        which is why these four are DB records whatever the flag says.
+        Previously the flag skipped them entirely and a rating ran with no
+        design load at all.
+        """
+        for db in (False, True):
+            c, out = self._load(include_design=True, use_standard_db=db)
+            pushed = set(out["pushed"].values())
+            assert {"HL-93 truck", "HL-93 tandem"} <= pushed, db
+            assert "HL-93 truck" in out["standard_db"]
+            assert set(out["design_loads"]) >= {"HL-93 truck", "HL-93 tandem"}
+
+    def test_design_loads_can_be_declined(self):
+        c, out = self._load(include_design=False)
         assert "HL-93 truck" not in out["pushed"].values()
-        c, out = self._load(include_design=True, use_standard_db=True)
-        assert "HL-93 truck" in out["pushed"].values()
 
     def test_defaults_to_user_defined_with_explicit_axles(self):
         c, out = self._load(include_design=False)
@@ -465,13 +479,54 @@ class TestConcreteSectionDispatch:
                    if v["SECT_NAME"] == "KEY-CB27-48")
         assert key["SECT_BEFORE"]["SHAPE"] == "VALU"
 
-    def test_materials_are_concrete_not_steel(self):
+    def test_concrete_members_get_concrete_not_steel(self):
         from civilpy.structural.midas_models import midas_payloads
 
         p = midas_payloads(self._hub())
-        for m in p["MATL"].values():
-            assert m["PARAM"][0]["DEN"] == pytest.approx(0.150)
-            assert m["PARAM"][0]["ELAST"] < 1_000_000    # ksf, not steel
+        by_name = {m["NAME"]: m["PARAM"][0] for m in p["MATL"].values()}
+        for name in ("PS-5500psi", "GROUT-5000psi", "Deck-4500psi"):
+            assert by_name[name]["DEN"] == pytest.approx(0.150)
+            assert by_name[name]["ELAST"] < 1_000_000    # ksf, not steel
+
+    def test_tie_rods_are_steel_and_round(self):
+        """PSBD-1-25 sheet 1: a 1 in ASTM A307 rod.  Modelling it as
+        5500 psi concrete gave it roughly a seventh of the right axial
+        stiffness and a density it does not have."""
+        from civilpy.structural.midas_models import midas_payloads
+
+        hub = self._hub()
+        p = midas_payloads(hub)
+        rod = next(m for m in p["MATL"].values() if m["NAME"] == "A307-rod")
+        assert rod["PARAM"][0]["ELAST"] == pytest.approx(4_176_000.0)  # ksf
+        assert rod["PARAM"][0]["DEN"] == pytest.approx(0.490)
+        sect = next(s for s in p["SECT"].values()
+                    if s["SECT_NAME"] == "ROD-1in")
+        assert sect["SECT_BEFORE"]["SHAPE"] == "SR"      # solid round, not SB
+        assert sect["SECT_BEFORE"]["SECT_I"]["vSIZE"] == pytest.approx([1 / 12], abs=1e-6)
+        rods = [e for e in hub.elements.values() if e.role == "tie-rod"]
+        assert rods and all(e.material == "A307-rod" for e in rods)
+
+    def test_lane_lines_are_weightless_dummies(self):
+        from civilpy.structural.midas_models import DUMMY_PROPS, midas_payloads
+
+        p = midas_payloads(self._hub())
+        dummy = next(m for m in p["MATL"].values() if m["NAME"] == "DUMMY")
+        assert dummy["PARAM"][0]["DEN"] == 0.0
+        assert dummy["PARAM"][0]["ELAST"] == DUMMY_PROPS["ELAST"]
+
+    def test_solid_and_open_cells_are_separate_sections(self):
+        """The void stops at the end blocks and the diaphragms."""
+        from civilpy.structural.midas_models import midas_payloads
+
+        p = midas_payloads(self._hub())
+        names = {s["SECT_NAME"] for s in p["SECT"].values()}
+        assert {"CB27-48", "CB27-48-SOLID"} <= names
+        solid = next(s for s in p["SECT"].values()
+                     if s["SECT_NAME"] == "CB27-48-SOLID")
+        assert "INNER_POLYGON" not in solid["SECT_BEFORE"]["SECT_I"]
+        open_ = next(s for s in p["SECT"].values()
+                     if s["SECT_NAME"] == "CB27-48")
+        assert "INNER_POLYGON" in open_["SECT_BEFORE"]["SECT_I"]
 
     def test_section_coordinates_use_the_model_length_unit(self):
         """The hub is in feet; a 48 in box must go out as 4 ft."""
