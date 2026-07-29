@@ -181,14 +181,33 @@ def ensure_base_stage(client) -> bool:
 
 
 def new_model(client, *, path: str | None = DEFAULT_MODEL_PATH) -> None:
-    """``POST /doc/new``, then give the model a filename.
+    """Save whatever is open, start a new model, and name it.
 
-    The empty-``Argument`` body is required -- a null body returns HTTP
-    500.  Naming the file immediately matters: a model that has never been
-    saved makes ``/doc/ANAL`` pop a *Save As* dialog, which silently
-    blocks the whole API (see :func:`analyze`).  Pass ``path=None`` to skip
-    the save, e.g. when a file is already open.
+    The empty-``Argument`` body on ``/doc/new`` is required -- a null body
+    returns HTTP 500.  The two saves are not decoration; **both** of the
+    surrounding commands raise a modal dialog otherwise, and because the
+    API is serialized behind the UI, either one silently blocks every
+    later request until somebody clicks it:
+
+    * ``/doc/new`` on a model with unsaved changes asks *"save changes?"*
+    * ``/doc/ANAL`` on a model that has never been written to disk asks
+      *Save As* (see :func:`analyze`)
+
+    Neither is visible from the API. The request simply never returns, and
+    a bare ``GET /db/UNIT`` hangs alongside it, so it reads as an
+    impossibly slow solve rather than a prompt.
+
+    ``path`` is a location on the **Civil NX machine**.  Saving to it first
+    only clears the dirty flag -- the file is immediately overwritten by
+    the new model -- so point it at scratch, not at work you care about.
+    ``path=None`` skips both saves and takes the dialogs on yourself.
     """
+    if path:
+        # clear the dirty flag so /doc/new has nothing to ask about
+        try:
+            save_model(client, path=path)
+        except Exception:
+            pass                     # nothing open yet, or already clean
     client.request("POST", "/doc/new", {"Argument": {}})
     if path:
         save_model(client, path=path)

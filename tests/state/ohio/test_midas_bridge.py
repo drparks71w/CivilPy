@@ -33,10 +33,15 @@ class FakeClient:
         self.tables = {k: dict(v) for k, v in (tables or {}).items()}
         self.sent = []
         self.deleted = []
+        self.raw = []            # every (method, command, body), in order
         self.result = None
 
     def request(self, method, command, body=None, **kw):
-        table = command.strip("/").split("/")[1]
+        self.raw.append((method, command, body))
+        parts = command.strip("/").split("/")
+        if parts[0] == "doc":                 # /doc/new, /doc/SAVE, ...
+            return {}
+        table = parts[1]
         if method == "GET":
             return {table.upper(): self.tables.get(table.upper(), {})} \
                 if self.tables.get(table.upper()) else {"message": ""}
@@ -164,6 +169,38 @@ class TestMovingLoadCases:
         add_moving_load_case(c, ["Lane1", "Lane2"])
         d = c.last("mvld")["1"]["DEFAULT"]
         assert d["SUB_LOAD_DATAS"][0]["MAX_LOADED_LANE"] == 2
+
+
+class TestSaveDiscipline:
+    """Both commands around a new model raise a modal dialog otherwise,
+    and a dialog blocks the whole API with nothing in any response to say
+    so -- it reads as an impossibly slow solve."""
+
+    def test_new_model_saves_before_and_after(self):
+        from civilpy.state.ohio.dot import DEFAULT_MODEL_PATH, new_model
+
+        c = FakeClient()
+        new_model(c)
+        cmds = [(m, cmd) for m, cmd, _ in c.raw]
+        assert cmds == [("POST", "/doc/SAVEAS"),     # clears the dirty flag
+                        ("POST", "/doc/new"),
+                        ("POST", "/doc/SAVEAS")]     # names the new model
+        assert all(b["Argument"] == DEFAULT_MODEL_PATH
+                   for m, cmd, b in c.raw if cmd == "/doc/SAVEAS")
+
+    def test_new_model_can_skip_the_saves(self):
+        from civilpy.state.ohio.dot import new_model
+
+        c = FakeClient()
+        new_model(c, path=None)
+        assert [cmd for _, cmd, _ in c.raw] == ["/doc/new"]
+
+    def test_analyze_saves_first(self):
+        from civilpy.state.ohio.dot import analyze
+
+        c = FakeClient()
+        analyze(c)
+        assert [cmd for _, cmd, _ in c.raw] == ["/doc/SAVE", "/doc/ANAL"]
 
 
 class TestMovingLoadCode:
