@@ -88,12 +88,26 @@ def unit_block_for(units) -> dict:
 
 
 def steel_material_block(name: str = "A709-50", *, matl_id: int = 1,
-                         props: Optional[dict] = None) -> dict:
-    """The ``/db/MATL`` assign body for a USER-defined steel material."""
+                         props: Optional[dict] = None,
+                         length_unit: str = "ft") -> dict:
+    """The ``/db/MATL`` assign body for a USER-defined steel material.
+
+    :data:`STEEL_PROPS` is stated in KIPS/FT; ``length_unit`` rescales
+    ``ELAST`` (force/length^2) and ``DEN`` (force/length^3) into the
+    model's own length unit -- see :func:`concrete_material_block` for why
+    that matters.
+    """
+    props = dict(props or STEEL_PROPS)
+    per_ft = _length_ft_per(length_unit)
+    if per_ft != 1.0:
+        if "ELAST" in props:
+            props["ELAST"] = round(props["ELAST"] * per_ft ** 2, 6)
+        if "DEN" in props:
+            props["DEN"] = round(props["DEN"] * per_ft ** 3, 9)
     return {str(matl_id): {
         "TYPE": "USER", "NAME": name, "THMAL_UNIT": "F",
         "bMASS_DENS": False, "DAMP_RAT": 0.0,
-        "PARAM": [{"P_TYPE": 2, "MASS": 0.0, **(props or STEEL_PROPS)}],
+        "PARAM": [{"P_TYPE": 2, "MASS": 0.0, **props}],
     }}
 
 
@@ -115,20 +129,43 @@ def concrete_elastic_modulus_ksf(fc_psi: float, unit_wt_pcf: float = 145.0) -> f
 
 def concrete_material_block(name: str = "Class-S-4500", *, matl_id: int = 1,
                             fc_psi: float = 4500.0,
-                            unit_wt_pcf: float = 145.0) -> dict:
+                            unit_wt_pcf: float = 145.0,
+                            length_unit: str = "ft") -> dict:
     """A ``/db/MATL`` USER concrete material with ``Ec`` from :func:`concrete_elastic_modulus_ksf`.
 
-    ``DEN`` (weight density) is carried in the model's force/length^3 unit
-    (kips/ft^3 in the civilpy default), so 145 pcf -> 0.145 kcf.
+    ``ELAST`` and ``DEN`` are carried in the model's own length unit --
+    ksf and kcf when ``length_unit`` is ``"ft"``, ksi and kip/in^3 when it
+    is ``"in"``.  MIDAS applies one length unit model-wide, so a material
+    block built for feet inside an inch model overstates ``Ec`` by 144x
+    and the density by 1728x, with nothing in the response to say so:
+    pass the hub's ``units.length``.
     """
+    per_ft = _length_ft_per(length_unit)
     return {str(matl_id): {
         "TYPE": "USER", "NAME": name, "THMAL_UNIT": "F",
         "bMASS_DENS": False, "DAMP_RAT": 0.0,
         "PARAM": [{"P_TYPE": 2, "MASS": 0.0,
-                   "ELAST": round(concrete_elastic_modulus_ksf(fc_psi, unit_wt_pcf), 3),
+                   "ELAST": round(concrete_elastic_modulus_ksf(fc_psi, unit_wt_pcf)
+                                  * per_ft ** 2, 6),
                    "POISN": 0.2, "THERMAL": 6.0e-06,
-                   "DEN": round(unit_wt_pcf / 1000.0, 6)}],
+                   "DEN": round(unit_wt_pcf / 1000.0 * per_ft ** 3, 9)}],
     }}
+
+
+#: Feet per unit of a model's ``UNIT`` DIST setting.  ``ELAST`` scales with
+#: this squared (force/length^2) and ``DEN`` with its cube (force/length^3).
+_FT_PER = {"ft": 1.0, "feet": 1.0, "foot": 1.0,
+           "in": 1.0 / 12.0, "inch": 1.0 / 12.0, "inches": 1.0 / 12.0,
+           "m": 3.280839895, "mm": 0.003280839895, "cm": 0.03280839895}
+
+
+def _length_ft_per(length_unit: str) -> float:
+    try:
+        return _FT_PER[str(length_unit).strip().lower()]
+    except KeyError:
+        raise ValueError(
+            f"unsupported model length unit {length_unit!r}; expected one of "
+            f"{sorted(set(_FT_PER))}") from None
 
 
 def solid_rect_section_block(width: float, height: float, *, sect_id: int = 1,
@@ -281,19 +318,72 @@ def hub_section_material_blocks(model, *, sect_start: int = 1,
             continue                 # plates carry a THIK + concrete, not a SECT
         label = elem.section
         grade = elem.material or default_grade
+        meta = getattr(elem, "metadata", None) or {}
         if label and label not in shapes:
             sid = sect_start + len(shapes)
             shapes[label] = sid
-            sect.update(rolled_i_section_block(label, sect_id=sid,
-                                                length_unit=length_unit,
-                                                db_name=db_name))
+            sect.update(_section_block_for(elem, label, sid, length_unit,
+                                           db_name))
         if grade not in grades:
             mid = matl_start + len(grades)
             grades[grade] = mid
-            matl.update(steel_material_block(name=grade, matl_id=mid))
+            fc_psi = meta.get("matl.fc_psi")
+            if fc_psi is not None:
+                matl.update(concrete_material_block(
+                    name=grade, matl_id=mid, fc_psi=float(fc_psi),
+                    unit_wt_pcf=float(meta.get("matl.unit_wt_pcf", 145.0)),
+                    length_unit=length_unit))
+            else:
+                matl.update(steel_material_block(name=grade, matl_id=mid,
+                                                 length_unit=length_unit))
         elem_assign[elem.id] = (shapes.get(label), grades[grade])
     return {"SECT": sect, "MATL": matl, "sect_by_shape": shapes,
             "matl_by_grade": grades, "elem_assign": elem_assign}
+
+
+def _section_block_for(elem, label: str, sect_id: int, length_unit: str,
+                       db_name: str | None) -> dict:
+    """The ``/db/SECT`` body for one element, dispatched on its
+    ``sect.kind`` metadata.
+
+    Without that metadata an element's ``section`` label is taken to be a
+    rolled shape and looked up in MIDAS's AISC database -- which is the
+    right default for the steel pipelines but silently wrong for anything
+    else: a concrete girder labelled ``"CB27-48"`` stores as a DB/Shape
+    reference to a name that database does not contain, and MIDAS neither
+    resolves it nor complains.  Concrete pipelines therefore tag their
+    elements:
+
+    ``sect.kind = "psc"``
+        a PSC value section from the element's ``sect.designation`` and
+        ``sect.family`` (``"box"``, ``"shear-key"`` or ``"i-beam"``) --
+        the exact outline and void polygons, not a parametric shape.
+    ``sect.kind = "rect"``
+        a solid rectangle ``sect.width_in`` x ``sect.height_in``.
+    """
+    meta = getattr(elem, "metadata", None) or {}
+    kind = meta.get("sect.kind")
+    if kind == "psc":
+        from civilpy.structural import psc_section as _psc
+
+        family = meta.get("sect.family", "box")
+        designation = meta.get("sect.designation", label)
+        if family == "shear-key":
+            shape = _psc.shear_key_shape(designation)
+        elif family == "i-beam":
+            shape = _psc.i_beam_shape(designation)
+        else:
+            shape = _psc.box_beam_shape(designation)
+        return {str(sect_id): _psc.midas_section_payload(
+            shape, name=label, length_unit=length_unit)}
+    if kind == "rect":
+        scale = 1.0 / (12.0 * _length_ft_per(length_unit))   # inches -> model
+        return solid_rect_section_block(
+            float(meta["sect.width_in"]) * scale,
+            float(meta["sect.height_in"]) * scale,
+            sect_id=sect_id, name=label)
+    return rolled_i_section_block(label, sect_id=sect_id,
+                                  length_unit=length_unit, db_name=db_name)
 
 
 def constraint_assign(cons_by_id: dict[int, str]) -> dict:
@@ -565,7 +655,8 @@ def soil_spring_supports(
 
 def midas_vehicle_payload(vehicle, *, lane_load_klf: float | None = None,
                           plm_kip: float = 0.0, plv_kip: float = 0.0,
-                          im_percent: float = 0.0) -> dict:
+                          im_percent: float = 0.0,
+                          length_unit: str = "in") -> dict:
     """A ``/db/mvhl`` user-defined Truck/Lane vehicle record from a
     :class:`~civilpy.structural.aashto.vehicles.RatingVehicle` -- the way
     to run vehicles Midas's DB lacks (ODOT's FAST-Act EV2/EV3, custom
@@ -575,7 +666,13 @@ def midas_vehicle_payload(vehicle, *, lane_load_klf: float | None = None,
     ``{POINT_LOAD, POINT_DIST}`` (distance to the NEXT axle; kips and
     model length units); the lane component and concentrated moment/shear
     loads (PLM/PLV) sit in ``VEH_DEFAULT``.  ``lane_load_klf`` defaults
-    to the vehicle's own definition; converted to kip/in.
+    to the vehicle's own definition.
+
+    ``length_unit`` must match the model's ``UNIT`` DIST -- axle spacings
+    and the lane load are carried in it, so a truck built for inches and
+    pushed to a model in feet is 12x too long, stores without complaint,
+    and simply produces the wrong envelope.  Read it off the model with
+    :func:`model_length_unit` rather than assuming.
 
     .. warning::
        ``im_percent`` is **silently discarded** for user-defined
@@ -591,18 +688,37 @@ def midas_vehicle_payload(vehicle, *, lane_load_klf: float | None = None,
     """
     if lane_load_klf is None:
         lane_load_klf = vehicle.lane_load_klf
+    per_ft = _length_ft_per(length_unit)      # feet per model length unit
     spac = list(vehicle.axle_spacings_ft) + [0.0]
-    items = [{"POINT_LOAD": float(p), "POINT_DIST": float(d) * 12.0}
+    items = [{"POINT_LOAD": float(p), "POINT_DIST": float(d) / per_ft}
              for p, d in zip(vehicle.axle_loads_kip, spac)]
     return {
         "MVLD_CODE": 2, "VEHICLE_LOAD_NAME": vehicle.name,
         "VEHICLE_LOAD_NUM": 2, "USER_LOAD_TYPE": "Truck/Lane",
-        "VEH_DEFAULT": {"UNIFORM_LOAD": lane_load_klf / 12.0,
+        "VEH_DEFAULT": {"UNIFORM_LOAD": lane_load_klf * per_ft,
                         "PL": 0.0, "PLM": plm_kip, "PLV": plv_kip,
                         "DYN_LOAD_ALLOWANCE": im_percent,
                         "CENT_F": False},
         "LOAD_ITEMS": items,
     }
+
+
+def model_length_unit(client, default: str = "in") -> str:
+    """The live model's ``UNIT`` table DIST, lower-cased (``"in"``,
+    ``"ft"``, ...).
+
+    Axle spacings, section coordinates, material moduli and densities are
+    all carried in this one unit, and nothing in an API response says
+    which it is -- a vehicle built in feet and pushed to an inch model
+    stores cleanly and then runs a truck 12x too short.  Read it, don't
+    assume it.
+    """
+    try:
+        unit = client.request("GET", "db/UNIT").get("UNIT", {})
+        dist = next(iter(unit.values())).get("DIST")
+        return str(dist).strip().lower() if dist else default
+    except Exception:
+        return default
 
 
 #: Midas standard-DB entries for the ODOT BDM 908.3 rating vehicles,
@@ -727,20 +843,25 @@ def midas_payloads(model: "StructuralModel", *, node_start: int = 1,
     thik_by_label: dict[str, int] = {}
     conc_by_label: dict[str, int] = {}
     next_matl = max((int(k) for k in matl), default=0)
+    per_ft = _length_ft_per(model.units.length)
     for e in plate_elems:
         tlabel = e.section or "DECK-8in"
         if tlabel not in thik_by_label:
             tid = len(thik_by_label) + 1
             thik_by_label[tlabel] = tid
-            thik.update(thickness_block(_thickness_ft_from_label(tlabel),
-                                        thik_id=tid, name=tlabel))
+            thik.update(thickness_block(
+                _thickness_ft_from_label(tlabel) / per_ft,   # ft -> model unit
+                thik_id=tid, name=tlabel))
         clabel = e.material or "Deck-4500psi"
         if clabel not in conc_by_label:
             next_matl += 1
             conc_by_label[clabel] = next_matl
+            meta = getattr(e, "metadata", None) or {}
             matl.update(concrete_material_block(
                 name=clabel, matl_id=next_matl,
-                fc_psi=_fc_psi_from_label(clabel)))
+                fc_psi=_fc_psi_from_label(clabel),
+                unit_wt_pcf=float(meta.get("matl.unit_wt_pcf", 145.0)),
+                length_unit=model.units.length))
 
     elements: dict[str, dict] = {}
     for j, elem in enumerate(model.elements.values(), start=elem_start):
@@ -942,6 +1063,7 @@ def load_oh_vehicles(client, *, im_percent: float = 33.0,
     from civilpy.structural.aashto.vehicles import (
         BDM_908_RATING_LOADS, RATING_VEHICLES)
 
+    length_unit = model_length_unit(client)
     if replace:
         existing = client.request("GET", "db/mvhl").get("MVHL", {})
         for vid in sorted(existing, key=int, reverse=True):
@@ -976,7 +1098,8 @@ def load_oh_vehicles(client, *, im_percent: float = 33.0,
                 im_percent=im), "db")
         else:
             _add(name, midas_vehicle_payload(
-                RATING_VEHICLES[name], im_percent=im_percent), "user")
+                RATING_VEHICLES[name], im_percent=im_percent,
+                length_unit=length_unit), "user")
 
     client.request("PUT", "db/mvhl", {"Assign": assign})
     stored = client.request("GET", "db/mvhl").get("MVHL", {})
@@ -985,4 +1108,5 @@ def load_oh_vehicles(client, *, im_percent: float = 33.0,
         "im_applied": bool(standard_db) and not user_defined,
         "user_defined": user_defined,
         "standard_db": standard_db,
+        "length_unit": length_unit,
     }

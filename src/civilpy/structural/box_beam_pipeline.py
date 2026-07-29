@@ -127,23 +127,212 @@ class BoxBeamLineChecks:
         return "\n".join(lines)
 
 
+@dataclass(frozen=True)
+class BoxBeamDeadLoads:
+    """Per-beam uniform dead loads (klf) for an adjacent box-beam bridge,
+    split into the LRFD load cases and traceable to the BDM article that
+    sets each one.
+
+    ``dc1`` acts on the bare beam (the beam itself plus a wet CIP deck),
+    ``dc2`` on the composite section (barriers, railings) and ``dw`` is
+    the wearing-surface case that takes the LRFD 3.4.1 gamma of 1.50
+    rather than 1.25.
+    """
+
+    beam: float = 0.0          #: beam self weight, klf
+    deck: float = 0.0          #: CIP deck incl. monolithic wearing surface
+    barrier: float = 0.0       #: railing / barrier share
+    asphalt: float = 0.0       #: asphalt wearing surface in place today
+    fws: float = 0.0           #: future wearing surface allowance
+    sources: dict = field(default_factory=dict)
+
+    @property
+    def dc1(self) -> float:
+        return self.beam + self.deck
+
+    @property
+    def dc2(self) -> float:
+        return self.barrier
+
+    @property
+    def dw(self) -> float:
+        return self.asphalt + self.fws
+
+    def summary(self) -> str:
+        rows = [("beam", self.beam), ("deck", self.deck),
+                ("barrier", self.barrier), ("asphalt", self.asphalt),
+                ("FWS", self.fws)]
+        lines = [f"  {n:<9}{w:7.4f} klf   {self.sources.get(n, '')}"
+                 for n, w in rows if w]
+        return "\n".join([*lines,
+                          f"  {'DC1':<9}{self.dc1:7.4f} klf   (beam + deck, "
+                          f"on the non-composite section)",
+                          f"  {'DC2':<9}{self.dc2:7.4f} klf",
+                          f"  {'DW':<9}{self.dw:7.4f} klf"])
+
+
+def box_beam_dead_loads(box: str, span_ft: float, n_beams: int, *,
+                        barrier_klf: float = 0.0,
+                        fws_ksf: float | None = None,
+                        asphalt_in: float | None = None,
+                        deck_in: float | None = None,
+                        composite: bool | None = None) -> BoxBeamDeadLoads:
+    """The BDM's dead loads for one interior beam, in klf.
+
+    The wearing surface is **not** a free choice -- BDM 309.1 ties it to
+    whether the beam is composite:
+
+    * composite (a ``CB`` design): a 6 in CIP deck, of which the top 1 in
+      is the monolithic wearing surface that 309.1.A excludes from the
+      composite section but not from the load.  No asphalt.
+    * non-composite (a ``B`` design): no deck; a 3 in minimum asphalt
+      concrete wearing surface (309.1.B), 8 in maximum (308.2.3.3), at
+      the BDM 909.A unit weight of **145 pcf** -- not LRFD's 140.
+
+    Both get the BDM 303.1.2 future wearing surface of 0.060 ksf on top,
+    which the manual states unconditionally; pass ``fws_ksf=0.0`` for the
+    two cases that exempt it (temporary structures, BDM 501, and the dead
+    load used for shop camber, BDM 308.2.2.1.f).
+
+    ``barrier_klf`` is the bridge total and is shared equally across the
+    beams, which is the standard's own assumption for adjacent units and
+    what BDM 308.2.2.1.f endorses for camber.  Deck and wearing-surface
+    loads are computed on each beam's own 4 ft width, so a deck
+    overhanging the fascia beams (up to 8 in per side, BDM 308.2.3.3.c)
+    is not included -- add it to ``barrier_klf`` if you carry it.
+    """
+    from civilpy.structural.odot import (
+        BDM_ASPHALT_MAX_IN, BDM_ASPHALT_MIN_IN, BDM_ASPHALT_PCF,
+        BDM_CONCRETE_PCF, BDM_FUTURE_WEARING_SURFACE_KSF,
+    )
+
+    design = box_beam_design(box, int(span_ft))
+    sec = box_section_properties(design.depth)
+    if composite is None:
+        composite = design.beam_type == "composite"
+    width_ft = sec.width / 12.0
+    fws_ksf = (BDM_FUTURE_WEARING_SURFACE_KSF if fws_ksf is None
+               else float(fws_ksf))
+
+    src = {"beam": f"{sec.area:g} in^2 x {BDM_CONCRETE_PCF:g} pcf "
+                   f"(BDM 909.B)",
+           "FWS": f"{fws_ksf:g} ksf x {width_ft:g} ft (BDM 303.1.2)"}
+    loads = {"beam": sec.area / 144.0 * BDM_CONCRETE_PCF / 1000.0,
+             "fws": fws_ksf * width_ft}
+
+    if composite:
+        if deck_in is None:
+            deck_in = (COMPOSITE_SLAB_STRUCTURAL_THICKNESS_IN
+                       + COMPOSITE_SLAB_WEARING_SURFACE_IN)
+        loads["deck"] = width_ft * deck_in / 12.0 * BDM_CONCRETE_PCF / 1000.0
+        src["deck"] = (
+            f"{deck_in:g} in x {width_ft:g} ft x {BDM_CONCRETE_PCF:g} pcf "
+            f"({COMPOSITE_SLAB_STRUCTURAL_THICKNESS_IN:g} in structural + "
+            f"{COMPOSITE_SLAB_WEARING_SURFACE_IN:g} in monolithic WS, "
+            f"BDM 308.2.3.3.c / 309.1.A)")
+        if asphalt_in:
+            raise ValueError(
+                f"BDM 309.1.B allows an asphalt wearing surface only on "
+                f"non-composite prestressed box beams; {box} at {span_ft:g} ft "
+                f"is a composite design, which takes the 1 in monolithic "
+                f"concrete wearing surface of 309.1.A instead")
+    else:
+        if asphalt_in is None:
+            asphalt_in = BDM_ASPHALT_MIN_IN
+        if asphalt_in and not (BDM_ASPHALT_MIN_IN <= asphalt_in
+                               <= BDM_ASPHALT_MAX_IN):
+            raise ValueError(
+                f"asphalt wearing surface {asphalt_in:g} in is outside the "
+                f"BDM range for a non-composite box beam bridge: "
+                f"{BDM_ASPHALT_MIN_IN:g} in minimum (BDM 309.1.B) to "
+                f"{BDM_ASPHALT_MAX_IN:g} in maximum (BDM 308.2.3.3)")
+        loads["asphalt"] = (width_ft * asphalt_in / 12.0
+                            * BDM_ASPHALT_PCF / 1000.0)
+        src["asphalt"] = (f"{asphalt_in:g} in x {width_ft:g} ft x "
+                          f"{BDM_ASPHALT_PCF:g} pcf (BDM 309.1.B, 909.A)")
+        if deck_in:
+            raise ValueError(
+                f"{box} at {span_ft:g} ft is a non-composite design and "
+                f"carries no CIP deck; pass composite=True to override")
+
+    if barrier_klf:
+        src["barrier"] = (f"{barrier_klf:g} klf bridge total / {n_beams} "
+                          f"beams (BDM 308.2.2.1.f)")
+    return BoxBeamDeadLoads(
+        beam=loads["beam"], deck=loads.get("deck", 0.0),
+        barrier=barrier_klf / n_beams, asphalt=loads.get("asphalt", 0.0),
+        fws=loads["fws"], sources=src)
+
+
 def structural_model_from_box(box: str, span_ft: float, n_beams: int, *,
                               ties: bool = True, dead_loads: bool = True,
+                              shear_keys: bool = True,
+                              deck: bool | None = None,
                               barrier_klf: float = 0.0,
-                              fws_klf: float = 0.0):
+                              fws_klf: float | None = None,
+                              fws_ksf: float | None = None,
+                              asphalt_in: float | None = None,
+                              deck_in: float | None = None,
+                              fc_ksi: float = 5.5,
+                              mesh_ft: float = 5.0):
     """Build the :class:`~civilpy.structural.structural_model
     .StructuralModel` hub for an adjacent box-beam bridge — the MIDAS
-    spoke: one line of beam elements per box broken at
-    the diaphragm stations, transverse tie elements there (the tie-rod /
-    keyway load path), a pin + roller per line, and the DC1/DC2/DW beam
-    loads matching :func:`box_beam_line_checks` exactly, so the L1
-    envelope and the MIDAS run reconcile by construction.
+    spoke: one line of beam elements per box, transverse ties at the
+    diaphragm stations, the grouted shear key between each pair of boxes,
+    the composite deck, and the BDM dead loads.
 
-    Elements carry the box designation as their section label plus the
-    PSBD section constants in metadata (``section.area_in2`` /
-    ``section.i_in4`` / ``section.j_in4``) for a value-type section on
-    the MAPI side."""
-    from civilpy.structural.odot import diaphragm_stations_ft
+    **Vertical datum: z = 0 is the top of the beams.**  Every section
+    rides the default center-center offset, so each node line sits at its
+    own section's centroid — girders at ``Yb - D``, shear keys at their
+    own centroid, the deck at its mid-surface — and the assembly lines up
+    in a rendered view without any section offsets to keep in sync.
+
+    Geometry
+        ``mesh_ft`` sets the target longitudinal segment length.  The
+        diaphragm stations are always nodes; this subdivides between them,
+        which both resolves the moving-load influence lines and gives the
+        deck plates a sane aspect ratio.  Pass ``mesh_ft=0`` for the
+        diaphragm stations alone.
+
+    Shear keys (``shear_keys``)
+        A longitudinal beam element line at each joint carrying the actual
+        grout cross-section from
+        :func:`~civilpy.structural.psc_section.shear_key_shape` — about
+        48 in^2 on a 27 in box, 2 1/2 in wide, so it reads clearly in a
+        non-hidden view instead of hiding inside the beams.  It is tied to
+        the boxes each side by the transverse ties, which are split at the
+        key rather than run past it: that is the physical load path (tie
+        rod through the diaphragm, grout key in vertical shear) and it
+        needs no element type beyond ``BEAM``.  The key's own longitudinal
+        stiffness is ~0.25% of one box's, so it does not meaningfully
+        stiffen the span — it is there to be seen and to carry shear.
+
+    Deck (``deck``, defaults to on for a composite design)
+        The 5 in **structural** thickness of the BDM 308.2.3.3.c deck as
+        plate elements at their mid-surface, rigid-linked to every girder
+        node in all 6 DOF — full composite action, and the deck's own
+        concrete modulus rather than a transformed width.  The 1 in
+        monolithic wearing surface is deliberately *not* in the plates:
+        BDM 309.1.A excludes it from the composite section.  It is in the
+        loads.
+
+        .. warning::
+           The deck plates carry **stiffness only**.  Their weight is in
+           the ``DC1`` beam loads, where it belongs — the deck is wet when
+           it is placed, so the bare beam carries it.  Do not add a
+           self-weight load case on top of this or the deck is counted
+           twice.  This is a single-stage idealization: for the transfer
+           and service stress checks, which need the load on the section
+           that was there at the time, use :func:`box_beam_line_checks`.
+
+    Dead loads (``dead_loads``)
+        From :func:`box_beam_dead_loads` — see there for the BDM articles.
+        ``fws_klf`` is accepted for backward compatibility as a bridge
+        total in klf; prefer ``fws_ksf``, which defaults to the BDM
+        303.1.2 value of 0.060 ksf and needs no deck-width bookkeeping.
+    """
+    from civilpy.structural.psc_section import (
+        shape_centroid_in, shear_key_shape)
     from civilpy.structural.structural_model import StructuralModel, Units
 
     design = box_beam_design(box, int(span_ft))
@@ -151,11 +340,20 @@ def structural_model_from_box(box: str, span_ft: float, n_beams: int, *,
     composite = design.beam_type == "composite"
     span = float(span_ft)
     width_ft = sec.width / 12.0
+    depth_in = float(design.depth)
     j = box_torsion_constant_in4(design.depth, sec.width)
+    if deck is None:
+        deck = composite
+    if deck and not composite:
+        raise ValueError(
+            f"{box} at {span:g} ft is a non-composite design (BDM 309.1.B "
+            f"puts asphalt on it, not a CIP deck); pass deck=False")
 
-    stations = [0.0, *diaphragm_stations_ft(span, design.depth), span]
-    stations = sorted(set(round(s, 6) for s in stations))
+    fc_psi = 1000.0 * float(fc_ksi)
+    stations = _stations_ft(span, design.depth, mesh_ft)
 
+    # z = 0 at top of beam; each node line sits at its section's centroid
+    z_girder = (sec.yb - depth_in) / 12.0
     model = StructuralModel(units=Units(force="kips", length="ft"))
     grid: dict[tuple[int, int], str] = {}
     beam_elems: dict[int, list] = {}
@@ -163,15 +361,19 @@ def structural_model_from_box(box: str, span_ft: float, n_beams: int, *,
         y_c = (b + 0.5) * width_ft
         for i, st in enumerate(stations):
             grid[(b, i)] = model.add_node(
-                st, y_c, design.depth / 12.0, label=f"BB{b + 1}_S{i}").id
+                st, y_c, z_girder, label=f"BB{b + 1}_S{i}").id
         elems = []
         for i in range(len(stations) - 1):
             e = model.add_element(
                 grid[(b, i)], grid[(b, i + 1)], role="girder",
                 midas_type="BEAM", section=box,
-                material=design.beam_type)
+                material=f"PS-{fc_psi:.0f}psi")
             e.metadata.update({
                 "gdr.line": str(b + 1), "gdr.family": "box",
+                "sect.kind": "psc", "sect.family": "box",
+                "sect.designation": box,
+                "matl.fc_psi": fc_psi,
+                "matl.unit_wt_pcf": _bdm_concrete_pcf(),
                 "section.area_in2": sec.area, "section.i_in4": sec.i,
                 "section.j_in4": j})
             elems.append(e.id)
@@ -181,30 +383,156 @@ def structural_model_from_box(box: str, span_ft: float, n_beams: int, *,
         model.add_restraint(grid[(b, len(stations) - 1)], fix_x=False,
                             fix_y=True, fix_z=True).preset = "expansion"
 
-    if ties:
+    # ── grouted shear keys, one line per joint ────────────────────────────
+    key_grid: dict[tuple[int, int], str] = {}
+    if shear_keys and n_beams > 1:
+        key_shape = shear_key_shape(box)
+        z_key = (shape_centroid_in(key_shape)[1] - depth_in) / 12.0
+        key_name = key_shape.name
         for b in range(n_beams - 1):
-            for i in range(1, len(stations) - 1):
-                e = model.add_element(grid[(b, i)], grid[(b + 1, i)],
-                                      role="diaphragm", midas_type="BEAM")
-                e.metadata["gdr.kind"] = "tie"
+            y_j = (b + 1) * width_ft                  # the joint centerline
+            for i, st in enumerate(stations):
+                key_grid[(b, i)] = model.add_node(
+                    st, y_j, z_key, label=f"KEY{b + 1}_S{i}").id
+            for i in range(len(stations) - 1):
+                e = model.add_element(
+                    key_grid[(b, i)], key_grid[(b, i + 1)], role="shear-key",
+                    midas_type="BEAM", section=key_name,
+                    material="GROUT-5000psi")
+                e.metadata.update({
+                    "gdr.kind": "shear-key", "sect.kind": "psc",
+                    "sect.family": "shear-key", "sect.designation": box,
+                    "matl.fc_psi": 5000.0,
+                    "matl.unit_wt_pcf": _bdm_concrete_pcf()})
+
+    # ── transverse ties, split at the key so it picks up vertical shear ───
+    if ties:
+        tie_meta = {"gdr.kind": "tie", "sect.kind": "rect",
+                    "sect.width_in": 6.0, "sect.height_in": depth_in - 11.0,
+                    "matl.fc_psi": fc_psi,
+                    "matl.unit_wt_pcf": _bdm_concrete_pcf()}
+        tie_at = _tie_station_indices(stations, span, design.depth)
+        for b in range(n_beams - 1):
+            for i in tie_at:
+                waypoints = ([grid[(b, i)], key_grid[(b, i)],
+                              grid[(b + 1, i)]] if key_grid
+                             else [grid[(b, i)], grid[(b + 1, i)]])
+                for a, c in zip(waypoints, waypoints[1:]):
+                    e = model.add_element(a, c, role="diaphragm",
+                                          midas_type="BEAM",
+                                          section=f"TIE-{box}",
+                                          material=f"PS-{fc_psi:.0f}psi")
+                    e.metadata.update(tie_meta)
+
+    # ── composite deck: plates at mid-surface, rigid-linked to the boxes ──
+    if deck:
+        t_struct = (COMPOSITE_SLAB_STRUCTURAL_THICKNESS_IN if deck_in is None
+                    else float(deck_in) - COMPOSITE_SLAB_WEARING_SURFACE_IN)
+        z_deck = (t_struct / 2.0) / 12.0
+        # a deck column over every girder line AND every joint, so the keys
+        # tie into the slab they are cast against instead of dangling
+        columns = [round(0.5 * k * width_ft, 6)
+                   for k in range(2 * n_beams + 1)]
+        col_of_y = {y: c for c, y in enumerate(columns)}
+        deck_grid: dict[tuple[int, int], str] = {}
+        for c, y in enumerate(columns):
+            for i, st in enumerate(stations):
+                deck_grid[(c, i)] = model.add_node(
+                    st, y, z_deck, label=f"DK{c}_S{i}").id
+        for c in range(len(columns) - 1):
+            for i in range(len(stations) - 1):
+                e = model.add_element(
+                    deck_grid[(c, i)], deck_grid[(c, i + 1)],
+                    midas_type="PLATE", role="deck",
+                    section=f"DECK-{t_struct:g}in", material="Deck-4500psi",
+                    nodes=[deck_grid[(c, i)], deck_grid[(c, i + 1)],
+                           deck_grid[(c + 1, i + 1)], deck_grid[(c + 1, i)]])
+                e.metadata["matl.unit_wt_pcf"] = _bdm_concrete_pcf()
+        for b in range(n_beams):
+            c = col_of_y[round((b + 0.5) * width_ft, 6)]
+            for i in range(len(stations)):
+                model.add_rigid_link(grid[(b, i)], [deck_grid[(c, i)]],
+                                     dof="111111")
+        for b in range(n_beams - 1):
+            if not key_grid:
+                break
+            c = col_of_y[round((b + 1) * width_ft, 6)]
+            for i in range(len(stations)):
+                model.add_rigid_link(deck_grid[(c, i)], [key_grid[(b, i)]],
+                                     dof="111111")
+    elif key_grid:
+        # no deck to hang from: the keys and tie rods ARE the transverse
+        # load path on a non-composite adjacent box bridge, so the grout
+        # bears against both beam faces at every station
+        for b in range(n_beams - 1):
+            for i in range(len(stations)):
+                for other in (grid[(b, i)], grid[(b + 1, i)]):
+                    e = model.add_element(other, key_grid[(b, i)],
+                                          role="diaphragm", midas_type="BEAM",
+                                          section=f"KEYBRG-{box}",
+                                          material="GROUT-5000psi")
+                    e.metadata.update({
+                        "gdr.kind": "key-contact", "sect.kind": "rect",
+                        "sect.width_in": 2.0 * _psbd_recess_in(),
+                        "sect.height_in": depth_in - 11.0,
+                        "matl.fc_psi": 5000.0,
+                        "matl.unit_wt_pcf": _bdm_concrete_pcf()})
 
     if dead_loads:
-        w_sw = sec.area / 144.0 * CONCRETE_KCF
-        t_top_in = (COMPOSITE_SLAB_STRUCTURAL_THICKNESS_IN
-                    + COMPOSITE_SLAB_WEARING_SURFACE_IN)
-        w_top = width_ft * t_top_in / 12.0 * CONCRETE_KCF \
-            if composite else 0.0
-        dc2 = barrier_klf / n_beams
-        dw = fws_klf / n_beams
+        w = box_beam_dead_loads(
+            box, span, n_beams, barrier_klf=barrier_klf,
+            fws_ksf=(fws_klf / n_beams / width_ft if fws_ksf is None
+                     and fws_klf is not None else fws_ksf),
+            asphalt_in=asphalt_in,
+            deck_in=deck_in, composite=composite)
         for elems in beam_elems.values():
             for eid in elems:
-                model.add_beam_load(eid, -(w_sw + w_top), case="DC1")
-                if dc2:
-                    model.add_beam_load(eid, -dc2, case="DC2")
-                if dw:
-                    model.add_beam_load(eid, -dw, case="DW")
+                model.add_beam_load(eid, -w.dc1, case="DC1")
+                if w.dc2:
+                    model.add_beam_load(eid, -w.dc2, case="DC2")
+                if w.dw:
+                    model.add_beam_load(eid, -w.dw, case="DW")
 
     return model
+
+
+def _bdm_concrete_pcf() -> float:
+    from civilpy.structural.odot import BDM_CONCRETE_PCF
+
+    return BDM_CONCRETE_PCF
+
+
+def _psbd_recess_in() -> float:
+    from civilpy.structural.odot import KEYWAY_RECESS_DEPTH_IN
+
+    return KEYWAY_RECESS_DEPTH_IN
+
+
+def _stations_ft(span: float, depth_in: float, mesh_ft: float) -> list[float]:
+    """Longitudinal node stations: the diaphragm stations, subdivided to
+    roughly ``mesh_ft``."""
+    from civilpy.structural.odot import diaphragm_stations_ft
+
+    key = sorted(set(round(s, 6) for s in
+                     [0.0, *diaphragm_stations_ft(span, depth_in), span]))
+    if not mesh_ft or mesh_ft <= 0:
+        return key
+    out: list[float] = []
+    for a, b in zip(key, key[1:]):
+        n = max(1, int(round((b - a) / float(mesh_ft))))
+        out.extend(round(a + (b - a) * k / n, 6) for k in range(n))
+    out.append(key[-1])
+    return sorted(set(out))
+
+
+def _tie_station_indices(stations: list[float], span: float,
+                         depth_in: float) -> list[int]:
+    """Indices into ``stations`` of the interior diaphragm stations."""
+    from civilpy.structural.odot import diaphragm_stations_ft
+
+    want = {round(s, 6) for s in diaphragm_stations_ft(span, depth_in)}
+    return [i for i, s in enumerate(stations)
+            if round(s, 6) in want and 0 < i < len(stations) - 1]
 
 
 def box_beam_line_checks(box: str, span_ft: float, n_beams: int, *,

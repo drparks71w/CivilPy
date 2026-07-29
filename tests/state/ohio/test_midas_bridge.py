@@ -136,6 +136,46 @@ class TestMovingLoadCases:
         with pytest.raises(ValueError, match="midas_ohio_legal_loads"):
             add_moving_load_case(FakeClient(), "Lane1")
 
+    def test_loaded_lanes_come_from_the_design_lane_count(self):
+        """Six lane positions on a 24 ft deck is still two design lanes
+        (LRFD 3.6.1.1.1) -- loading all six asks for six trucks abreast
+        and triples the lane combinations MIDAS has to enumerate."""
+        c = FakeClient({"MVHL": {"1": {"VEHICLE_LOAD_NAME": "SU5"}}})
+        g = GirderModel(designation="CB27-48", family="box", span_ft=70.0,
+                        n_beams=6, deck_width_ft=24.0)
+        assert g.design_lanes == 2
+        lanes = [f"Lane{i}" for i in range(1, 7)]
+        add_moving_load_case(c, lanes, girder=g)
+        sub = c.last("mvld")["1"]["DEFAULT"]["SUB_LOAD_DATAS"][0]
+        assert sub["MAX_LOADED_LANE"] == 2
+        assert sub["LANE_NAMES"] == lanes      # all six remain candidates
+
+    def test_explicit_max_wins_over_the_girder(self):
+        c = FakeClient({"MVHL": {"1": {"VEHICLE_LOAD_NAME": "SU5"}}})
+        g = GirderModel(designation="CB27-48", family="box", span_ft=70.0,
+                        n_beams=6, deck_width_ft=24.0)
+        add_moving_load_case(c, ["Lane1", "Lane2", "Lane3"], girder=g,
+                             max_loaded_lanes=3)
+        d = c.last("mvld")["1"]["DEFAULT"]
+        assert d["SUB_LOAD_DATAS"][0]["MAX_LOADED_LANE"] == 3
+
+    def test_falls_back_to_the_lane_count_without_a_girder(self):
+        c = FakeClient({"MVHL": {"1": {"VEHICLE_LOAD_NAME": "SU5"}}})
+        add_moving_load_case(c, ["Lane1", "Lane2"])
+        d = c.last("mvld")["1"]["DEFAULT"]
+        assert d["SUB_LOAD_DATAS"][0]["MAX_LOADED_LANE"] == 2
+
+
+class TestMovingLoadCode:
+    def test_code_is_set_before_vehicles(self):
+        """A new model has no moving load code, and until it does every
+        db/mvhl write comes back "Unknown Error"."""
+        from civilpy.state.ohio.dot import set_moving_load_code
+
+        c = FakeClient()
+        set_moving_load_code(c)
+        assert c.last("MVCD")["1"] == {"CODE": "AASHTO LRFD"}
+
 
 class TestMovingLoadControl:
     def test_control_body(self):

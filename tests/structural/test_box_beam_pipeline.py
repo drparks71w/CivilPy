@@ -116,10 +116,10 @@ def test_longest_span_governed_by_transfer_tension():
 def test_structural_model_spoke():
     from civilpy.structural.box_beam_pipeline import structural_model_from_box
     from civilpy.structural.odot import (
-        box_beam_design, box_section_properties, diaphragm_stations_ft)
+        box_section_properties, diaphragm_stations_ft)
 
-    m = structural_model_from_box("CB27-48", 60.0, 9,
-                                  barrier_klf=1.0, fws_klf=0.54)
+    m = structural_model_from_box("CB27-48", 60.0, 9, barrier_klf=1.0,
+                                  shear_keys=False, deck=False, mesh_ft=0)
     n_sta = len(diaphragm_stations_ft(60.0, 27)) + 2
     assert len(m.nodes) == 9 * n_sta
     girders = [e for e in m.elements.values() if e.role == "girder"]
@@ -131,13 +131,112 @@ def test_structural_model_spoke():
     assert g.section == "CB27-48"
     sec = box_section_properties(27)
     assert g.metadata["section.area_in2"] == sec.area
-    # DC1 = self weight + topping, applied per girder element
+    # a concrete girder must NOT be exported as an AISC database lookup
+    assert g.metadata["sect.kind"] == "psc"
+    assert g.metadata["matl.fc_psi"] == pytest.approx(5500.0)
+    # DC1 = self weight + the full 6 in deck, applied per girder element
     dc1 = [bl for bl in m.beam_loads if bl.case == "DC1"]
     assert len(dc1) == len(girders)
     w = sec.area / 144.0 * 0.150 + 4.0 * 0.5 * 0.150
     assert dc1[0].w_start == pytest.approx(-w)
     cases = {bl.case for bl in m.beam_loads}
     assert cases == {"DC1", "DC2", "DW"}
+
+
+class TestBDMDeadLoads:
+    """The BDM decides the wearing surface -- it is not a free choice."""
+
+    def test_composite_gets_a_concrete_deck_and_no_asphalt(self):
+        from civilpy.structural.box_beam_pipeline import box_beam_dead_loads
+
+        w = box_beam_dead_loads("CB27-48", 70, 6, barrier_klf=0.6)
+        assert w.asphalt == 0.0
+        # 6 in deck (5 structural + 1 monolithic WS) x 4 ft x 150 pcf
+        assert w.deck == pytest.approx(4.0 * 0.5 * 0.150)
+        assert w.fws == pytest.approx(0.060 * 4.0)      # BDM 303.1.2
+        assert w.dc1 == pytest.approx(w.beam + w.deck)
+        assert w.dw == pytest.approx(w.fws)
+        assert w.barrier == pytest.approx(0.1)
+
+    def test_non_composite_gets_asphalt_at_the_bdm_unit_weight(self):
+        from civilpy.structural.box_beam_pipeline import box_beam_dead_loads
+
+        w = box_beam_dead_loads("B21-48", 50, 6)
+        assert w.deck == 0.0
+        # BDM 909.A: 145 pcf, NOT the 140 pcf of LRFD Table 3.5.1-1
+        assert w.asphalt == pytest.approx(4.0 * 3.0 / 12.0 * 0.145)
+        assert w.dw == pytest.approx(w.asphalt + w.fws)
+
+    def test_asphalt_on_a_composite_design_is_refused(self):
+        from civilpy.structural.box_beam_pipeline import box_beam_dead_loads
+
+        with pytest.raises(ValueError, match="309.1.B"):
+            box_beam_dead_loads("CB27-48", 70, 6, asphalt_in=3.0)
+
+    def test_asphalt_outside_the_bdm_range_is_refused(self):
+        from civilpy.structural.box_beam_pipeline import box_beam_dead_loads
+
+        with pytest.raises(ValueError, match="minimum"):
+            box_beam_dead_loads("B21-48", 50, 6, asphalt_in=1.5)
+        with pytest.raises(ValueError, match="maximum"):
+            box_beam_dead_loads("B21-48", 50, 6, asphalt_in=10.0)
+
+    def test_fws_can_be_zeroed_for_the_cases_that_exempt_it(self):
+        from civilpy.structural.box_beam_pipeline import box_beam_dead_loads
+
+        assert box_beam_dead_loads("CB27-48", 70, 6, fws_ksf=0.0).fws == 0.0
+
+    def test_every_load_names_its_source(self):
+        from civilpy.structural.box_beam_pipeline import box_beam_dead_loads
+
+        w = box_beam_dead_loads("B21-48", 50, 6, barrier_klf=0.6)
+        assert "909.A" in w.sources["asphalt"]
+        assert "303.1.2" in w.sources["FWS"]
+        assert "909.B" in w.sources["beam"]
+
+
+class TestShearKeyAndDeck:
+    def test_shear_key_line_per_joint(self):
+        from civilpy.structural.box_beam_pipeline import (
+            structural_model_from_box)
+
+        m = structural_model_from_box("CB27-48", 70.0, 6, deck=False)
+        keys = [e for e in m.elements.values() if e.role == "shear-key"]
+        assert keys, "no shear key elements"
+        assert {e.section for e in keys} == {"KEY-CB27-48"}
+        assert keys[0].metadata["sect.family"] == "shear-key"
+
+    def test_deck_is_composite_plates_of_the_structural_thickness_only(self):
+        from civilpy.structural.box_beam_pipeline import (
+            structural_model_from_box)
+
+        m = structural_model_from_box("CB27-48", 70.0, 6)
+        plates = [e for e in m.elements.values() if e.midas_type == "PLATE"]
+        assert plates
+        # BDM 309.1.A keeps the 1 in monolithic WS out of the composite
+        # section -- the plates are the 5 in structural thickness
+        assert {e.section for e in plates} == {"DECK-5in"}
+        assert all(link.dof == "111111" for link in m.rigid_links)
+
+    def test_deck_is_refused_on_a_non_composite_design(self):
+        from civilpy.structural.box_beam_pipeline import (
+            structural_model_from_box)
+
+        with pytest.raises(ValueError, match="non-composite"):
+            structural_model_from_box("B21-48", 50.0, 6, deck=True)
+
+    def test_no_node_is_left_unconnected(self):
+        """A dangling key node makes the stiffness matrix singular."""
+        from civilpy.structural.box_beam_pipeline import (
+            structural_model_from_box)
+
+        for kw in ({}, {"deck": False}):
+            m = structural_model_from_box("CB27-48", 70.0, 6, **kw)
+            used = {n for e in m.elements.values() for n in e.nodes}
+            for link in m.rigid_links:
+                used.add(link.master)
+                used.update(link.slaves)
+            assert not set(m.nodes) - used, kw
 
 
 def test_summary_readable(checks):

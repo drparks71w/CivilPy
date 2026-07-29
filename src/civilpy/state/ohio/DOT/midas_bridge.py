@@ -73,6 +73,7 @@ __all__ = [
     "midas_ohio_legal_loads",
     "moving_load_envelopes",
     "new_model",
+    "set_moving_load_code",
     "set_moving_load_control",
 ]
 
@@ -82,8 +83,11 @@ __all__ = [
 API_MANUAL_ARTICLES = {
     "MVLD": 35959068573209,   # moving load cases
     "MVCT": 35989483364633,   # moving load analysis control
+    "MVCD": 35955076795929,   # moving load code (prerequisite for MVHL)
     "STCT": 35990281053465,   # construction stage analysis control
     "MVHL": 35957229130521,   # vehicles (AASHTO LRFD / legal / state DB)
+    "SECT_PSC_VALUE": 39233604772633,     # PSC value (polygon) sections
+    "SECT_COMPOSITE_PSC": 35938998724377,  # composite PSC (CI/CT only)
 }
 
 #: AASHTO LRFD multiple-presence factors, 1..6 loaded lanes
@@ -108,10 +112,27 @@ class GirderModel:
     hub: Any = None                   # the StructuralModel
     elements_by_line: dict[int, list[int]] = field(default_factory=dict)
     report: dict = field(default_factory=dict)
+    deck_width_ft: float = 0.0        # out-to-out, for the design lane count
 
     @property
     def all_elements(self) -> list[int]:
         return [e for line in self.elements_by_line.values() for e in line]
+
+    @property
+    def design_lanes(self) -> int:
+        """Number of design lanes, LRFD 3.6.1.1.1: ``INT(w / 12 ft)``.
+
+        This is **not** the number of traffic lane *positions* in the
+        model.  :func:`generate_lane_load` lays one lane line down each
+        girder so a wheel can be put over any beam, which on a six-beam
+        adjacent box bridge is six positions across 24 ft of roadway --
+        but only two of them may be loaded at once.  Feeding the position
+        count to ``MAX_LOADED_LANE`` asks MIDAS for six trucks abreast on
+        a 24 ft bridge: an envelope no real loading produces, and 63 lane
+        combinations per vehicle instead of 21.
+        """
+        return max(1, int(self.deck_width_ft // 12.0)) if self.deck_width_ft \
+            else 0
 
 
 # ── session ──────────────────────────────────────────────────────────────
@@ -171,10 +192,26 @@ def add_girder(client, designation: str, *, span_ft: float, n_beams: int,
     ``"W36X150"``               steel plate/rolled girder (BridgeInput)
     ==========================  ==========================================
 
-    Extra keyword arguments pass through to the underlying hub builder
-    (``barrier_klf``, ``fws_klf``, ``deck_t_in``, ``grade``, ``skew_deg``,
-    ...).  With ``push=False`` the hub is built but nothing is sent, which
-    is how the notebook shows the model before committing to it.
+    Extra keyword arguments pass through to the underlying hub builder.
+    For a box-beam bridge that is
+    :func:`~civilpy.structural.box_beam_pipeline.structural_model_from_box`,
+    whose defaults already give you the whole ODOT superstructure:
+
+    ``shear_keys=True``
+        the grouted key between each pair of boxes, as its real
+        cross-section, so it is visible in a non-hidden view;
+    ``deck=None``
+        the 5 in structural deck as composite plate elements, on
+        automatically for a ``CB`` (composite) design and refused for a
+        ``B`` (non-composite) one, which BDM 309.1.B surfaces with asphalt
+        instead;
+    ``barrier_klf``, ``fws_ksf``, ``asphalt_in``, ``deck_in``
+        the dead loads -- see
+        :func:`~civilpy.structural.box_beam_pipeline.box_beam_dead_loads`
+        for which BDM article sets each default.
+
+    With ``push=False`` the hub is built but nothing is sent, which is how
+    the notebook shows the model before committing to it.
     """
     from civilpy.structural.midas_models import push_midas
 
@@ -205,7 +242,8 @@ def add_girder(client, designation: str, *, span_ft: float, n_beams: int,
 
     model = GirderModel(designation=designation, family=fam,
                         span_ft=float(span_ft), n_beams=int(n_beams), hub=hub,
-                        elements_by_line=_element_lines(hub, n_beams))
+                        elements_by_line=_element_lines(hub, n_beams),
+                        deck_width_ft=_deck_width_ft(hub))
     if push:
         model.report = push_midas(hub, client)
     return model
@@ -219,6 +257,12 @@ def _family(designation: str) -> str:
     if re.match(r"^W\d+X\d+$", designation, re.I):
         return "steel"
     return "ps-i"
+
+
+def _deck_width_ft(hub) -> float:
+    """Out-to-out width of the hub, from its own node coordinates."""
+    ys = [n.coords[1] for n in getattr(hub, "nodes", {}).values()]
+    return (max(ys) - min(ys)) if ys else 0.0
 
 
 def _element_lines(hub, n_beams: int) -> dict[int, list[int]]:
@@ -272,10 +316,28 @@ def midas_ohio_legal_loads(client, *, im_percent: float = 33.0,
     """
     from civilpy.structural.midas_models import load_oh_vehicles
 
+    set_moving_load_code(client)
     return load_oh_vehicles(client, im_percent=im_percent,
                             include_design=include_design,
                             use_standard_db=use_standard_db,
                             replace=replace)
+
+
+def set_moving_load_code(client, code: str = "AASHTO LRFD") -> None:
+    """Select the moving load code (``db/MVCD``).
+
+    **A new model has none**, and until one is set every write to
+    ``db/mvhl`` is rejected with ``{"message": "Unknown Error"}`` -- which
+    names neither the table at fault nor the missing prerequisite, and
+    looks exactly like a malformed vehicle body.  Verified live
+    2026-07-29: the identical payload that fails on a fresh ``/doc/new``
+    model stores immediately once this record exists.
+
+    Valid values come from the ``db/MVCD`` manual page and are literal UI
+    strings -- ``"AASHTO LRFD"``, ``"AASHTO STANDARD"``,
+    ``"AASHTO LRFD(PENDOT)"`` (sic), ``"CANADA"``, ``"EUROCODE"``, ...
+    """
+    client.request("PUT", "db/MVCD", {"Assign": {"1": {"CODE": code}}})
 
 
 # ── traffic lanes ────────────────────────────────────────────────────────
@@ -296,10 +358,18 @@ def generate_lane_load(client, girder: GirderModel | None = None, *,
     exercises each girder directly but never places a wheel *between*
     girders, so transverse distribution is not tested. Use the grillage
     model and a transverse lane layout when that matters.
+
+    ``WIDTH`` and ``WHEEL_SPACE`` go out in the model's own length unit,
+    read off ``/db/UNIT`` -- a lane 12x too wide stores without complaint.
     """
+    from civilpy.structural.midas_models import model_length_unit
+
     lines = elements or (girder.elements_by_line if girder else None)
     if not lines:
         raise ValueError("no girder elements -- pass a GirderModel or elements")
+    per_model_unit = {"in": 12.0, "ft": 1.0, "m": 0.3048,
+                      "mm": 304.8, "cm": 30.48}.get(
+        model_length_unit(client), 12.0)
 
     if replace:
         for lid in sorted(client.request("GET", "db/llan").get("LLAN", {}),
@@ -317,10 +387,10 @@ def generate_lane_load(client, girder: GirderModel | None = None, *,
                 "GROUP_NAME": "",
                 "SKEW_START": 0, "SKEW_END": 0,
                 "MOVING": moving,
-                "WHEEL_SPACE": wheel_spacing_ft * 12.0,
-                "WIDTH": width_ft * 12.0,
+                "WHEEL_SPACE": wheel_spacing_ft * per_model_unit,
+                "WIDTH": width_ft * per_model_unit,
                 "OPT_AUTO_LANE": False,
-                "ALLOW_WIDTH": width_ft * 12.0,
+                "ALLOW_WIDTH": width_ft * per_model_unit,
             },
             "LANE_ITEMS": [
                 {"ELEM": int(e), "ECC": 0, "FACT": 0, "SPAN_START": False,
@@ -334,6 +404,7 @@ def generate_lane_load(client, girder: GirderModel | None = None, *,
 
 # ── moving load cases ────────────────────────────────────────────────────
 def add_moving_load_case(client, lanes: list[str] | str, *,
+                         girder: GirderModel | None = None,
                          vehicles: list[str] | None = None,
                          scale_factors: list[float] | None = None,
                          comb_option: str = "INDEPENDENT",
@@ -344,6 +415,15 @@ def add_moving_load_case(client, lanes: list[str] | str, *,
     ``vehicles`` defaults to every vehicle currently in the model, so the
     usual sequence is :func:`midas_ohio_legal_loads` then this.
 
+    ``max_loaded_lanes`` is how many of the lane *positions* may carry
+    traffic at once.  Pass ``girder`` and it comes from LRFD 3.6.1.1.1 --
+    ``INT(roadway width / 12 ft)``, so 2 on a six-beam adjacent box
+    bridge, not 6.  Getting this wrong is expensive twice over: MIDAS
+    enumerates every combination up to the limit (63 per vehicle at 6,
+    21 at 2), and the extra ones put more trucks abreast than the deck
+    can hold.  Without a girder it falls back to the number of lanes,
+    which is only right when each lane really is a design lane.
+
     Body per the db/MVLD manual (:data:`API_MANUAL_ARTICLES`):
     ``COMB_OPTION`` is the STRING ``"INDEPENDENT"`` (or ``"COMBINED"``),
     and the lane counts are ``MIN_LOADED_LANE`` / ``MAX_LOADED_LANE``.
@@ -352,6 +432,8 @@ def add_moving_load_case(client, lanes: list[str] | str, *,
     """
     if isinstance(lanes, str):
         lanes = [lanes]
+    if max_loaded_lanes is None and girder is not None and girder.design_lanes:
+        max_loaded_lanes = min(girder.design_lanes, len(lanes))
     if vehicles is None:
         stored = client.request("GET", "db/mvhl").get("MVHL", {})
         vehicles = [v.get("VEHICLE_LOAD_NAME")
@@ -425,6 +507,31 @@ def moving_load_envelopes(client, *, elements: list[int] | None = None,
     Pulled in one request with no load-case filter and grouped by the
     table's own Load column -- Midas decorates moving-load case names
     (``"SU5(MV:all)"``), so matching a guessed suffix is fragile.
+
+    .. warning::
+       These are **girder element** forces, not composite section forces.
+       When :func:`add_girder` builds the deck as rigid-linked plates, the
+       girder and the slab form a composite section whose total moment is
+       the girder's own ``My`` **plus** the couple ``N * d`` from the axial
+       force the composite action puts in each part, ``d`` being the
+       distance between the girder centroid and the deck mid-surface.
+       Reading ``Moment-y`` alone understates the section moment badly --
+       by 40% on the CB27-48 example.  Measured live 2026-07-29, DC1 at
+       midspan of a 70 ft span:
+
+       =============================  ==============  =============
+       model                          girder ``My``   girder ``N``
+       =============================  ==============  =============
+       deck on (plates + rigid links) 372.9 kip-ft    180.5 kip
+       deck off (bare girders)        610.4 kip-ft    6.9 kip
+       =============================  ==============  =============
+
+       with ``w L^2 / 8 = 623.5`` kip-ft by hand.  The deck-on case
+       reconciles as ``372.9 + 180.5 * (16.12/12) = 615`` kip-ft; the
+       moment is not missing, it is in the couple.  Build with
+       ``deck=False`` when you want the girder to carry all of it, or add
+       the couple before comparing against
+       :func:`~civilpy.structural.box_beam_pipeline.box_beam_line_checks`.
     """
     from civilpy.structural.midas import parse_result_table
 

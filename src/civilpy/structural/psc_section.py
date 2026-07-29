@@ -208,6 +208,85 @@ def box_beam_shape(designation: str) -> PSCShape:
     )
 
 
+def shear_key_shape(designation: str) -> PSCShape:
+    """The **grouted shear key** between two adjacent PSBD-1-25 boxes.
+
+    Two beams set side by side touch over the 5 in bearing band at the
+    soffit and over nothing else: above that band each mating face is
+    relieved by the keyway, so the pair encloses a continuous void that
+    the C&MS 515 non-shrink grout fills.  This returns that void as its
+    own section -- the mirror image of :func:`box_beam_shape`'s exterior
+    profile about the joint, so the two can never drift apart:
+
+    * a 1 1/4 in chamfer each side opening the key up off the bearing
+      band (a ``2 * KEYWAY_LOWER_CHAMFER_IN`` tall vee),
+    * the full 2 1/2 in wide recess over most of the depth,
+    * a 1/2 in transition into the 1 1/2 in wide top slot formed by the
+      3/4 in setbacks, running the top 5 in to the beam surface.
+
+    Coordinates use the **beam's own datum** -- ``y`` from the joint
+    centerline, ``z`` up from the beam soffit -- so the key polygon drops
+    straight onto a box-beam cross-section drawing without a transform,
+    and :func:`shape_centroid_in` gives the elevation to put the element
+    axis at.
+
+    The key is a real, if slender, section: about 48 in^2 on a 27 in box.
+    Model it for what it is -- a vertical shear transfer -- not as a
+    longitudinal flexural member; see
+    :func:`~civilpy.structural.box_beam_pipeline.structural_model_from_box`
+    for how the grillage connects it.
+    """
+    m = _BOX_RE.match(designation)
+    if not m:
+        raise ValueError(
+            f"box designation {designation!r} not of the form B<depth>-<width>"
+            f" / CB<depth>-<width>")
+    depth = float(m.group(2))
+    r = _psbd.KEYWAY_RECESS_DEPTH_IN            # 1 1/4 in each face
+    t = _psbd.KEYWAY_TOP_SETBACK_IN             # 3/4 in each face
+    zb = _psbd.KEYWAY_BOTTOM_BAND_IN            # top of the bearing band
+    zr0 = zb + _psbd.KEYWAY_LOWER_CHAMFER_IN
+    zt1 = depth - _psbd.KEYWAY_TOP_BAND_IN
+    zr1 = zt1 - _psbd.KEYWAY_UPPER_CHAMFER_IN
+    outline = ((0.0, zb), (r, zr0), (r, zr1), (t, zt1), (t, depth),
+               (-t, depth), (-t, zt1), (-r, zr1), (-r, zr0))
+    return PSCShape(name=f"KEY-{designation}", family="shear-key",
+                    outline=outline, depth_in=depth)
+
+
+def shape_centroid_in(shape: PSCShape) -> tuple[float, float]:
+    """Area centroid ``(y, z)`` of ``shape``'s outline less its voids, in
+    the shape's own coordinates.
+
+    This is the point a MIDAS section with the default center-center
+    offset puts on the element axis, so it is also the elevation to place
+    the nodes at when several sections have to line up in one model.
+    """
+    def _moments(poly: tuple[Point, ...]) -> tuple[float, float, float]:
+        """``(A, A*y_c, A*z_c)`` by the shoelace formula, sign-normalized
+        so winding direction does not matter."""
+        a = my = mz = 0.0
+        for i in range(len(poly)):
+            (y0, z0), (y1, z1) = poly[i], poly[(i + 1) % len(poly)]
+            cross = y0 * z1 - y1 * z0
+            a += cross
+            my += (y0 + y1) * cross
+            mz += (z0 + z1) * cross
+        sign = 1.0 if a >= 0 else -1.0
+        return sign * a / 2.0, sign * my / 6.0, sign * mz / 6.0
+
+    area, my, mz = _moments(shape.outline)
+    for void in shape.voids:
+        v_a, v_my, v_mz = _moments(void)
+        area -= v_a
+        my -= v_my
+        mz -= v_mz
+    if area <= 0.0:
+        raise ValueError(f"{shape.name} has no net area -- voids exceed the "
+                         f"outline")
+    return my / area, mz / area
+
+
 # ── scanline geometry ────────────────────────────────────────────────────
 def _intervals_at(poly: tuple[Point, ...], z: float) -> list[tuple[float, float]]:
     """Sorted ``(y0, y1)`` spans of ``poly``'s interior on the horizontal
@@ -990,8 +1069,33 @@ def flexural_strain_compatibility(
 
 
 # ── Midas export ─────────────────────────────────────────────────────────
+#: Inches per unit of a model's ``UNIT`` DIST setting -- the factor that
+#: takes these inch polygons into the model's own length unit.
+_LENGTH_SCALE = {"in": 1.0, "inch": 1.0, "inches": 1.0,
+                 "ft": 1.0 / 12.0, "feet": 1.0 / 12.0, "foot": 1.0 / 12.0,
+                 "m": 0.0254, "meter": 0.0254, "metre": 0.0254,
+                 "mm": 25.4, "cm": 2.54}
+
+
+def _length_scale(length_unit: str) -> float:
+    try:
+        return _LENGTH_SCALE[str(length_unit).strip().lower()]
+    except KeyError:
+        raise ValueError(
+            f"unsupported model length unit {length_unit!r}; expected one of "
+            f"{sorted(set(_LENGTH_SCALE))}") from None
+
+
+def _ccw(poly: tuple[Point, ...]) -> tuple[Point, ...]:
+    """``poly`` wound counter-clockwise (positive shoelace area)."""
+    a = sum(y0 * z1 - y1 * z0 for (y0, z0), (y1, z1)
+            in zip(poly, poly[1:] + poly[:1]))
+    return poly if a >= 0 else tuple(reversed(poly))
+
+
 def midas_section_payload(shape: PSCShape, *, name: str | None = None,
-                          web_thickness: float | None = None) -> dict:
+                          web_thickness: float | None = None,
+                          length_unit: str = "in") -> dict:
     """A ``PUT /db/SECT`` PSC-VALUE section payload carrying the shape's
     exact outline and void polygons (verified against live Civil NX
     2026-07-27: the value section reproduced the parametric CB27-48's
@@ -1001,15 +1105,43 @@ def midas_section_payload(shape: PSCShape, *, name: str | None = None,
     default center-center offset the element axis lands on the section
     centroid -- the reference the tendon builders below assume.
     ``web_thickness`` is the summed web width for the shear checks
-    (defaults to the solid width at mid-depth)."""
-    z0, z1 = extreme_fibers(shape)
-    ys = [y for y, _ in shape.outline]
+    (defaults to the solid width at mid-depth).
+
+    ``length_unit`` is the **model's** ``UNIT`` table DIST, not the
+    shape's: these polygons are always in inches, and MIDAS applies one
+    length unit to every geometric quantity in a model, section
+    coordinates included.  Sending inches into a model whose DIST is FT
+    gives a 12x oversized, self-intersecting section that still stores
+    without complaint -- so pass the hub's own ``units.length``.
+
+    Two constraints MIDAS enforces on the polygon, both established by
+    bisecting a rejected section against a live Civil NX (2026-07-29).
+    Neither is documented, and both surface as the same unhelpful
+    ``"[Error] Section input data contain errors."``:
+
+    * **the outline must rest on z = 0.**  A polygon whose bottom fiber
+      sits above the origin is refused -- a shear key drawn at its true
+      elevation in the beam (z = 5 in to 27 in) fails, and the identical
+      polygon shifted down 5 in is accepted.  This function translates
+      the shape for you, which costs nothing: the default center-center
+      offset puts the element axis on the centroid either way, so a shape
+      may be drawn at whatever elevation makes sense to a human.
+    * **the winding must be counter-clockwise.**  The same outline
+      reversed is refused rather than silently normalized.
+    """
+    scale = _length_scale(length_unit)
+    z_base = min(z for _, z in shape.outline)
+    outline = _ccw(shape.outline)
+    z0, z1 = ((v - z_base) * scale for v in extreme_fibers(shape))
+    ys = [y * scale for y, _ in outline]
     if web_thickness is None:
         web_thickness = sum(b - a for a, b in
-                            solid_intervals(shape, (z0 + z1) / 2.0))
-    outer = [{"X": y, "Y": z} for y, z in shape.outline]
-    inner = [[{"X": y, "Y": z} for y, z in reversed(v)]
-             for v in shape.voids]
+                            solid_intervals(shape, (z0 + z1) / 2.0 / scale
+                                            + z_base))
+    web_thickness *= scale
+    outer = [{"X": y * scale, "Y": (z - z_base) * scale} for y, z in outline]
+    inner = [[{"X": y * scale, "Y": (z - z_base) * scale}
+              for y, z in reversed(_ccw(v))] for v in shape.voids]
     sect_i = {"SECT_NAME": "",
               "vSIZE": [z1 - z0, max(ys) - min(ys),
                         web_thickness / 2.0, web_thickness / 2.0],

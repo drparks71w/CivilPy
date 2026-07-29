@@ -434,3 +434,68 @@ class TestLoadOhVehicles:
         assert by_name["HS20-44 lane"]["VEH_DEFAULT"]["DYN_LOAD_ALLOWANCE"] == 0.0
         assert by_name["HL-93 truck"]["VEH_DEFAULT"]["DYN_LOAD_ALLOWANCE"] == 33.0
         assert by_name["HL-93 tandem"]["VEH_DEFAULT"]["DYN_LOAD_ALLOWANCE"] == 33.0
+
+
+class TestConcreteSectionDispatch:
+    """A concrete girder must not leave as an AISC database lookup.
+
+    Before this dispatch existed, a box beam labelled ``"CB27-48"`` was
+    exported as ``DATATYPE: 1`` into ``AISC10(US)`` -- a name that
+    database does not contain -- with A709 steel at 490 pcf.  MIDAS
+    stored it without complaint, so every analysis ran on a section that
+    was not there.
+    """
+
+    def _hub(self):
+        from civilpy.structural.box_beam_pipeline import (
+            structural_model_from_box)
+
+        return structural_model_from_box("CB27-48", 70.0, 3, mesh_ft=0)
+
+    def test_box_girder_exports_as_a_psc_value_section(self):
+        from civilpy.structural.midas_models import midas_payloads
+
+        p = midas_payloads(self._hub())
+        box = next(v for v in p["SECT"].values()
+                   if v["SECT_NAME"] == "CB27-48")
+        assert box["SECTTYPE"] == "PSC"
+        assert box["SECT_BEFORE"]["SHAPE"] == "VALU"
+        assert "DB_NAME" not in str(box)
+        key = next(v for v in p["SECT"].values()
+                   if v["SECT_NAME"] == "KEY-CB27-48")
+        assert key["SECT_BEFORE"]["SHAPE"] == "VALU"
+
+    def test_materials_are_concrete_not_steel(self):
+        from civilpy.structural.midas_models import midas_payloads
+
+        p = midas_payloads(self._hub())
+        for m in p["MATL"].values():
+            assert m["PARAM"][0]["DEN"] == pytest.approx(0.150)
+            assert m["PARAM"][0]["ELAST"] < 1_000_000    # ksf, not steel
+
+    def test_section_coordinates_use_the_model_length_unit(self):
+        """The hub is in feet; a 48 in box must go out as 4 ft."""
+        from civilpy.structural.midas_models import midas_payloads
+
+        p = midas_payloads(self._hub())
+        box = next(v for v in p["SECT"].values()
+                   if v["SECT_NAME"] == "CB27-48")
+        assert box["SECT_BEFORE"]["SECT_I"]["vSIZE"][:2] == [2.25, 4.0]
+
+    def test_material_blocks_rescale_with_the_length_unit(self):
+        from civilpy.structural.midas_models import (
+            concrete_material_block, steel_material_block)
+
+        ksf = concrete_material_block(fc_psi=4500)["1"]["PARAM"][0]
+        ksi = concrete_material_block(fc_psi=4500,
+                                      length_unit="in")["1"]["PARAM"][0]
+        assert ksi["ELAST"] == pytest.approx(ksf["ELAST"] / 144.0, rel=1e-6)
+        assert ksi["DEN"] == pytest.approx(ksf["DEN"] / 1728.0, rel=1e-6)
+        s = steel_material_block(length_unit="in")["1"]["PARAM"][0]
+        assert s["ELAST"] == pytest.approx(29000.0, rel=1e-3)
+
+    def test_unknown_length_unit_is_refused(self):
+        from civilpy.structural.midas_models import concrete_material_block
+
+        with pytest.raises(ValueError, match="unsupported model length unit"):
+            concrete_material_block(length_unit="cubit")

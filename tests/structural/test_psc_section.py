@@ -502,6 +502,116 @@ def test_midas_section_payload_carries_the_polygons():
     assert p["SECT_BEFORE"]["WEB_THICK"][0] == pytest.approx(9.5)
 
 
+class TestShearKey:
+    """The grouted key between two adjacent boxes."""
+
+    def test_mirrors_the_box_keyway(self):
+        from civilpy.structural.odot import (
+            KEYWAY_BOTTOM_BAND_IN, KEYWAY_RECESS_DEPTH_IN,
+            KEYWAY_TOP_SETBACK_IN)
+        from civilpy.structural.psc_section import shear_key_shape
+
+        key = shear_key_shape("CB27-48")
+        ys = [y for y, _ in key.outline]
+        zs = [z for _, z in key.outline]
+        # widest at the recess (both faces), narrowest at the top slot
+        assert max(ys) == pytest.approx(KEYWAY_RECESS_DEPTH_IN)
+        assert max(ys) - min(ys) == pytest.approx(2 * KEYWAY_RECESS_DEPTH_IN)
+        assert sorted(set(ys))[-2] == pytest.approx(KEYWAY_TOP_SETBACK_IN)
+        # starts at the top of the bearing band, runs to the beam top
+        assert min(zs) == pytest.approx(KEYWAY_BOTTOM_BAND_IN)
+        assert max(zs) == pytest.approx(27.0)
+
+    def test_area_grows_with_depth(self):
+        from civilpy.structural.psc_section import (
+            _poly_area_perimeter, shear_key_shape)
+
+        areas = [_poly_area_perimeter(shear_key_shape(b).outline)[0]
+                 for b in ("B17-48", "B21-48", "CB27-48", "CB33-48",
+                           "CB42-48")]
+        assert areas == sorted(areas)
+        assert areas[2] == pytest.approx(48.19, abs=0.01)   # CB27-48
+
+    def test_centroid_matches_the_published_box_yb(self):
+        """The same routine that places the key must reproduce Yb."""
+        from civilpy.structural.psc_section import (
+            box_beam_shape, shape_centroid_in)
+
+        for b in ("B17-48", "B21-48", "CB27-48", "CB42-48"):
+            shape = box_beam_shape(b)
+            y_c, z_c = shape_centroid_in(shape)
+            assert y_c == pytest.approx(0.0, abs=1e-9)
+            assert z_c == pytest.approx(shape.yb_in, rel=0.002)
+
+    def test_cb33_published_yb_is_the_known_outlier(self):
+        """PSBD-1-25 publishes Yb = 16.50 for the 33 in box -- exactly
+        D/2, which a singly-symmetric section does not have.  The drawn
+        geometry gives 16.35, and the same geometry reproduces the
+        published Ib and Ab at every depth including this one, so the
+        table's Yb (and the St/Sb derived from it, by ~0.9%) is the thing
+        out of step, not the model.  Raised with ODOT; pinned here so the
+        discrepancy cannot be silently "fixed" by drifting geometry.
+        """
+        from civilpy.structural.psc_section import (
+            box_beam_shape, shape_centroid_in)
+
+        shape = box_beam_shape("CB33-48")
+        assert shape.yb_in == 16.50
+        assert shape_centroid_in(shape)[1] == pytest.approx(16.35, abs=0.01)
+
+    def test_rejects_a_non_box_designation(self):
+        from civilpy.structural.psc_section import shear_key_shape
+
+        with pytest.raises(ValueError, match="not of the form"):
+            shear_key_shape("WF72-49")
+
+
+class TestSectionPayloadConstraints:
+    """Both established by bisecting a rejected section live (2026-07-29);
+    each surfaces only as "Section input data contain errors."."""
+
+    def test_polygon_is_dropped_onto_z_zero(self):
+        from civilpy.structural.psc_section import (
+            midas_section_payload, shear_key_shape)
+
+        key = shear_key_shape("CB27-48")          # drawn at z = 5 .. 27
+        p = midas_section_payload(key)
+        zs = [v["Y"] for v in
+              p["SECT_BEFORE"]["SECT_I"]["OUTER_POLYGON"][0]["VERTEX"]]
+        assert min(zs) == pytest.approx(0.0)
+        assert max(zs) == pytest.approx(22.0)
+
+    def test_winding_is_forced_counter_clockwise(self):
+        from civilpy.structural.psc_section import (
+            PSCShape, midas_section_payload)
+
+        cw = ((0.0, 0.0), (0.0, 10.0), (4.0, 10.0), (4.0, 0.0))
+        p = midas_section_payload(
+            PSCShape(name="cw", family="box", outline=cw, depth_in=10.0))
+        got = [(v["X"], v["Y"]) for v in
+               p["SECT_BEFORE"]["SECT_I"]["OUTER_POLYGON"][0]["VERTEX"]]
+        area = sum(y0 * z1 - y1 * z0 for (y0, z0), (y1, z1)
+                   in zip(got, got[1:] + got[:1]))
+        assert area > 0
+
+    def test_scales_into_the_models_length_unit(self):
+        from civilpy.structural.psc_section import (
+            box_beam_shape, midas_section_payload)
+
+        box = box_beam_shape("CB27-48")
+        ft = midas_section_payload(box, length_unit="ft")
+        assert ft["SECT_BEFORE"]["SECT_I"]["vSIZE"][:2] == [27.0 / 12,
+                                                            48.0 / 12]
+
+    def test_rejects_an_unknown_length_unit(self):
+        from civilpy.structural.psc_section import (
+            box_beam_shape, midas_section_payload)
+
+        with pytest.raises(ValueError, match="unsupported model length unit"):
+            midas_section_payload(box_beam_shape("CB27-48"),
+                                  length_unit="furlong")
+
+
 def test_midas_tendon_payloads_conventions():
     strands = strands_from_odot_design("CB27-48", 70)
     p = midas_tendon_payloads(strands, elems=list(range(1, 15)),
@@ -538,6 +648,18 @@ def test_ev3_user_vehicle_payload():
     assert loads == [24.0, 31.0, 31.0]
     assert dists == [15.0 * 12, 4.0 * 12, 0.0]   # spacings in inches
     assert v["VEH_DEFAULT"]["DYN_LOAD_ALLOWANCE"] == 33.0
+
+
+def test_vehicle_spacings_follow_the_model_length_unit():
+    """A truck built in inches and pushed to a model in feet is 12x too
+    long, stores cleanly, and just produces the wrong envelope."""
+    v = midas_vehicle_payload(EMERGENCY_VEHICLES["EV3"], length_unit="ft")
+    assert [i["POINT_DIST"] for i in v["LOAD_ITEMS"]] == [15.0, 4.0, 0.0]
+    lane = v["VEH_DEFAULT"]["UNIFORM_LOAD"]
+    assert lane == pytest.approx(
+        midas_vehicle_payload(EMERGENCY_VEHICLES["EV3"],
+                              length_unit="in")["VEH_DEFAULT"]["UNIFORM_LOAD"]
+        * 12.0)
 
 
 def test_standard_vehicle_carries_standard_code():

@@ -32,6 +32,7 @@ from civilpy.state.ohio.DOT.midas_bridge import (  # noqa: F401
     midas_ohio_legal_loads,
     moving_load_envelopes,
     new_model,
+    set_moving_load_code,
     set_moving_load_control,
 )
 

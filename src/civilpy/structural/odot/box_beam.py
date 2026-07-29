@@ -97,6 +97,54 @@ COMPOSITE_SLAB_WEARING_SURFACE_IN = 1.0
 #: properties (PSBD-1-25 sheet 4/6 note).
 COMPOSITE_MODULAR_RATIO = 0.90
 
+# ── BDM dead-load rules ──────────────────────────────────────────────────
+# The wearing surface a box beam carries is decided by BDM 309.1, and it
+# is NOT a free choice -- it follows from composite vs. non-composite:
+#
+#   309.1.A  1 in monolithic concrete wearing surface: "the top 1-in of a
+#            concrete deck slab.  Do not include the top 1-in thickness in
+#            the structural design of the deck slab or as part of the
+#            composite section."   -> composite (CB) beams
+#   309.1.B  3 in asphalt concrete: "the minimum asphaltic concrete
+#            wearing surface on non-composite prestressed box beams.  Use
+#            ... only on non-composite prestressed box beams."
+#            -> non-composite (B) beams, 8 in max per BDM 308.2.3.3
+#
+# so :data:`COMPOSITE_SLAB_STRUCTURAL_THICKNESS_IN` +
+# :data:`COMPOSITE_SLAB_WEARING_SURFACE_IN` = 6 in is exactly the
+# BDM 308.2.3.3.c minimum composite deck, split at the 309.1.A line.
+
+#: Future wearing surface allowance, ksf.  BDM 303.1.2: "Design all new
+#: bridges that carry highway traffic for a future wearing surface (FWS)
+#: of 0.060-ksf."  Unqualified -- it applies whether or not the bridge
+#: also carries an asphalt wearing surface today.  Two exceptions in the
+#: manual: temporary structures take 0.0 ksf (BDM 501), and FWS is
+#: excluded from the dead load used for shop camber (BDM 308.2.2.1.f).
+BDM_FUTURE_WEARING_SURFACE_KSF = 0.060
+
+#: Minimum composite deck slab on prestressed box beams, inches
+#: (BDM 308.2.3.3.c, "#6 bars, longitudinal at 18-in max, transverse at
+#: 9-in max").
+BDM_COMPOSITE_DECK_MIN_IN = 6.0
+
+#: Asphalt concrete wearing surface on NON-composite box beams, inches:
+#: 3 in minimum (BDM 309.1.B, two 1.5 in lifts of Item 441), 8 in maximum
+#: (BDM 308.2.3.3).  The first lift is placed at variable thickness to
+#: take up camber and grade, so the mean is often thicker than 3 in --
+#: use the computed topping depth (BDM 308.2.3.3.e) for a real design.
+BDM_ASPHALT_MIN_IN = 3.0
+BDM_ASPHALT_MAX_IN = 8.0
+
+#: Unit weights, pcf, from BDM 909 ("assumptions ... while performing the
+#: load rating analysis unless more accurate site information is
+#: available").  Note asphalt is **145 pcf**, not the 140 pcf of LRFD
+#: Table 3.5.1-1.
+BDM_ASPHALT_PCF = 145.0
+BDM_CONCRETE_PCF = 150.0
+BDM_LATEX_MODIFIED_CONCRETE_PCF = 150.0
+BDM_SOIL_PCF = 120.0
+BDM_STEEL_PCF = 490.0
+
 
 def box_void_dimensions(depth_in: float, width_in: float = BOX_WIDTH_IN
                          ) -> tuple[float, float]:
