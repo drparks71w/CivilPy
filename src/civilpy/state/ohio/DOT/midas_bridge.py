@@ -140,10 +140,14 @@ def connect(**client_kwargs):
 
     ``timeout`` defaults high: the app serializes API calls behind whatever
     the UI is doing, and a solve can block even a ping.
+    ``analysis_timeout`` is a **separate** budget that only ``/doc/ANAL``
+    uses -- raising ``timeout`` alone leaves it at the 600 s class default,
+    which a grillage of any size will blow straight through.
     """
     from civilpy.structural.midas import MidasCivil
 
     client_kwargs.setdefault("timeout", 300)
+    client_kwargs.setdefault("analysis_timeout", 1800)
     client_kwargs.setdefault("reconnect_retries", 0)
     return MidasCivil(**client_kwargs)
 
@@ -514,7 +518,23 @@ def set_moving_load_control(client, *, concurrent_forces: bool = True,
 # ── run and read ─────────────────────────────────────────────────────────
 def analyze(client) -> dict:
     """``POST /doc/ANAL``.  Long timeout: the app queues behind the UI and
-    even a small model can exceed 60 s."""
+    even a small model can exceed 60 s.
+
+    .. note::
+       **A read timeout here is not a failure.** Civil NX keeps solving
+       after the HTTP request gives up -- an 11-girder grillage has come
+       back complete, with results identical to a run that returned
+       normally, after blowing a 600 s budget. Catch
+       :class:`~civilpy.structural.midas.MidasTimeoutError`, reconnect and
+       read the result table before deciding anything went wrong; retrying
+       ``/doc/ANAL`` blind is what pops the modal error dialog that then
+       blocks every later solve.
+
+       What *is* a failure, and looks like success: a returned
+       ``"command complete"`` with no results behind it. That means the
+       solve aborted -- a rigid-link master/slave chain will do it -- and
+       the next ``/doc/ANAL`` answers ``"Analysis is not allowed."``
+    """
     return client.request("POST", "/doc/ANAL", {"Argument": {}},
                           timeout=getattr(client, "ANALYSIS_TIMEOUT", 600))
 
