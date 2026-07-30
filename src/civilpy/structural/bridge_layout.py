@@ -641,7 +641,7 @@ def deck_rebar_segments(layout: BridgeLayout,
             spans_y = ((y0, y1),)
 
         for band_lo, band_hi in spans_y:
-            if band_hi <= band_lo:
+            if band_hi <= band_lo:   # pragma: no cover - degenerate band
                 continue
             u = u0 + step_u / 2.0
             while u <= u1 + 1e-9:
@@ -822,7 +822,7 @@ def structural_model_from_layout(layout: "BridgeLayout", *,
         for g in range(inp.girder_count - 1):
             for i in range(len(stations)):
                 a, b = node_grid.get((g, i)), node_grid.get((g + 1, i))
-                if a and b:
+                if a and b:   # pragma: no branch - grid is always complete
                     model.add_element(a, b, role="diaphragm",
                                       midas_type="BEAM").metadata[
                         "gdr.kind"] = "diaphragm"

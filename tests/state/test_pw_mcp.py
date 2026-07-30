@@ -104,3 +104,173 @@ class TestServerWiring:
         from civilpy.mcp.pw_server import build_server
         server = build_server(store)
         assert server is not None
+
+
+class TestRegisteredToolsAndResources:
+    """The FastMCP tools/resources are closures over the store, so exercise
+    them through the registry the way a client would reach them."""
+
+    @pytest.fixture()
+    def server(self, store):
+        pytest.importorskip("mcp")
+        from civilpy.mcp.pw_server import build_server
+        return build_server(store)
+
+    @pytest.mark.anyio
+    async def _tools(self, server):
+        return {t.name: t for t in await server.list_tools()}
+
+    def test_all_five_tools_registered(self, server):
+        import asyncio
+        names = {t.name for t in asyncio.run(server.list_tools())}
+        assert names == {"pw_projects", "pw_describe", "pw_documents",
+                         "pw_checklist", "pw_review_summary"}
+
+    def test_every_tool_carries_a_description(self, server):
+        import asyncio
+        for t in asyncio.run(server.list_tools()):
+            assert t.description and t.description.strip()
+
+    def test_tool_bodies_delegate_to_the_core_api(self, server, store):
+        """Calling each tool must return the same payload as the plain
+        function it wraps."""
+        import asyncio
+        from civilpy.mcp.pw_server import (describe_project, list_projects,
+                                           project_checklist, query_documents,
+                                           review_summary)
+
+        def texts(name, **kw):
+            """FastMCP emits one content item per element of a list return."""
+            return [c.text for c in asyncio.run(server.call_tool(name, kw))]
+
+        def obj(name, **kw):
+            return json.loads("".join(texts(name, **kw)))
+
+        def roundtrip(value):
+            return json.loads(json.dumps(value))
+
+        # list-returning tools -> one text item per element
+        assert texts("pw_projects") == list_projects(store)
+        assert [json.loads(x) for x in
+                texts("pw_documents", pid=PID, series="planning")] == \
+            roundtrip(query_documents(store, pid=PID, series="planning"))
+        # dict-returning tools -> a single JSON object
+        assert obj("pw_describe", pid=PID) == \
+            roundtrip(describe_project(store, PID))
+        assert obj("pw_checklist", pid=PID) == \
+            roundtrip(project_checklist(store, PID, stage=None))
+        assert obj("pw_review_summary", pid=PID) == \
+            roundtrip(review_summary(store, PID))
+
+    def test_checklist_tool_passes_stage_through(self, server, store):
+        import asyncio
+        from civilpy.mcp.pw_server import project_checklist
+        out = asyncio.run(server.call_tool("pw_checklist",
+                                           {"pid": PID, "stage": 2}))
+        payload = json.loads("".join(c.text for c in out))
+        assert payload == json.loads(
+            json.dumps(project_checklist(store, PID, stage=2)))
+        assert payload["stage"] == 2
+
+    def test_resources_render_json(self, server, store):
+        import asyncio
+        from civilpy.mcp.pw_server import describe_project
+        body = asyncio.run(server.read_resource(f"pw://{PID}"))
+        assert json.loads(body[0].content) == json.loads(
+            json.dumps(describe_project(store, PID)))
+
+    def test_series_resource_filters_by_series(self, server, store):
+        import asyncio
+        from civilpy.mcp.pw_server import query_documents
+        body = asyncio.run(server.read_resource(f"pw://{PID}/planning"))
+        assert json.loads(body[0].content) == json.loads(json.dumps(
+            query_documents(store, pid=PID, series="planning")))
+
+
+    def test_sfn_resource_scopes_to_one_structure(self, server, store):
+        import asyncio
+        from civilpy.mcp.pw_server import query_documents
+        body = asyncio.run(server.read_resource(
+            f"pw://{PID}/engineering/structures/{SFN}"))
+        expected = query_documents(store, pid=PID, series="engineering",
+                                   discipline="structures", sfn=SFN)
+        assert json.loads(body[0].content) == json.loads(json.dumps(expected))
+        assert expected, "fixture should carry structures documents"
+
+
+class TestSnapshotStoreConstruction:
+    def test_empty_directory_is_a_clear_error(self, tmp_path):
+        from civilpy.mcp.pw_server import SnapshotStore
+        with pytest.raises(FileNotFoundError, match="no snapshot JSONs"):
+            SnapshotStore(tmp_path)
+
+    def test_closed_samples_are_loaded_too(self, tmp_path):
+        from civilpy.mcp.pw_server import SnapshotStore
+        (tmp_path / "district_file_samples.json").write_text(
+            json.dumps({"District 06": [RECON_RECORD]}))
+        (tmp_path / "closed_tree_samples.json").write_text(
+            json.dumps({}))
+        assert SnapshotStore(tmp_path).pids() == [PID]
+
+
+class TestMainEntryPoint:
+    def test_snapshot_mode_from_env(self, tmp_path, monkeypatch):
+        from civilpy.mcp import pw_server
+        (tmp_path / "district_file_samples.json").write_text(
+            json.dumps({"District 06": [RECON_RECORD]}))
+        monkeypatch.setenv("CIVILPY_PW_SNAPSHOT", str(tmp_path))
+        monkeypatch.delenv("CIVILPY_PW_PATHS", raising=False)
+        built = {}
+
+        class _FakeServer:
+            def run(self):
+                built["ran"] = True
+
+        def _fake_build(store):
+            built["store"] = store
+            return _FakeServer()
+
+        monkeypatch.setattr(pw_server, "build_server", _fake_build)
+        pw_server.main()
+        assert built["store"].pids() == [PID]
+
+    def test_live_mode_from_path_map(self, tmp_path, monkeypatch):
+        from civilpy.mcp import pw_server
+        pmap = tmp_path / "paths.json"
+        pmap.write_text(json.dumps({"112665": "01 Active Projects/x"}))
+        monkeypatch.delenv("CIVILPY_PW_SNAPSHOT", raising=False)
+        monkeypatch.setenv("CIVILPY_PW_PATHS", str(pmap))
+        built = {}
+
+        class _FakeServer:
+            def run(self):
+                built["ran"] = True
+
+        def _fake_build(store):
+            built["store"] = store
+            return _FakeServer()
+
+        monkeypatch.setattr(pw_server, "build_server", _fake_build)
+        pw_server.main()
+        assert built["store"].pids() == ["112665"]
+
+    def test_falls_back_to_cwd(self, tmp_path, monkeypatch):
+        from civilpy.mcp import pw_server
+        (tmp_path / "district_file_samples.json").write_text(
+            json.dumps({"District 06": [RECON_RECORD]}))
+        monkeypatch.delenv("CIVILPY_PW_SNAPSHOT", raising=False)
+        monkeypatch.delenv("CIVILPY_PW_PATHS", raising=False)
+        monkeypatch.chdir(tmp_path)
+        built = {}
+
+        class _FakeServer:
+            def run(self):
+                built["ran"] = True
+
+        def _fake_build(store):
+            built["store"] = store
+            return _FakeServer()
+
+        monkeypatch.setattr(pw_server, "build_server", _fake_build)
+        pw_server.main()
+        assert built["store"].pids() == [PID]

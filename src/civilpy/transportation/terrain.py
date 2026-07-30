@@ -132,7 +132,7 @@ class Terrain:
         if preprocess:
             try:
                 import open3d as o3d
-            except ImportError as exc:
+            except ImportError as exc:                   # pragma: no cover
                 raise ImportError(
                     "preprocessing needs 'open3d' (pip install open3d)") from exc
 
