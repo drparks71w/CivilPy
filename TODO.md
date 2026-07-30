@@ -17,9 +17,16 @@ offending line.
 - [ ] `src/civilpy/state/ohio/DOT/boring_logs.py` — empty stub; working boring
   tools are `civilpy.geotech.boring` / `boring_io`. Implement ODOT wrappers or
   delete.
-- [ ] `src/civilpy/state/ohio/DOT/legacy.py` — superseded in part by
+- [x] `src/civilpy/state/ohio/DOT/legacy.py` — superseded in part by
   `DOT/TIMS.py`; fold the still-used pieces (label dictionaries, `TimsBridge`)
-  into `TIMS.py` and retire the rest.
+  into `TIMS.py` and retire the rest. *Done 2026-07: 969 lines moved into
+  `TIMS.py`, ten orphaned helpers retired, `legacy.py` is now a re-export shim
+  that raises `DeprecationWarning`.*
+- [ ] `DOT/TIMS.py` — `TimsBridge` and `TIMSBridge` still duplicate each other
+  field-for-field (the former assigns ~60 attributes by hand, the latter does
+  the same dynamically). Collapse into one once it can be checked against a
+  live TIMS response; `search_tools.D6BridgeLookup` subclasses `TimsBridge`
+  for `get_map`, so the merged class has to keep that method.
 - [ ] `docs/civilpy.geotechnical.rst` — orphaned redirect page for the old
   `geotechnical` package name; drop once external links have had time to rot.
 

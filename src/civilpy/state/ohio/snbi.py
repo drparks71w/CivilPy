@@ -48,7 +48,7 @@ from pydantic import (
     model_validator,
 )
 
-from civilpy.state.ohio.DOT.legacy import state_code_conversion
+from civilpy.state.ohio.DOT.TIMS import state_code_conversion
 
 # ---------------------------------------------------------------------------
 # Shared constants / helpers
