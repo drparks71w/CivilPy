@@ -280,7 +280,7 @@ class SpliceInput:
     # "nsba" (default): design each flange for its full yield capacity
     # (Fcf = Fyf) with the total force in the plates' shear planes -- the
     # conservative method the two plate-girder validation designs use.
-    # "odot_bdm": the ODOT REF-DESIGN workbook method -- design stress
+    # "odot_bdm": the ODOT BDM workbook method -- design stress
     # Fcf from the actual factored flange stress (fcf_top/fcf_bot), the 6.8.3
     # net-area hole (nominal + 1/16), and per-plate single-shear bolt counts.
     method: str = "nsba"
@@ -447,7 +447,7 @@ def _design_flange(inp: SpliceInput, position: str) -> ComponentDesign:
 
     # strength bolt count.  nsba: the whole flange force Pfy across the plates'
     # shear planes.  odot_bdm: the larger *apportioned* plate force
-    # (C6.13.6.1.3b) across a single shear plane -- the REF-DESIGN workbook
+    # (C6.13.6.1.3b) across a single shear plane -- the reference workbook
     # convention, more conservative for inner+outer plate splices.
     if odot:
         bolt1 = steel.bolt_shear_resistance(

@@ -247,7 +247,7 @@ def test_missing_deck_params_warn(tmp_path):
 def _author_midspan_bearing_bridge(path):
     """One girder line whose curves break at SHAPE TRANSITIONS (x = 45), not
     at the pier: the interior bearing at x = 60 lands mid-element, the way
-    real authored bridges arrive (e.g. REF-DESIGN)."""
+    real authored bridges arrive."""
     f = rhino3dm.File3dm()
     f.Settings.ModelUnitSystem = rhino3dm.UnitSystem.Feet
     for x0, x1, shape in ((0.0, 45.0, "W24X104"), (45.0, 120.0, "W24X131")):

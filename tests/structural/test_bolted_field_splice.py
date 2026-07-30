@@ -234,7 +234,7 @@ class TestDesignTwo:
 
 # ---------------------------------------------------------------------------
 # Worked design 3 — ROLLED-BEAM composite splice, ODOT/NSBA workbook method.
-# REF-DESIGN (location redacted) Field Splice #1: W24x131 -> W24x104,
+# Reference rolled-beam bridge, Field Splice #1: W24x131 -> W24x104,
 # Gr. 50, 7/8" A325 oversize / Class C.  Reproduced from the workbook's
 # recorded MDX demands with method="odot_bdm": the flange is designed for the
 # actual flange stress Fcf (6.13.6.1.3b), the 6.8.3 net-area hole, and the
@@ -328,7 +328,7 @@ class TestSpliceSum210107:
 
 class TestGirderSideFromW:
     """G7 rolled-shape front end: a GirderSide built from an AISC label must
-    reproduce the hand-entered REF-DESIGN Splice #1 design (the workbook's
+    reproduce the hand-entered reference Splice #1 design (the workbook's
     section dimensions are the AISC database values)."""
 
     def test_from_label_matches_aisc(self):
