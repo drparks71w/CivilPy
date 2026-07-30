@@ -36,13 +36,73 @@ Typical use::
 from __future__ import annotations
 
 import csv
+import json
 import re
+from functools import lru_cache
+from pathlib import Path
 
 import requests
 
 # --- Datasources & known anchors (verified on-box 2026-07-21) ---------------
-DATASOURCE_ACTIVE = "ohiodot-pw.bentley.com:ohiodot-pw-02"
-DATASOURCE_ARCHIVE = "ohiodot-pw.bentley.com:ohiodot-pw-03"
+# Datasource names are agency infrastructure — they are read from
+# ``~/secrets.json`` rather than baked in here, so this module carries no
+# routable server name.  See :func:`get_datasource`.
+PW_DATASOURCE_KEYS = {
+    "active": "PW_DATASOURCE_ACTIVE",
+    "archive": "PW_DATASOURCE_ARCHIVE",
+}
+
+
+@lru_cache(maxsize=1)
+def _pw_secrets():
+    """``~/secrets.json`` as a dict, or ``{}`` if absent/unreadable.
+
+    Deliberately forgiving so that importing this module — and every offline
+    code path in it — works on a machine with no ProjectWise access at all.
+    """
+    try:
+        with open(Path.home() / "secrets.json", encoding="utf-8") as fh:
+            return json.load(fh)
+    except (OSError, ValueError):
+        return {}
+
+
+def get_datasource(which="active"):
+    """The configured ProjectWise datasource name for ``which``.
+
+    ``which`` is ``"active"`` (live design projects) or ``"archive"``
+    (PlanVault).  Reads ``PW_DATASOURCE_ACTIVE`` / ``PW_DATASOURCE_ARCHIVE``
+    from ``~/secrets.json``; raises :class:`RuntimeError` when unset, since a
+    datasource cannot be guessed.  The value is whatever your agency's
+    ProjectWise deployment calls it, in PW's ``host:datasource`` form.
+    """
+    try:
+        key = PW_DATASOURCE_KEYS[which]
+    except KeyError:
+        raise ValueError(
+            f"which must be one of {sorted(PW_DATASOURCE_KEYS)}, got {which!r}"
+        ) from None
+    value = _pw_secrets().get(key)
+    if not value:
+        raise RuntimeError(
+            f"{key} is not set in ~/secrets.json — ProjectWise datasource "
+            "names are site-specific and are not distributed with CivilPy. "
+            "Add the entry (see example_secrets.json), or pass "
+            "datasource=... explicitly."
+        )
+    return value
+
+
+def _resolve_datasource(datasource, which):
+    """``datasource`` if the caller supplied one, else the configured name."""
+    return datasource if datasource else get_datasource(which)
+
+
+# Back-compat module attributes: the configured names, or ``None`` when
+# unconfigured.  Prefer :func:`get_datasource` — these are captured at import
+# time and will not pick up a secrets.json written later in the process.
+DATASOURCE_ACTIVE = _pw_secrets().get(PW_DATASOURCE_KEYS["active"])
+DATASOURCE_ARCHIVE = _pw_secrets().get(PW_DATASOURCE_KEYS["archive"])
 
 PLANVAULT_GUID = "1bdc7305-e848-47f2-8ef3-d5b0c4bfe46f"
 PLANVAULT_FOLDER_ID = 8152
@@ -296,7 +356,7 @@ def _pw():
 
 
 def get_structures_sheets(pid, district, county, sfn=None,
-                          datasource=DATASOURCE_ACTIVE):
+                          datasource=None):
     """Sheets in an active project's Structures folder (live pw-02 query).
 
     Resolves ``01 Active Projects/District {dd}/{county}/{pid}/
@@ -304,7 +364,10 @@ def get_structures_sheets(pid, district, county, sfn=None,
     its ``SFN_*`` subfolders (filtered to one bridge when ``sfn`` is given).
     Each returned dict carries ``folder``, calibrated document properties,
     and parsed ``pid``/``sfn``/``sheet`` where the filename grammar applies.
+
+    ``datasource`` defaults to :func:`get_datasource`'s ``"active"`` name.
     """
+    datasource = _resolve_datasource(datasource, "active")
     pw = _pw()
     path = ACTIVE_STRUCTURES_PATH.format(
         district=str(district).zfill(2), county=county, pid=pid)
@@ -329,12 +392,13 @@ def get_structures_sheets(pid, district, county, sfn=None,
     return out
 
 
-def pull_plan(folder_id, doc_id, dest_dir, datasource=DATASOURCE_ARCHIVE):
+def pull_plan(folder_id, doc_id, dest_dir, datasource=None):
     """Copy one plan document out of ProjectWise to ``dest_dir``.
 
     Works for PlanVault rows (default) and active-project sheets
-    (``datasource=DATASOURCE_ACTIVE``).  Returns the written filename.
+    (``datasource=get_datasource("active")``).  Returns the written filename.
     """
+    datasource = _resolve_datasource(datasource, "archive")
     pw = _pw()
     with pw.PW_SESSION(datasource):
         pw.extend_prototypes()

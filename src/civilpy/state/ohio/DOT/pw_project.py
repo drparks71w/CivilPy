@@ -48,7 +48,7 @@ from civilpy.state.ohio.DOT.folder_taxonomy import (
 from civilpy.state.ohio.DOT.projectwise import (
     ACTIVE_PROJECT_PATH,
     ACTIVE_SHEET_GRAMMAR,
-    DATASOURCE_ACTIVE,
+    get_datasource,
 )
 from civilpy.state.ohio.DOT.sheet_taxonomy import (
     SHEET_ACCESSORS,
@@ -224,7 +224,7 @@ class ProjectWiseProject:
     """Lazy handle on one active ProjectWise project, by PID."""
 
     def __init__(self, pid, district=None, county=None, path=None,
-                 datasource=DATASOURCE_ACTIVE, deliverables=None,
+                 datasource=None, deliverables=None,
                  client=None):
         self.pid = str(pid)
         self.district = district and str(district).zfill(2)
@@ -415,16 +415,23 @@ class ProjectWiseProject:
         that document.  The format is the one PW Explorer / the desktop
         integration opens directly::
 
-            pw:\\\\ohiodot-pw.bentley.com:ohiodot-pw-02\\Documents\\
+            pw:\\\\{host}:{datasource}\\Documents\\
             01 Active Projects\\District 06\\Franklin\\112665\\
             400-Engineering\\Structures\\SFN_2510774\\Sheets\\...dgn
+
+        The leading ``{host}:{datasource}`` comes from the project's
+        ``datasource``, which falls back to
+        :func:`~civilpy.state.ohio.DOT.projectwise.get_datasource` (i.e.
+        ``~/secrets.json``) — so building a link needs that configured,
+        even though every offline path in this class does not.
 
         Links are built from the *snapshotted* path + segments, so a
         folder renamed since the snapshot breaks the link (names churn;
         ids are stable) — regenerate snapshots on a cadence, or resolve
         by id on-box.
         """
-        parts = [f"pw:\\\\{self.datasource}\\Documents\\{self.project_path}"]
+        datasource = self.datasource or get_datasource("active")
+        parts = [f"pw:\\\\{datasource}\\Documents\\{self.project_path}"]
         if rec is not None:
             parts += list(rec.get("segments") or [])
             if rec.get("filename"):

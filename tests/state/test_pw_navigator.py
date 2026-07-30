@@ -2,7 +2,8 @@
 import pytest
 
 from civilpy.state.ohio.DOT.pw_project import parse_resource, resource_uri
-from tests.state.pw_testdata import PID, SFN, snapshot_project
+from tests.state.pw_testdata import (DATASOURCE, PID, SFN,
+                                    snapshot_project)
 
 
 @pytest.fixture()
@@ -100,8 +101,8 @@ class TestResources:
 class TestPwUrl:
     def test_project_link(self, project):
         url = project.pw_url()
-        assert url.startswith("pw:\\\\ohiodot-pw.bentley.com:"
-                              "ohiodot-pw-02\\Documents\\01 Active Projects")
+        assert url.startswith(f"pw:\\\\{DATASOURCE}\\Documents\\"
+                              "01 Active Projects")
         assert url.endswith(PID)
 
     def test_document_link(self, project):

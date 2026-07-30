@@ -12,14 +12,14 @@ from civilpy.mcp.pw_server import (
     query_documents,
     review_summary,
 )
-from tests.state.pw_testdata import PID, RECON_RECORD, SFN
+from tests.state.pw_testdata import DATASOURCE, PID, RECON_RECORD, SFN
 
 
 @pytest.fixture()
 def store(tmp_path):
     (tmp_path / "district_file_samples.json").write_text(
         json.dumps({"District 06": [RECON_RECORD]}))
-    return SnapshotStore(tmp_path)
+    return SnapshotStore(tmp_path, datasource=DATASOURCE)
 
 
 class TestSnapshotStore:
@@ -59,7 +59,7 @@ class TestCoreApi:
 
     def test_query_results_carry_clickable_links(self, store):
         doc = query_documents(store, pid=PID, series="planning")[0]
-        assert doc["link"].startswith("pw:\\\\ohiodot-pw.bentley.com")
+        assert doc["link"].startswith(f"pw:\\\\{DATASOURCE}")
         assert doc["link"].endswith(doc["filename"])
 
     def test_checklist_with_stage_appends_deliverables(self, store):

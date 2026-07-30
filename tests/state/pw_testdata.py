@@ -109,9 +109,13 @@ RECON_RECORD = {
 }
 
 
+DATASOURCE = "pw.example.invalid:pw-datasource"
+
+
 def snapshot_project():
     """A ProjectWiseProject over the synthetic tree (offline)."""
     from civilpy.state.ohio.DOT.pw_snapshot import SnapshotClient
     client, path, pid = SnapshotClient.from_recon(RECON_RECORD)
     from civilpy.state.ohio.DOT.pw_project import ProjectWiseProject
-    return ProjectWiseProject(pid, path=path, client=client)
+    return ProjectWiseProject(pid, path=path, client=client,
+                              datasource=DATASOURCE)

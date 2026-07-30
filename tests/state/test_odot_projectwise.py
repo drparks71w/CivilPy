@@ -165,3 +165,71 @@ def test_find_plans_by_sfn_falls_back_to_tims(inventory, monkeypatch):
     monkeypatch.setattr(mod, "sfn_to_pids", lambda sfn: ["100242"])
     res = pw.find_plans_by_sfn("x", inventory)
     assert res["pid_source"] == "tims" and len(res["pid_hits"]) == 1
+
+
+class TestDatasourceFromSecrets:
+    """Datasource names come from ~/secrets.json, never from the source."""
+
+    @staticmethod
+    def _patch(monkeypatch, secrets):
+        from civilpy.state.ohio.DOT import projectwise as mod
+        monkeypatch.setattr(mod, "_pw_secrets", lambda: secrets)
+        return mod
+
+    def test_returns_configured_names(self, monkeypatch):
+        mod = self._patch(monkeypatch, {
+            "PW_DATASOURCE_ACTIVE": "host:active-ds",
+            "PW_DATASOURCE_ARCHIVE": "host:archive-ds"})
+        assert mod.get_datasource() == "host:active-ds"
+        assert mod.get_datasource("active") == "host:active-ds"
+        assert mod.get_datasource("archive") == "host:archive-ds"
+
+    def test_unset_key_raises_with_guidance(self, monkeypatch):
+        mod = self._patch(monkeypatch, {})
+        with pytest.raises(RuntimeError, match="PW_DATASOURCE_ACTIVE"):
+            mod.get_datasource("active")
+
+    def test_empty_string_counts_as_unset(self, monkeypatch):
+        mod = self._patch(monkeypatch, {"PW_DATASOURCE_ARCHIVE": ""})
+        with pytest.raises(RuntimeError):
+            mod.get_datasource("archive")
+
+    def test_unknown_which_is_valueerror(self, monkeypatch):
+        mod = self._patch(monkeypatch, {})
+        with pytest.raises(ValueError, match="which must be one of"):
+            mod.get_datasource("nope")
+
+    def test_explicit_datasource_wins(self, monkeypatch):
+        mod = self._patch(monkeypatch, {"PW_DATASOURCE_ACTIVE": "host:cfg"})
+        assert mod._resolve_datasource("host:explicit", "active") == \
+            "host:explicit"
+        assert mod._resolve_datasource(None, "active") == "host:cfg"
+
+    def test_missing_secrets_file_is_not_fatal(self, monkeypatch, tmp_path):
+        """Import-time reads must never raise — offline paths depend on it."""
+        from civilpy.state.ohio.DOT import projectwise as mod
+        monkeypatch.setattr(mod.Path, "home", staticmethod(lambda: tmp_path))
+        mod._pw_secrets.cache_clear()
+        try:
+            assert mod._pw_secrets() == {}
+        finally:
+            mod._pw_secrets.cache_clear()
+
+    def test_malformed_secrets_file_is_not_fatal(self, monkeypatch, tmp_path):
+        from civilpy.state.ohio.DOT import projectwise as mod
+        (tmp_path / "secrets.json").write_text("{not json")
+        monkeypatch.setattr(mod.Path, "home", staticmethod(lambda: tmp_path))
+        mod._pw_secrets.cache_clear()
+        try:
+            assert mod._pw_secrets() == {}
+        finally:
+            mod._pw_secrets.cache_clear()
+
+    def test_pw_url_falls_back_to_configured_datasource(self, monkeypatch):
+        from civilpy.state.ohio.DOT import pw_project as proj_mod
+        monkeypatch.setattr(proj_mod, "get_datasource",
+                            lambda which="active": "host:from-secrets")
+        from tests.state.pw_testdata import snapshot_project
+        project = snapshot_project()
+        project.datasource = None
+        assert project.pw_url().startswith("pw:\\\\host:from-secrets\\")

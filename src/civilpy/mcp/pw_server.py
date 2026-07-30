@@ -62,10 +62,11 @@ class SnapshotStore:
     """Projects from the committed recon JSONs (see
     :mod:`~civilpy.state.ohio.DOT.pw_snapshot`)."""
 
-    def __init__(self, snapshot_dir):
+    def __init__(self, snapshot_dir, datasource=None):
         from civilpy.state.ohio.DOT.pw_snapshot import (
             load_closed_samples, load_file_samples)
         self.dir = Path(snapshot_dir)
+        self.datasource = datasource
         self.projects = {}
         samples = self.dir / "district_file_samples.json"
         closed = self.dir / "closed_tree_samples.json"
@@ -83,10 +84,13 @@ class SnapshotStore:
 
     def get(self, pid):
         try:
-            return self.projects[str(pid)]
+            project = self.projects[str(pid)]
         except KeyError:
             raise KeyError(f"PID {pid} not in snapshot "
                            f"({len(self.projects)} projects)") from None
+        if self.datasource and not project.datasource:
+            project.datasource = self.datasource
+        return project
 
 
 class LiveStore:
@@ -99,8 +103,9 @@ class LiveStore:
     needs ``district`` and ``county`` kwargs on :meth:`get`.
     """
 
-    def __init__(self, path_map=None):
+    def __init__(self, path_map=None, datasource=None):
         self.path_map = {str(k): v for k, v in (path_map or {}).items()}
+        self.datasource = datasource
         self._cache = {}
 
     @classmethod
@@ -118,7 +123,7 @@ class LiveStore:
         if pid not in self._cache:
             self._cache[pid] = ProjectWiseProject(
                 pid, district=district, county=county,
-                path=self.path_map.get(pid))
+                path=self.path_map.get(pid), datasource=self.datasource)
         return self._cache[pid]
 
 
