@@ -12,7 +12,6 @@ omit=
     */general/bentley/*,
     */general/database_tools.py,
     */general/photos.py,
-    */general/jupyter.py,
-    */structural/steel_db_temp.py
+    */general/jupyter.py
 parallel=True
 
