@@ -1,5 +1,5 @@
 [run]
-include = */src/*
+source = src/civilpy
 branch=True
 omit=
     tests,
@@ -8,7 +8,6 @@ omit=
     res*,
     Training/*,
     venv/*,
-    */state/ohio/*,
     */general/bentley/*,
     */general/database_tools.py,
     */general/photos.py,

@@ -134,7 +134,7 @@ civilpy = ["structural/res/*.csv", "structural/odot/res/*.csv", "structural/span
 testpaths = ["tests"]
 
 [tool.coverage.run]
-include = ["*/src/*"]
+source = ["src/civilpy"]
 branch = true
 omit = [
     "tests",
@@ -143,7 +143,6 @@ omit = [
     "res*",
     "Training/*",
     "venv/*",
-    "*/state/ohio/*",
     "*/general/bentley/*",
     "*/general/database_tools.py",
     "*/general/photos.py",
