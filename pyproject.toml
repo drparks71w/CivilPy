@@ -57,6 +57,7 @@ pdf = [
     "PyMuPDF>=1.23",
     "camelot-py>=0.11",
     "pytesseract>=0.3",
+    "pikepdf>=9",
 ]
 geo = [
     "folium>=0.14",
