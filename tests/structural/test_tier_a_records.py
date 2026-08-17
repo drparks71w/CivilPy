@@ -100,11 +100,15 @@ class TestBoxBeamBridgeRecord:
         emit = box_beam_bridge_emit(rec.to_input())
         assert len(emit.objects) > 0
 
-    def test_skewed_record_stores_but_emit_declines(self, record):
-        # the record keeps the bridge's true skew; the current box emit
-        # engine declines it loudly — the materializer records that as an
-        # error outcome (skewed-box emit is a known civilpy backlog item)
+    def test_skewed_record_stores_and_emits(self, record):
+        # the record keeps the bridge's true skew, and the emit now lays
+        # the plan out on the bias (formerly a loud decline)
         from civilpy.structural.rhino_box_bim import box_beam_bridge_emit
         assert record.validate() == []
-        with pytest.raises(ValueError, match="skew"):
-            box_beam_bridge_emit(record.to_input())
+        emit = box_beam_bridge_emit(record.to_input())
+        assert emit.doc_tags["bim.skew_deg"] == "15"
+
+    def test_skew_beyond_standard_fails_validation(self):
+        rec = BoxBeamBridgeRecord(box="CB27-48", span_ft=65.0, n_beams=9,
+                                  skew_deg=40.0)
+        assert any("skew" in p for p in rec.validate())

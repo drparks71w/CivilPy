@@ -29,19 +29,26 @@ Drawn by the same ``draw_bim_emit.py`` driver and read back by the same
 slice.  Coordinates are feet: X spans 0..span, Y across the beams
 (beam 1 edge at y = 0), Z = 0 at the box soffit.
 
-Skewed layouts are not yet supported (the PSBD-1-25 sheet 2/6 skew
-rules for diaphragm/tie-rod offsets are the follow-up), and no railing
-is emitted — the barrier family on boxes differs from the deck-girder
-SBR standard.
+Skewed layouts (up to the standard's 30 deg cap) shear the plan by
+``y * tan(skew)``: beam ends, bearings and the topping edge follow the
+skewed support lines, and the diaphragm / tie-rod lines run parallel to
+the supports — the tie rods must pass straight through every beam, which
+is exactly why PSBD-1-25 widens the solid diaphragm block on the bias
+(``solid_diaphragm_block_in``).  Because the shear leaves each section's
+length along X unchanged, every emitted quantity is identical to the
+square bridge's.  No railing is emitted — the barrier family on boxes
+differs from the deck-girder SBR standard.
 """
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 
 from civilpy.structural import bim
 from civilpy.structural.odot import (
     BEARING_PADS,
+    BOX_MAX_SKEW_DEG,
     BOX_FLANGE_THICKNESS_IN,
     BOX_WEB_THICKNESS_IN,
     COMPOSITE_SLAB_STRUCTURAL_THICKNESS_IN,
@@ -88,11 +95,17 @@ class BoxBridgeInput:
 
 
 def _rect_prism(layer: str, x0: float, x1: float, y0: float, y1: float,
-                z0: float, z1: float, tags: dict) -> EmitObject:
-    """Axis-aligned rectangular prism: base loop at ``z0`` extruded up."""
+                z0: float, z1: float, tags: dict,
+                shear: float = 0.0) -> EmitObject:
+    """Rectangular prism: base loop at ``z0`` extruded up.  A non-zero
+    ``shear`` (``tan`` of the skew angle) offsets each corner's X by
+    ``y * shear``, turning the plan rectangle into the parallelogram a
+    skew-sawn member actually is; the length along X — and therefore the
+    volume — is unchanged."""
     return EmitObject(
         kind="prism", layer=layer,
-        points=((x0, y0, z0), (x1, y0, z0), (x1, y1, z0), (x0, y1, z0)),
+        points=((x0 + y0 * shear, y0, z0), (x1 + y0 * shear, y0, z0),
+                (x1 + y1 * shear, y1, z0), (x0 + y1 * shear, y1, z0)),
         vector=(0.0, 0.0, z1 - z0), tags=tags)
 
 
@@ -101,10 +114,13 @@ def box_beam_bridge_emit(inp: BoxBridgeInput, *,
     """Build the tagged BrIM geometry for one adjacent box-beam bridge.
 
     Raises ``KeyError`` (naming the valid spans) when ``span_ft`` is not
-    a cataloged design for ``box``, and ``ValueError`` for a skewed
-    layout (not yet supported)."""
-    if inp.skew_deg != 0.0:
-        raise ValueError("skewed box-beam layouts are not supported yet")
+    a cataloged design for ``box``, and ``ValueError`` for a skew beyond
+    the standard's 30 deg cap."""
+    if abs(inp.skew_deg) > BOX_MAX_SKEW_DEG:
+        raise ValueError(
+            f"skew {inp.skew_deg:g} deg exceeds the PSBD-1-25 limit of "
+            f"{BOX_MAX_SKEW_DEG:g} deg")
+    shear = math.tan(math.radians(inp.skew_deg))
     design = box_beam_design(inp.box, int(inp.span_ft))
     section = box_section_properties(design.depth)
     composite = design.beam_type == "composite"
@@ -126,6 +142,7 @@ def box_beam_bridge_emit(inp: BoxBridgeInput, *,
         "bim.span_ft": f"{span:g}",
         "bim.n_beams": str(inp.n_beams),
         "bim.composite": str(composite).lower(),
+        "bim.skew_deg": f"{inp.skew_deg:g}",
         "gdr.family": "box",
     }
     objects.append(EmitObject(
@@ -145,10 +162,11 @@ def box_beam_bridge_emit(inp: BoxBridgeInput, *,
         y_c = (y_lo + y_hi) / 2.0
         bid = f"BB{line}"
 
+        x_c = y_c * shear                 # this beam's skew offset
         # gdr contract: the centerline the BoxBeamLines importer consumes
         objects.append(EmitObject(
             kind="polyline", layer=LAYER_GIRDERS,
-            points=((0.0, y_c, depth_ft), (span, y_c, depth_ft)),
+            points=((x_c, y_c, depth_ft), (span + x_c, y_c, depth_ft)),
             tags={"gdr.kind": "girder", "gdr.family": "box",
                   "gdr.box": inp.box, "gdr.beam_type": design.beam_type,
                   "gdr.line": str(line), "bim.id": bid}))
@@ -171,7 +189,8 @@ def box_beam_bridge_emit(inp: BoxBridgeInput, *,
                     depth_in=design.depth, beam_type=design.beam_type,
                     part=part, span_ft=span, fc_psi=inp.fc_psi,
                     n_strands=design.n_strands,
-                    concrete_cy=beam_cy if count else None, count=count)))
+                    concrete_cy=beam_cy if count else None, count=count),
+                shear=shear))
 
         for h_in, n_strands in strand_rows:
             if n_strands <= 0:
@@ -179,7 +198,7 @@ def box_beam_bridge_emit(inp: BoxBridgeInput, *,
             z = h_in / 12.0
             objects.append(EmitObject(
                 kind="polyline", layer=LAYER_TENDONS,
-                points=((0.0, y_c, z), (span, y_c, z)),
+                points=((x_c, y_c, z), (span + x_c, y_c, z)),
                 tags=bim.tendon_tags(f"{bid}-ROW{h_in:g}",
                                      strands=n_strands, row_in=h_in)))
 
@@ -188,7 +207,8 @@ def box_beam_bridge_emit(inp: BoxBridgeInput, *,
                 LAYER_BEARINGS, x_end, x_end + sign * pad_l,
                 y_c - pad_w / 2.0, y_c + pad_w / 2.0, -pad_t, 0.0,
                 bim.bearing_tags(f"{bid}-BRG-{end}", fixity="expansion",
-                                 total_thickness_in=pad.total_thickness)))
+                                 total_thickness_in=pad.total_thickness),
+                shear=shear))
 
     t_dia = DIAPHRAGM_THICKNESS_IN / 12.0
     tie_z = TIE_ROD.vertical_position(design.depth) / 12.0
@@ -199,10 +219,12 @@ def box_beam_bridge_emit(inp: BoxBridgeInput, *,
             0.0, bridge_width_ft, flange_ft, depth_ft - flange_ft,
             bim.diaphragm_tags(f"DIA-{k}",
                                thickness_in=DIAPHRAGM_THICKNESS_IN,
-                               fc_psi=inp.fc_psi, pay=False)))
+                               fc_psi=inp.fc_psi, pay=False),
+            shear=shear))
         objects.append(EmitObject(
             kind="polyline", layer=LAYER_TIE_RODS,
-            points=((x_d, 0.0, tie_z), (x_d, bridge_width_ft, tie_z)),
+            points=((x_d, 0.0, tie_z),
+                    (x_d + bridge_width_ft * shear, bridge_width_ft, tie_z)),
             tags=bim.tie_rod_tags(f"TIE-{k}", diameter_in=TIE_ROD.diameter,
                                   station_ft=x_d)))
 
@@ -211,7 +233,8 @@ def box_beam_bridge_emit(inp: BoxBridgeInput, *,
                  + COMPOSITE_SLAB_WEARING_SURFACE_IN) / 12.0
         objects.append(_rect_prism(
             LAYER_BRIDGE_DECK, 0.0, span, 0.0, bridge_width_ft,
-            depth_ft, depth_ft + t_top,
+            depth_ft, depth_ft + t_top, shear=shear,
+            tags=
             bim.deck_tags(
                 "TOPPING",
                 thickness_in=COMPOSITE_SLAB_STRUCTURAL_THICKNESS_IN

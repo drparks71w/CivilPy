@@ -1751,16 +1751,21 @@ class BoxBeamBridgeRecord(ElementRecord):
             object.__setattr__(self, "provenance", Provenance())
 
     def _cross_validate(self):
+        from civilpy.structural.odot import BOX_MAX_SKEW_DEG
         from civilpy.structural.odot.box_beam_design import (
             BOX_DESIGNATIONS, designs_for_box)
         if self.box not in BOX_DESIGNATIONS:
             return [f"box: {self.box!r} not a PSBDD-1-25 designation"]
+        problems = []
         spans = sorted(d.span for d in designs_for_box(self.box))
         if self.span_ft not in spans:
-            return [f"span_ft: {self.span_ft} not cataloged for "
-                    f"{self.box} (spans {spans[0]}-{spans[-1]} in 5-ft "
-                    f"steps)"]
-        return []
+            problems.append(f"span_ft: {self.span_ft} not cataloged for "
+                            f"{self.box} (spans {spans[0]}-{spans[-1]} in "
+                            f"5-ft steps)")
+        if abs(self.skew_deg) > BOX_MAX_SKEW_DEG:
+            problems.append(f"skew_deg: {self.skew_deg} exceeds the "
+                            f"PSBD-1-25 limit of {BOX_MAX_SKEW_DEG:g} deg")
+        return problems
 
     def to_input(self):
         """The :class:`~civilpy.structural.rhino_box_bim.BoxBridgeInput`

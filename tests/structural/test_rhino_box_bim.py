@@ -122,10 +122,50 @@ def test_invalid_span_names_valid_ones():
             box="CB27-48", span_ft=61.0, n_beams=9))
 
 
-def test_skew_not_supported():
-    with pytest.raises(ValueError, match="skew"):
-        box_beam_bridge_emit(BoxBridgeInput(
+class TestSkew:
+    SHEAR = 0.26794919243  # tan(15 deg)
+
+    @pytest.fixture(scope="class")
+    def skewed(self):
+        return box_beam_bridge_emit(BoxBridgeInput(
             box="CB27-48", span_ft=60.0, n_beams=9, skew_deg=15.0))
+
+    def test_beyond_standard_cap_raises(self):
+        with pytest.raises(ValueError, match="30"):
+            box_beam_bridge_emit(BoxBridgeInput(
+                box="CB27-48", span_ft=60.0, n_beams=9, skew_deg=45.0))
+
+    def test_doc_tag_carries_skew(self, skewed):
+        assert skewed.doc_tags["bim.skew_deg"] == "15"
+
+    def test_gdr_lines_shift_by_beam_offset(self, skewed):
+        lines = {int(o.tags["gdr.line"]): o for o in skewed.objects
+                 if o.tags.get("gdr.kind") == "girder"}
+        for line, o in lines.items():
+            y_c = (line - 0.5) * 4.0             # 48 in beams
+            assert o.points[0][0] == pytest.approx(y_c * self.SHEAR)
+            assert o.points[1][0] == pytest.approx(60.0 + y_c * self.SHEAR)
+
+    def test_beam_plan_is_sheared_parallelogram(self, skewed):
+        top = next(o for o in skewed.of_type("box_beam")
+                   if o.tags["bim.id"] == "BB2-TOP_FLANGE")
+        for x, y, _z in top.points:
+            assert x in (pytest.approx(y * self.SHEAR),
+                         pytest.approx(60.0 + y * self.SHEAR))
+
+    def test_tie_rods_run_parallel_to_supports(self, skewed):
+        rod = next(iter(skewed.of_type("tie_rod")))
+        (x0, y0, _), (x1, y1, _) = rod.points
+        assert (x1 - x0) / (y1 - y0) == pytest.approx(self.SHEAR)
+
+    def test_quantities_match_the_square_bridge(self, skewed):
+        square = box_beam_bridge_emit(BoxBridgeInput(
+            box="CB27-48", span_ft=60.0, n_beams=9))
+        sq = pay_item_quantities(square)
+        sk = pay_item_quantities(skewed)
+        assert sq.keys() == sk.keys()
+        for item in sq:
+            assert sk[item]["qty"] == pytest.approx(sq[item]["qty"])
 
 
 def test_emit_json_round_trip(emit):
