@@ -142,5 +142,5 @@ evidence:publish:
     - git -C /tmp/ev config user.name "evidence-bot"
     - git -C /tmp/ev config user.email "evidence-bot@daneparks.com"
     - git -C /tmp/ev add -A
-    - git -C /tmp/ev commit -m "evidence: ${CI_PROJECT_NAME} ${DATE} (${CI_COMMIT_SHORT_SHA})"
+    - 'git -C /tmp/ev commit -m "evidence: ${CI_PROJECT_NAME} ${DATE} (${CI_COMMIT_SHORT_SHA})"'
     - git -C /tmp/ev push
