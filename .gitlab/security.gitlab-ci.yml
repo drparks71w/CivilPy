@@ -72,8 +72,8 @@ sec:pip-audit:
       else
         cp requirements.txt /tmp/reqs.txt
       fi
-    - pip-audit -r /tmp/reqs.txt --disable-pip -f json -o evidence/pip-audit.json || true
-    - pip-audit -r /tmp/reqs.txt --disable-pip
+    - pip-audit -r /tmp/reqs.txt --disable-pip --no-deps -f json -o evidence/pip-audit.json || true
+    - pip-audit -r /tmp/reqs.txt --disable-pip --no-deps
   artifacts:
     when: always
     paths: [evidence/]
