@@ -1,8 +1,16 @@
 # DEFINE STAGES EXPLICITLY TO CONTROL ORDER
 stages:
-  - sanity  # The blocker stage
-  - test    # The matrix stage
-  - deploy  # The release stage
+  - sanity    # The blocker stage
+  - test      # The matrix stage
+  - security  # SBOM/SCA/SAST evidence jobs (scheduled + master; skipped on tags)
+  - deploy    # The release stage
+
+# Security/evidence jobs — vendored from the (private) Dane/compliance-evidence
+# repo's ci/security.gitlab-ci.yml; vendored rather than include:project so fork
+# MR pipelines still compile. Scan output publishes to the private evidence repo,
+# never to this repository.
+include:
+  - local: .gitlab/security.gitlab-ci.yml
 
 variables:
   PIP_CACHE_DIR: "$CI_PROJECT_DIR/.pip_cache"
