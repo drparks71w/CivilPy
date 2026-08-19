@@ -117,7 +117,9 @@ def _bake(objs):
 backwall, footing, wingwall = None, None, None
 
 _required = ("width", "wingwall_length", "footing_depth", "backwall_height")
-if not all(globals().get(k) for k in _required):
+# Grasshopper injects component inputs as script globals; the keys probed
+# here are the static literals above, not user-controlled data.
+if not all(globals().get(k) for k in _required):  # nosemgrep: python.lang.security.dangerous-globals-use.dangerous-globals-use
     report = "Connect all of: width, wingwall_length, footing_depth, " \
              "backwall_height (ft). Optional: skew (deg), bake. " \
              "GUIDANCE ONLY -- see the report once connected."

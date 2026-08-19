@@ -56,7 +56,9 @@ Slab = None
 report_lines = []
 
 _required = ("Length", "Width", "Depth", "Spacing")
-if not all(globals().get(k) for k in _required):
+# Grasshopper injects component inputs as script globals; the keys probed
+# here are the static literals above, not user-controlled data.
+if not all(globals().get(k) for k in _required):  # nosemgrep: python.lang.security.dangerous-globals-use.dangerous-globals-use
     Report = "Connect inputs: Length, Width, Depth, Spacing."
 else:
     L, W, H, spacing = float(Length), float(Width), float(Depth), float(Spacing)

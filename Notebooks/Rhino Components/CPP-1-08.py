@@ -104,7 +104,9 @@ cap = None
 piles = []
 
 _required = ("slab_width", "n_piles", "pile_spacing")
-if not all(globals().get(k) for k in _required):
+# Grasshopper injects component inputs as script globals; the keys probed
+# here are the static literals above, not user-controlled data.
+if not all(globals().get(k) for k in _required):  # nosemgrep: python.lang.security.dangerous-globals-use.dangerous-globals-use
     report = "Connect at least: slab_width (ft), n_piles (>= 2), " \
              "pile_spacing (ft, max 7.5). Optional: skew (deg, max 30), " \
              "cap_depth (ft, default 2.0), bake."

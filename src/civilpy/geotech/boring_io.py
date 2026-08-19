@@ -17,7 +17,7 @@ particle-size curve, so no character-window scraping is needed.
 A DIGGS document is GML-based and heavily namespaced; this reader matches
 on *local* element names so it is agnostic to the schema version
 (2.5.a, 2.6, ...) and to namespace-prefix churn.  Only the standard
-library (:mod:`xml.etree.ElementTree`) is used.
+library (:mod:`defusedxml.ElementTree`) is used.
 
 PDF log ingestion (for the raster/scanned holes that have no DIGGS file) is
 a separate, lower-fidelity concern handled by :func:`read_pdf_log`.
@@ -25,7 +25,7 @@ a separate, lower-fidelity concern handled by :func:`read_pdf_log`.
 
 from __future__ import annotations
 
-import xml.etree.ElementTree as ET
+import defusedxml.ElementTree as ET  # stdlib etree is XXE-vulnerable
 from pathlib import Path
 
 from civilpy.geotech.boring import (

@@ -157,7 +157,7 @@ class Terrain:
         ``(easting, northing, elevation)``.  Faces are 1-indexed; faces with a
         negative index (LandXML's deleted/invisible marker) are dropped.
         """
-        import xml.etree.ElementTree as ET
+        import defusedxml.ElementTree as ET  # stdlib etree is XXE-vulnerable
 
         root = ET.parse(str(path)).getroot()
 

@@ -822,7 +822,7 @@ drilled_shaft_criteria = [
 ]
 
 all_criteria = {
-    var_name: globals()[var_name]
-    for var_name in globals().keys()
+    var_name: value
+    for var_name, value in list(globals().items())
     if var_name.endswith("_criteria") and var_name != "all_comments"  # Exclude itself
 }
