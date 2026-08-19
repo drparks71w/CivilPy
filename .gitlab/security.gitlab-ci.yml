@@ -89,6 +89,10 @@ sec:sast:
   stage: security
   image: semgrep/semgrep:latest
   allow_failure: true # red = findings; fix or annotate with justified nosemgrep
+  before_script:
+    # semgrep's official image refuses to run in Docker unless the code sits at
+    # /src; GitLab checks out to /builds/..., so link it (harmless elsewhere)
+    - ln -sfn "$CI_PROJECT_DIR" /src 2>/dev/null || true
   script:
     - mkdir -p evidence
     - semgrep scan --config p/default --config p/python --metrics=off --sarif --output evidence/semgrep.sarif
