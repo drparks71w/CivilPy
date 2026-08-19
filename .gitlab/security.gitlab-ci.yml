@@ -84,6 +84,35 @@ sec:pip-audit:
     paths: [evidence/]
     expire_in: 6 months
 
+# npm advisory detail, for repos with package-lock.json (grype already gates
+# npm CVEs via the SBOM; this is the pip-audit analog for node)
+sec:npm-audit:
+  stage: security
+  image: node:22-alpine
+  cache: []
+  allow_failure: true # red = advisories found; fix or waive via triage
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      exists: ["package-lock.json", "**/package-lock.json"]
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      exists: ["package-lock.json", "**/package-lock.json"]
+  script:
+    - mkdir -p evidence
+    - |
+      status=0
+      for lock in $(find . -name package-lock.json -not -path "*/node_modules/*"); do
+        dir=$(dirname "$lock")
+        tag=$(echo "$dir" | tr '/.' '__')
+        echo "=== npm audit: $dir (prod deps)"
+        (cd "$dir" && npm audit --omit=dev --json) > "evidence/npm-audit-$tag.json" || true
+        (cd "$dir" && npm audit --omit=dev) || status=1
+      done
+      exit $status
+  artifacts:
+    when: always
+    paths: [evidence/]
+    expire_in: 6 months
+
 sec:sast:
   extends: .sec-rules
   stage: security
@@ -127,7 +156,14 @@ evidence:publish:
   stage: security
   image: alpine:3.20
   cache: []
-  needs: ["sec:sbom", "sec:sca", "sec:pip-audit", "sec:sast", "sec:trivy"]
+  needs:
+    - sec:sbom
+    - sec:sca
+    - sec:pip-audit
+    - sec:sast
+    - sec:trivy
+    - job: sec:npm-audit
+      optional: true # only exists in repos with npm lockfiles
   rules:
     - if: $EVIDENCE_PUSH_TOKEN == null
       when: never
