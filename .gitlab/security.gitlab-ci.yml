@@ -14,11 +14,16 @@
 #   EVIDENCE_PUSH_TOKEN — project access token with write_repository on
 #   Dane/compliance-evidence; enables evidence:publish.
 #
-# Gating policy: sec:sca fails the pipeline on Critical findings that have no
-# waiver in .grype.yaml. allow_failure is true for the initial rollout — flip it
-# to false after the first triage pass has written waivers/VEX for the backlog.
+# Gating policy: sec:sca is the ONLY job that goes red on findings — it fails
+# on Critical CVEs with no waiver in .grype.yaml (allow_failure true for the
+# initial rollout; flip to false after the first triage dispositions the
+# backlog). The other scanners always exit 0 on findings — results land in the
+# evidence/ artifacts and are dispositioned by the monthly triage — so a red
+# advisory job means the scanner itself broke, not that findings exist.
 
 .sec-rules:
+  cache: [] # scanners don't need the repo's dependency caches — and trivy
+  # must not walk a restored cache dir (a .uv_cache/ blew its scan timeout)
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
@@ -60,7 +65,6 @@ sec:pip-audit:
   extends: .sec-rules
   stage: security
   image: python:3.12-slim
-  allow_failure: true # advisory — grype is the gate
   script:
     - pip install -q pip-audit uv
     - mkdir -p evidence
@@ -72,8 +76,9 @@ sec:pip-audit:
       else
         cp requirements.txt /tmp/reqs.txt
       fi
-    - pip-audit -r /tmp/reqs.txt --disable-pip --no-deps -f json -o evidence/pip-audit.json || true
-    - pip-audit -r /tmp/reqs.txt --disable-pip --no-deps
+    # exit 1 + non-empty JSON = findings (fine, triaged monthly); empty = real crash
+    - pip-audit -r /tmp/reqs.txt --disable-pip --no-deps -f json -o evidence/pip-audit.json || [ -s evidence/pip-audit.json ]
+    - pip-audit -r /tmp/reqs.txt --disable-pip --no-deps || echo "advisories recorded in evidence/pip-audit.json"
   artifacts:
     when: always
     paths: [evidence/]
@@ -83,11 +88,11 @@ sec:sast:
   extends: .sec-rules
   stage: security
   image: semgrep/semgrep:latest
-  allow_failure: true # advisory until the first triage establishes a baseline
   script:
     - mkdir -p evidence
     - semgrep scan --config p/default --config p/python --metrics=off --sarif --output evidence/semgrep.sarif
-    - semgrep scan --config p/default --config p/python --metrics=off --error
+    # no --error: findings print here and live in the SARIF; they don't redden the job
+    - semgrep scan --config p/default --config p/python --metrics=off
   artifacts:
     when: always
     paths: [evidence/]
@@ -102,11 +107,11 @@ sec:trivy:
     entrypoint: [""]
   variables:
     GIT_DEPTH: "0" # full history so secret scanning sees past commits
-  allow_failure: true # advisory until the first triage establishes a baseline
+    TRIVY_SKIP: ".uv_cache,.pip_cache,.venv,venv,node_modules"
   script:
     - mkdir -p evidence
-    - trivy fs --scanners secret,license,misconfig --license-full --format json --output evidence/trivy.json .
-    - trivy fs --scanners secret,misconfig --exit-code 0 .
+    - trivy fs --scanners secret,license,misconfig --license-full --skip-dirs "$TRIVY_SKIP" --timeout 15m --format json --output evidence/trivy.json .
+    - trivy fs --scanners secret,misconfig --skip-dirs "$TRIVY_SKIP" --timeout 15m --exit-code 0 .
   artifacts:
     when: always
     paths: [evidence/]
@@ -116,6 +121,7 @@ sec:trivy:
 evidence:publish:
   stage: security
   image: alpine:3.20
+  cache: []
   needs: ["sec:sbom", "sec:sca", "sec:pip-audit", "sec:sast", "sec:trivy"]
   rules:
     - if: $EVIDENCE_PUSH_TOKEN == null
