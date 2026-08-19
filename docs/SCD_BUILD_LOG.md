@@ -1,5 +1,12 @@
 # ODOT SCD component build log
 
+One line per SCD, updated as each lands. NOTE 2026-08-19: the GH prototype
+scripts in `Notebooks/Rhino Components/` were removed after porting completed
+(every SCD below is done or not-built-by-design); the table's GH-script paths
+are historical — retrieve them from git history if ever needed. The live
+components (`draw_bim_emit.py`, `odot_bridge_generator_ghpython.py`,
+`ODOT SCDs.gh`) remain.
+
 One line per SCD, updated as each lands. Status: done / parked /
 skipped-by-rating. Companion decisions and open questions live in
 `SCD_BUILD_QUESTIONS.md`.

@@ -511,7 +511,6 @@ name = "civilpy"
 version = "0.4.2"
 source = { editable = "." }
 dependencies = [
-    { name = "beautifulsoup4" },
     { name = "defusedxml" },
     { name = "ezdxf" },
     { name = "matplotlib" },
@@ -560,6 +559,7 @@ fem = [
     { name = "scikit-image", version = "0.26.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
 ]
 full = [
+    { name = "beautifulsoup4" },
     { name = "camelot-py" },
     { name = "folium" },
     { name = "freesimplegui" },
@@ -628,13 +628,14 @@ validation = [
     { name = "python-dotenv" },
 ]
 web = [
+    { name = "beautifulsoup4" },
     { name = "plotly" },
     { name = "selenium" },
 ]
 
 [package.metadata]
 requires-dist = [
-    { name = "beautifulsoup4", specifier = ">=4.11" },
+    { name = "beautifulsoup4", marker = "extra == 'web'", specifier = ">=4.11" },
     { name = "camelot-py", marker = "extra == 'pdf'", specifier = ">=0.11" },
     { name = "cande-wrapper", marker = "extra == 'cande'", specifier = ">=0.1" },
     { name = "civilpy", extras = ["db", "pdf", "geo", "web", "jupyter", "validation", "rhino", "fem"], marker = "extra == 'full'" },
