@@ -94,12 +94,31 @@ class AssetWiseClient:
     # Low-level request helper
     # ------------------------------------------------------------------
     def _get_with_retry(self, url, params=None, max_retries=3, backoff_factor=1):
-        """Execute a GET with exponential backoff on transient failures."""
+        """Execute a GET with exponential backoff on transient failures.
+
+        4xx responses (except 429) are deterministic — the server will give
+        the same answer every time — so they raise immediately instead of
+        burning retries. Callers that expect 404s (missing asset, no report
+        container) catch HTTPError and translate it.
+        """
         for attempt in range(max_retries):
             try:
                 resp = self.session.get(url, params=params, timeout=30)
                 resp.raise_for_status()
                 return resp
+            except requests.exceptions.HTTPError as e:
+                status = getattr(e.response, 'status_code', None)
+                if status is not None and 400 <= status < 500 and status != 429:
+                    logger.debug("HTTP %s for %s — permanent client error, "
+                                 "not retrying", status, url)
+                    raise
+                logger.warning("Request failed (attempt %d/%d) for %s: %s",
+                               attempt + 1, max_retries, url, e)
+                if attempt == max_retries - 1:
+                    logger.error("Max retries exceeded for %s.", url)
+                    raise
+                jitter = random.uniform(0, backoff_factor)
+                time.sleep(backoff_factor * (2 ** attempt) + jitter)
             except requests.exceptions.RequestException as e:
                 logger.warning("Request failed (attempt %d/%d) for %s: %s",
                                attempt + 1, max_retries, url, e)
@@ -110,11 +129,21 @@ class AssetWiseClient:
                 time.sleep(backoff_factor * (2 ** attempt) + jitter)
         return None  # pragma: no cover
 
+    @staticmethod
+    def _http_status(exc):
+        """Status code from a requests exception, or None."""
+        return getattr(getattr(exc, 'response', None), 'status_code', None)
+
     # ------------------------------------------------------------------
     # Asset identity
     # ------------------------------------------------------------------
     def get_as_id(self, sfn):
-        """Resolve a bridge SFN to its internal as_id (one API call)."""
+        """Resolve a bridge SFN to its internal as_id (one API call).
+
+        Returns None when the SFN can't be resolved; a 404 means the asset
+        no longer exists in AssetWise (removed or renumbered) — a stale
+        local inventory row, not a network problem.
+        """
         url = f"{self.base_url}/api/Asset/GetAssetByAsCode/{sfn}"
         try:
             resp = self._get_with_retry(
@@ -124,7 +153,13 @@ class AssetWiseClient:
                 if data.get('success') and data.get('data'):
                     return data['data'].get('as_id')
         except Exception as e:
-            logger.error("Failed to fetch as_id for SFN %s: %s", sfn, e)
+            if self._http_status(e) == 404:
+                logger.warning(
+                    "SFN %s: not found in AssetWise (GetAssetByAsCode 404) — "
+                    "asset was removed or renumbered; local inventory row is "
+                    "stale", sfn)
+            else:
+                logger.error("Failed to fetch as_id for SFN %s: %s", sfn, e)
         return None
 
     def iter_all_assets(self, page_size=500, max_records=200000):
@@ -260,7 +295,13 @@ class AssetWiseClient:
         return []
 
     def get_inspections(self, asset_id):
-        """Fetch all approved inspections for an asset."""
+        """Fetch all approved inspections for an asset.
+
+        Returns [] when the asset has reports but none approved, and None
+        when GetAllApproved 404s — the asset has no inspection-report
+        container at all (brand-new or skeletal asset). Both are falsy, so
+        ``if not inspections`` keeps working for callers that don't care.
+        """
         url = f"{self.base_url}/api/InspectionReport/GetAllApproved/{asset_id}"
         try:
             resp = self._get_with_retry(url)
@@ -269,6 +310,12 @@ class AssetWiseClient:
                 if data.get('success'):
                     return data.get('data', [])
         except Exception as e:
+            if self._http_status(e) == 404:
+                logger.warning(
+                    "asset=%s: no inspection-report container "
+                    "(GetAllApproved 404) — new or skeletal asset, nothing "
+                    "to sync", asset_id)
+                return None
             logger.error("Failed to fetch inspections for asset=%s: %s", asset_id, e)
         return []
 
