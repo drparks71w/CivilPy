@@ -319,6 +319,26 @@ class AssetWiseClient:
             logger.error("Failed to fetch inspections for asset=%s: %s", asset_id, e)
         return []
 
+    def get_report_inspection_types(self, ast_id):
+        """it_ids covered by one report (InspectionReportInspTypeMap).
+
+        A report's rt_id is always 1 in ODOT's data — the inspection type(s)
+        a report actually performed live in this map (1/6=Routine,
+        3/7=Underwater, 2/8=FC/NSTM, 4/11=Special, 5=Initial, 9=Damage,
+        10=In-Depth, 12=Service; legacy/SNBI pairs).
+        """
+        url = (f"{self.base_url}/api/InspectionReportInspTypeMap/"
+               f"GetAllReportInspectionTypeMap/{ast_id}")
+        try:
+            resp = self._get_with_retry(url)
+            if resp:
+                data = resp.json().get('data', []) or []
+                return [m.get('it_id') for m in data if m.get('it_id')]
+        except Exception as e:
+            logger.error("Failed to fetch inspection-type map for report=%s: %s",
+                         ast_id, e)
+        return []
+
     def get_full_inspection_report(self, ast_id):
         """Fetch the full inspection report values via ast_id."""
         url = f"{self.base_url}/api/Value/GetValuesForReport/{ast_id}"
