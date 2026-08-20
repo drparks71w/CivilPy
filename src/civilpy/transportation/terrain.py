@@ -132,7 +132,7 @@ class Terrain:
         if preprocess:
             try:
                 import open3d as o3d
-            except ImportError as exc:
+            except ImportError as exc:                   # pragma: no cover
                 raise ImportError(
                     "preprocessing needs 'open3d' (pip install open3d)") from exc
 
@@ -157,7 +157,7 @@ class Terrain:
         ``(easting, northing, elevation)``.  Faces are 1-indexed; faces with a
         negative index (LandXML's deleted/invisible marker) are dropped.
         """
-        import xml.etree.ElementTree as ET
+        import defusedxml.ElementTree as ET  # stdlib etree is XXE-vulnerable
 
         root = ET.parse(str(path)).getroot()
 

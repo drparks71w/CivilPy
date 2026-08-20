@@ -1,0 +1,193 @@
+# Security / compliance-evidence jobs.
+#
+# CANONICAL COPY: Dane/compliance-evidence ci/security.gitlab-ci.yml
+# Vendored into each project as .gitlab/security.gitlab-ci.yml — a cross-project
+# include of this private repo would break pipeline compilation for fork MRs on
+# the public repos. The monthly triage checks the vendored copies for drift.
+#
+# Requirements in the including .gitlab-ci.yml:
+#   - add "security" to the stages list
+#   - include: [{local: .gitlab/security.gitlab-ci.yml}]
+#   - repos with tag-selected runners: override each sec:* job with tags: [docker]
+#
+# Optional CI/CD variable (Settings > CI/CD > Variables, masked):
+#   EVIDENCE_PUSH_TOKEN — project access token with write_repository on
+#   Dane/compliance-evidence; enables evidence:publish.
+#
+# Gating policy: scanners go RED when they find issues — fix the findings (or
+# waive with justification via the monthly triage) rather than silencing jobs.
+# pip-audit/sast/trivy are allow_failure (red but non-blocking); sec:sca is the
+# enforcing gate: it fails the pipeline on Critical CVEs with no .grype.yaml
+# waiver (allow_failure true for initial rollout; flip to false after the
+# first triage dispositions the backlog).
+
+.sec-rules:
+  cache: [] # scanners don't need the repo's dependency caches — and trivy
+  # must not walk a restored cache dir (a .uv_cache/ blew its scan timeout)
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+sec:sbom:
+  extends: .sec-rules
+  stage: security
+  image: alpine:3.20
+  variables:
+    GIT_DEPTH: "1"
+  before_script:
+    - apk add --no-cache curl ca-certificates
+    - curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
+  script:
+    - mkdir -p evidence
+    - syft scan dir:. --source-name "$CI_PROJECT_NAME" -o cyclonedx-json=evidence/sbom.cdx.json -o table
+  artifacts:
+    paths: [evidence/]
+    expire_in: 6 months
+
+sec:sca:
+  extends: .sec-rules
+  stage: security
+  image: alpine:3.20
+  needs: ["sec:sbom"]
+  allow_failure: true # flip to false after first triage writes waivers for the backlog
+  before_script:
+    - apk add --no-cache curl ca-certificates
+    - curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b /usr/local/bin
+  script:
+    - grype sbom:evidence/sbom.cdx.json --add-cpes-if-none -o json --file evidence/grype.json
+    - grype sbom:evidence/sbom.cdx.json --add-cpes-if-none -o table --fail-on critical
+  artifacts:
+    when: always
+    paths: [evidence/]
+    expire_in: 6 months
+
+sec:pip-audit:
+  extends: .sec-rules
+  stage: security
+  image: python:3.12-slim
+  allow_failure: true # red = advisories found; fix or waive via triage
+  script:
+    - pip install -q pip-audit uv
+    - mkdir -p evidence
+    - |
+      if [ -f uv.lock ]; then
+        uv export --frozen --no-emit-project --no-hashes --format requirements-txt -o /tmp/reqs.txt
+      elif [ -f requirements.lock.txt ]; then
+        grep -E '^[A-Za-z0-9_.-]+==' requirements.lock.txt | sed 's/ *\\$//' > /tmp/reqs.txt
+      else
+        cp requirements.txt /tmp/reqs.txt
+      fi
+    - pip-audit -r /tmp/reqs.txt --disable-pip --no-deps -f json -o evidence/pip-audit.json || true
+    - pip-audit -r /tmp/reqs.txt --disable-pip --no-deps
+  artifacts:
+    when: always
+    paths: [evidence/]
+    expire_in: 6 months
+
+# npm advisory detail, for repos with package-lock.json (grype already gates
+# npm CVEs via the SBOM; this is the pip-audit analog for node)
+sec:npm-audit:
+  stage: security
+  image: node:22-alpine
+  cache: []
+  allow_failure: true # red = advisories found; fix or waive via triage
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      exists: ["package-lock.json", "**/package-lock.json"]
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      exists: ["package-lock.json", "**/package-lock.json"]
+  script:
+    - mkdir -p evidence
+    - |
+      status=0
+      for lock in $(find . -name package-lock.json -not -path "*/node_modules/*"); do
+        dir=$(dirname "$lock")
+        tag=$(echo "$dir" | tr '/.' '__')
+        echo "=== npm audit: $dir (prod deps)"
+        (cd "$dir" && npm audit --omit=dev --json) > "evidence/npm-audit-$tag.json" || true
+        (cd "$dir" && npm audit --omit=dev) || status=1
+      done
+      exit $status
+  artifacts:
+    when: always
+    paths: [evidence/]
+    expire_in: 6 months
+
+sec:sast:
+  extends: .sec-rules
+  stage: security
+  image: semgrep/semgrep:latest
+  allow_failure: true # red = findings; fix or annotate with justified nosemgrep
+  before_script:
+    # semgrep's official image refuses to run in Docker unless the code sits at
+    # /src; GitLab checks out to /builds/..., so link it (harmless elsewhere)
+    - ln -sfn "$CI_PROJECT_DIR" /src 2>/dev/null || true
+  script:
+    - mkdir -p evidence
+    - semgrep scan --config p/default --config p/python --metrics=off --sarif --output evidence/semgrep.sarif
+    - semgrep scan --config p/default --config p/python --metrics=off --error
+  artifacts:
+    when: always
+    paths: [evidence/]
+    expire_in: 6 months
+
+# Secrets in history + license inventory + Dockerfile/IaC misconfiguration
+sec:trivy:
+  extends: .sec-rules
+  stage: security
+  image:
+    name: aquasec/trivy:latest
+    entrypoint: [""]
+  variables:
+    GIT_DEPTH: "0" # full history so secret scanning sees past commits
+    TRIVY_SKIP: ".uv_cache,.pip_cache,.venv,venv,node_modules"
+  allow_failure: true # red = secrets/misconfig found; fix or waive via triage
+  script:
+    - mkdir -p evidence
+    - trivy fs --scanners secret,license,misconfig --license-full --skip-dirs "$TRIVY_SKIP" --timeout 15m --format json --output evidence/trivy.json .
+    - trivy fs --scanners secret,misconfig --skip-dirs "$TRIVY_SKIP" --timeout 15m --exit-code 1 .
+  artifacts:
+    when: always
+    paths: [evidence/]
+    expire_in: 6 months
+
+# Pushes this pipeline's evidence to Dane/compliance-evidence:evidence/<project>/<date>/
+evidence:publish:
+  stage: security
+  image: alpine:3.20
+  cache: []
+  needs:
+    - sec:sbom
+    - sec:sca
+    - sec:pip-audit
+    - sec:sast
+    - sec:trivy
+    - job: sec:npm-audit
+      optional: true # only exists in repos with npm lockfiles
+  rules:
+    - if: $EVIDENCE_PUSH_TOKEN == null
+      when: never
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      when: manual
+      allow_failure: true
+  before_script:
+    - apk add --no-cache git
+  script:
+    - DATE=$(date -u +%Y-%m-%d)
+    - git clone --depth 1 "https://evidence-bot:${EVIDENCE_PUSH_TOKEN}@${CI_SERVER_HOST}/Dane/compliance-evidence.git" /tmp/ev
+    - DEST="/tmp/ev/evidence/${CI_PROJECT_NAME}/${DATE}"
+    - mkdir -p "$DEST"
+    - cp -r evidence/* "$DEST"/
+    - |
+      cat > "$DEST/manifest.txt" <<EOF
+      project:  $CI_PROJECT_PATH
+      commit:   $CI_COMMIT_SHA
+      pipeline: $CI_PIPELINE_URL
+      date:     $DATE
+      EOF
+    - git -C /tmp/ev config user.name "evidence-bot"
+    - git -C /tmp/ev config user.email "evidence-bot@daneparks.com"
+    - git -C /tmp/ev add -A
+    - 'git -C /tmp/ev commit -m "evidence: ${CI_PROJECT_NAME} ${DATE} (${CI_COMMIT_SHORT_SHA})"'
+    - git -C /tmp/ev push

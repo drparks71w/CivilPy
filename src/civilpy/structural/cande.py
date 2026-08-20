@@ -39,7 +39,7 @@ from __future__ import annotations
 
 import math
 import tempfile
-import xml.etree.ElementTree as ET
+import defusedxml.ElementTree as ET  # stdlib etree is XXE-vulnerable
 from dataclasses import dataclass
 from pathlib import Path
 

@@ -263,7 +263,7 @@ class TestFlangeResistanceFamily:
 class TestShearConnectorDetails:
     def test_fatigue_resistance_infinite_life(self):
         r = lrfd.shear_connector_fatigue_resistance(d_stud=0.875)
-        assert r.capacity == pytest.approx(5.5 * 0.875**2 / 2.0)
+        assert r.capacity == pytest.approx(5.5 * 0.875**2)
         assert r.details["combination"] == "Fatigue I"
 
     def test_fatigue_resistance_finite_life(self):

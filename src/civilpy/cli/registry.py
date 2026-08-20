@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import dataclasses
 import importlib
+import re
 from dataclasses import dataclass
 from typing import Any, Callable, List, Literal, Optional, Tuple, get_args, get_origin, get_type_hints
 
@@ -45,8 +46,11 @@ class CliError(Exception):
 
 def require(module: str, extra: str):
     """Import an optional dependency or raise the install-hint error."""
+    if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_.]*", module):
+        raise CliError(f"invalid module name: {module!r}")
     try:
-        return importlib.import_module(module)
+        # module names come from civilpy's own command tables, validated above
+        return importlib.import_module(module)  # nosemgrep: python.lang.security.audit.non-literal-import.non-literal-import
     except ImportError:
         raise CliError(
             f"this command needs the '{extra}' extra: "
@@ -180,7 +184,7 @@ class CommandSpec:
 
 #: Command modules under civilpy.cli.commands, each exporting ``SPECS``.
 COMMAND_MODULES = ("boring", "odot", "hydro", "road", "snbi", "photos",
-                   "report", "spanwire")
+                   "pdf", "report", "spanwire")
 
 _specs_cache: Optional[List[CommandSpec]] = None
 
@@ -190,7 +194,8 @@ def all_specs() -> List[CommandSpec]:
     if _specs_cache is None:
         specs: List[CommandSpec] = []
         for mod_name in COMMAND_MODULES:
-            mod = importlib.import_module(f"civilpy.cli.commands.{mod_name}")
+            # mod_name iterates the literal COMMAND_MODULES table above
+            mod = importlib.import_module(f"civilpy.cli.commands.{mod_name}")  # nosemgrep: python.lang.security.audit.non-literal-import.non-literal-import
             specs.extend(mod.SPECS)
         _specs_cache = specs
     return _specs_cache
@@ -205,7 +210,10 @@ def find_spec(group: str, verb: str) -> Optional[CommandSpec]:
 
 def resolve_runner(spec: CommandSpec) -> Callable:
     mod_name, func_name = spec.runner.split(":")
-    return getattr(importlib.import_module(mod_name), func_name)
+    if not mod_name.startswith("civilpy."):
+        raise CliError(f"runner module outside civilpy: {mod_name!r}")
+    # runner strings are declared in civilpy's own CommandSpec table
+    return getattr(importlib.import_module(mod_name), func_name)  # nosemgrep: python.lang.security.audit.non-literal-import.non-literal-import
 
 
 def build_inputs(spec: CommandSpec, values: dict):

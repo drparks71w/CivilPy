@@ -159,8 +159,10 @@ _WF_DRAPED = ((0.0, 14.0), (0.0, 16.0))
 
 def _shipping(depth_in: float) -> tuple:
     """Modified-AASHTO / WF shipping strand locations: six in the top
-    flange at +/-6, +/-8, +/-10 in, 3 in below the top surface."""
-    z = depth_in - 3.0
+    flange at +/-6, +/-8, +/-10 in, centers 2-3/4 in below the top
+    surface (the "2 3/4 (TYP.)" bar-depth callout on sheets 1-3, shared
+    with the D31 flange-tip wires)."""
+    z = depth_in - 2.75
     return tuple((float(y), z) for y in (-10, -8, -6, 6, 8, 10))
 
 
@@ -286,13 +288,12 @@ def layout_ps_i_beam(name: str, length_ft: float,
 # ── true tapered outlines (straight-line; fillet/chamfer radii omitted) ──
 #
 # Half-outline breakpoints (half_width, z) bottom-up per section family,
-# from each diagram's dimension stack.  AASHTO 2/3/4 close exactly (the
-# polygon area reproduces the published area to the ~1 in^2 the chamfers
-# remove); the Modified Type 4 / WF top-flange edge split between the
-# vertical edge and the underside slope is read off the sheet to the
-# nearest inch, so those polygon areas run a few percent over the
-# published values -- quantities should use the published area/weight,
-# not the drawn outline (see SCD_BUILD_QUESTIONS.md).
+# from each diagram's dimension stack.  All close on the published areas
+# to the ~1 in^2 the corner chamfers remove.  Modified Type 4 top
+# flange (sheet 1): 4 in vertical tip edge, underside slope dropping
+# 3 in over an 11 in run (17 in on the 72), then 2 in over the final
+# 3 in into the web.  WF top flange (sheets 2-3): 5 in tip edge, then
+# 3 in drops over 1'-5 1/2 in and 3 in runs.
 _HALF_OUTLINES: dict[str, tuple[Point, ...]] = {
     "AASHTO Type 2": ((9, 0), (9, 6), (3, 12), (3, 27), (6, 30), (6, 36)),
     "AASHTO Type 3": ((11, 0), (11, 7), (3.5, 14.5), (3.5, 33.5),
@@ -300,17 +301,17 @@ _HALF_OUTLINES: dict[str, tuple[Point, ...]] = {
     "AASHTO Type 4": ((13, 0), (13, 8), (4, 17), (4, 40), (10, 46),
                       (10, 54)),
     "Modified AASHTO Type 4 (60in)": (
-        (13, 0), (13, 8), (4, 17), (4, 51), (18, 56), (18, 60)),
+        (13, 0), (13, 8), (4, 17), (4, 51), (7, 53), (18, 56), (18, 60)),
     "Modified AASHTO Type 4 (66in)": (
-        (13, 0), (13, 8), (4, 17), (4, 57), (18, 62), (18, 66)),
+        (13, 0), (13, 8), (4, 17), (4, 57), (7, 59), (18, 62), (18, 66)),
     "Modified AASHTO Type 4 (72in)": (
-        (13, 0), (13, 8), (4, 17), (4, 63), (24, 68), (24, 72)),
+        (13, 0), (13, 8), (4, 17), (4, 63), (7, 65), (24, 68), (24, 72)),
 }
 
 
 def _wf_half_outline(depth: float) -> tuple[Point, ...]:
     return ((20, 0), (20, 5.5), (6, 12.5), (4, 14.5), (4, depth - 11),
-            (21.5, depth - 6), (24.5, depth - 3), (24.5, depth))
+            (7, depth - 8), (24.5, depth - 5), (24.5, depth))
 
 
 def ps_i_beam_profile(name: str) -> tuple[Point, ...]:

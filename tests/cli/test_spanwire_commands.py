@@ -158,27 +158,32 @@ def test_system_wye_and_custom(tmp_path, capsys):
 
 
 def test_system_error_paths(tmp_path, capsys):
+    # messages include tmp paths long enough to wrap at console width, so
+    # compare against whitespace-normalized output
+    def flat_out():
+        return " ".join(capsys.readouterr().out.split())
+
     assert execute(["spanwire", "system", "missing.json"]) == 2
-    assert "no such file" in capsys.readouterr().out
+    assert "no such file" in flat_out()
 
     bad = tmp_path / "bad.json"
     bad.write_text("{not json")
     assert execute(["spanwire", "system", str(bad)]) == 2
-    assert "invalid JSON" in capsys.readouterr().out
+    assert "invalid JSON" in flat_out()
 
     incomplete = tmp_path / "incomplete.json"
     incomplete.write_text(json.dumps({"configuration": "wye"}))
     assert execute(["spanwire", "system", str(incomplete)]) == 2
-    assert "missing key" in capsys.readouterr().out
+    assert "missing key" in flat_out()
 
     unknown = tmp_path / "unknown.json"
     unknown.write_text(json.dumps({"configuration": "octagon",
                                    "required_sag_ft": 3}))
     assert execute(["spanwire", "system", str(unknown)]) == 2
-    assert "unknown configuration" in capsys.readouterr().out
+    assert "unknown configuration" in flat_out()
 
     bad_signal = tmp_path / "sig.json"
     config = dict(BOX_CONFIG, loads={"R1R2": [{"x_ft": 20, "signal": "XX"}]})
     bad_signal.write_text(json.dumps(config))
     assert execute(["spanwire", "system", str(bad_signal)]) == 2
-    assert "unknown signal code" in capsys.readouterr().out
+    assert "unknown signal code" in flat_out()

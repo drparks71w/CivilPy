@@ -88,12 +88,26 @@ def unit_block_for(units) -> dict:
 
 
 def steel_material_block(name: str = "A709-50", *, matl_id: int = 1,
-                         props: Optional[dict] = None) -> dict:
-    """The ``/db/MATL`` assign body for a USER-defined steel material."""
+                         props: Optional[dict] = None,
+                         length_unit: str = "ft") -> dict:
+    """The ``/db/MATL`` assign body for a USER-defined steel material.
+
+    :data:`STEEL_PROPS` is stated in KIPS/FT; ``length_unit`` rescales
+    ``ELAST`` (force/length^2) and ``DEN`` (force/length^3) into the
+    model's own length unit -- see :func:`concrete_material_block` for why
+    that matters.
+    """
+    props = dict(props or STEEL_PROPS)
+    per_ft = _length_ft_per(length_unit)
+    if per_ft != 1.0:
+        if "ELAST" in props:
+            props["ELAST"] = round(props["ELAST"] * per_ft ** 2, 6)
+        if "DEN" in props:
+            props["DEN"] = round(props["DEN"] * per_ft ** 3, 9)
     return {str(matl_id): {
         "TYPE": "USER", "NAME": name, "THMAL_UNIT": "F",
         "bMASS_DENS": False, "DAMP_RAT": 0.0,
-        "PARAM": [{"P_TYPE": 2, "MASS": 0.0, **(props or STEEL_PROPS)}],
+        "PARAM": [{"P_TYPE": 2, "MASS": 0.0, **props}],
     }}
 
 
@@ -115,20 +129,43 @@ def concrete_elastic_modulus_ksf(fc_psi: float, unit_wt_pcf: float = 145.0) -> f
 
 def concrete_material_block(name: str = "Class-S-4500", *, matl_id: int = 1,
                             fc_psi: float = 4500.0,
-                            unit_wt_pcf: float = 145.0) -> dict:
+                            unit_wt_pcf: float = 145.0,
+                            length_unit: str = "ft") -> dict:
     """A ``/db/MATL`` USER concrete material with ``Ec`` from :func:`concrete_elastic_modulus_ksf`.
 
-    ``DEN`` (weight density) is carried in the model's force/length^3 unit
-    (kips/ft^3 in the civilpy default), so 145 pcf -> 0.145 kcf.
+    ``ELAST`` and ``DEN`` are carried in the model's own length unit --
+    ksf and kcf when ``length_unit`` is ``"ft"``, ksi and kip/in^3 when it
+    is ``"in"``.  MIDAS applies one length unit model-wide, so a material
+    block built for feet inside an inch model overstates ``Ec`` by 144x
+    and the density by 1728x, with nothing in the response to say so:
+    pass the hub's ``units.length``.
     """
+    per_ft = _length_ft_per(length_unit)
     return {str(matl_id): {
         "TYPE": "USER", "NAME": name, "THMAL_UNIT": "F",
         "bMASS_DENS": False, "DAMP_RAT": 0.0,
         "PARAM": [{"P_TYPE": 2, "MASS": 0.0,
-                   "ELAST": round(concrete_elastic_modulus_ksf(fc_psi, unit_wt_pcf), 3),
+                   "ELAST": round(concrete_elastic_modulus_ksf(fc_psi, unit_wt_pcf)
+                                  * per_ft ** 2, 6),
                    "POISN": 0.2, "THERMAL": 6.0e-06,
-                   "DEN": round(unit_wt_pcf / 1000.0, 6)}],
+                   "DEN": round(unit_wt_pcf / 1000.0 * per_ft ** 3, 9)}],
     }}
+
+
+#: Feet per unit of a model's ``UNIT`` DIST setting.  ``ELAST`` scales with
+#: this squared (force/length^2) and ``DEN`` with its cube (force/length^3).
+_FT_PER = {"ft": 1.0, "feet": 1.0, "foot": 1.0,
+           "in": 1.0 / 12.0, "inch": 1.0 / 12.0, "inches": 1.0 / 12.0,
+           "m": 3.280839895, "mm": 0.003280839895, "cm": 0.03280839895}
+
+
+def _length_ft_per(length_unit: str) -> float:
+    try:
+        return _FT_PER[str(length_unit).strip().lower()]
+    except KeyError:
+        raise ValueError(
+            f"unsupported model length unit {length_unit!r}; expected one of "
+            f"{sorted(set(_FT_PER))}") from None
 
 
 def solid_rect_section_block(width: float, height: float, *, sect_id: int = 1,
@@ -281,19 +318,106 @@ def hub_section_material_blocks(model, *, sect_start: int = 1,
             continue                 # plates carry a THIK + concrete, not a SECT
         label = elem.section
         grade = elem.material or default_grade
+        meta = getattr(elem, "metadata", None) or {}
         if label and label not in shapes:
             sid = sect_start + len(shapes)
             shapes[label] = sid
-            sect.update(rolled_i_section_block(label, sect_id=sid,
-                                                length_unit=length_unit,
-                                                db_name=db_name))
+            sect.update(_section_block_for(elem, label, sid, length_unit,
+                                           db_name))
         if grade not in grades:
             mid = matl_start + len(grades)
             grades[grade] = mid
-            matl.update(steel_material_block(name=grade, matl_id=mid))
+            fc_psi = meta.get("matl.fc_psi")
+            if meta.get("matl.dummy"):
+                matl.update(steel_material_block(
+                    name=grade, matl_id=mid, props=DUMMY_PROPS,
+                    length_unit=length_unit))
+            elif fc_psi is not None:
+                matl.update(concrete_material_block(
+                    name=grade, matl_id=mid, fc_psi=float(fc_psi),
+                    unit_wt_pcf=float(meta.get("matl.unit_wt_pcf", 145.0)),
+                    length_unit=length_unit))
+            else:
+                matl.update(steel_material_block(name=grade, matl_id=mid,
+                                                 length_unit=length_unit))
         elem_assign[elem.id] = (shapes.get(label), grades[grade])
     return {"SECT": sect, "MATL": matl, "sect_by_shape": shapes,
             "matl_by_grade": grades, "elem_assign": elem_assign}
+
+
+def _section_block_for(elem, label: str, sect_id: int, length_unit: str,
+                       db_name: str | None) -> dict:
+    """The ``/db/SECT`` body for one element, dispatched on its
+    ``sect.kind`` metadata.
+
+    Without that metadata an element's ``section`` label is taken to be a
+    rolled shape and looked up in MIDAS's AISC database -- which is the
+    right default for the steel pipelines but silently wrong for anything
+    else: a concrete girder labelled ``"CB27-48"`` stores as a DB/Shape
+    reference to a name that database does not contain, and MIDAS neither
+    resolves it nor complains.  Concrete pipelines therefore tag their
+    elements:
+
+    ``sect.kind = "psc"``
+        a PSC value section from the element's ``sect.designation`` and
+        ``sect.family`` (``"box"``, ``"shear-key"`` or ``"i-beam"``) --
+        the exact outline and void polygons, not a parametric shape.
+    ``sect.kind = "rect"``
+        a solid rectangle ``sect.width_in`` x ``sect.height_in``.
+    ``sect.kind = "round"``
+        a solid circle of ``sect.diameter_in`` -- a tie rod, a dowel.
+    """
+    meta = getattr(elem, "metadata", None) or {}
+    kind = meta.get("sect.kind")
+    scale = 1.0 / (12.0 * _length_ft_per(length_unit))       # inches -> model
+    if kind == "psc":
+        from civilpy.structural import psc_section as _psc
+
+        family = meta.get("sect.family", "box")
+        designation = meta.get("sect.designation", label)
+        if family == "shear-key":
+            shape = _psc.shear_key_shape(designation)
+        elif family == "i-beam":
+            shape = _psc.i_beam_shape(designation)
+        else:
+            shape = _psc.box_beam_shape(
+                designation, solid=bool(meta.get("sect.solid")))
+        return {str(sect_id): _psc.midas_section_payload(
+            shape, name=label, length_unit=length_unit)}
+    if kind == "rect":
+        return solid_rect_section_block(
+            float(meta["sect.width_in"]) * scale,
+            float(meta["sect.height_in"]) * scale,
+            sect_id=sect_id, name=label)
+    if kind == "round":
+        return solid_round_section_block(
+            float(meta["sect.diameter_in"]) * scale,
+            sect_id=sect_id, name=label)
+    return rolled_i_section_block(label, sect_id=sect_id,
+                                  length_unit=length_unit, db_name=db_name)
+
+
+def solid_round_section_block(diameter: float, *, sect_id: int = 1,
+                              name: str | None = None) -> dict:
+    """A solid-round (``SR``) ``/db/SECT`` body -- the honest section for a
+    tie rod or anchor dowel, which is a bar, not a rectangle."""
+    return {str(sect_id): {
+        "SECTTYPE": "DBUSER", "SECT_NAME": name or f"ROUND-{diameter:g}",
+        "SECT_BEFORE": {"SHAPE": "SR", "DATATYPE": 2,
+                        "SECT_I": {"vSIZE": [round(diameter, 6)]}},
+    }}
+
+
+#: A709 Grade 50 is the default steel; tie rods are ASTM A307 Grade 307A.
+#: Same modulus and density -- the grade matters for capacity, not for the
+#: stiffness this model carries.
+ROD_STEEL_PROPS = dict(STEEL_PROPS)
+
+
+#: A weightless, near-rigid-free material for dummy elements (traffic lane
+#: lines).  They exist to carry a lane definition and must not attract load
+#: or add stiffness: 1 ksi and zero density.
+DUMMY_PROPS = {"ELAST": 144.0, "POISN": 0.3, "THERMAL": 0.0, "DEN": 0.0}
 
 
 def constraint_assign(cons_by_id: dict[int, str]) -> dict:
@@ -563,6 +687,138 @@ def soil_spring_supports(
 # exporters behave identically.
 
 
+def midas_vehicle_payload(vehicle, *, lane_load_klf: float | None = None,
+                          plm_kip: float = 0.0, plv_kip: float = 0.0,
+                          im_percent: float = 0.0,
+                          length_unit: str = "in") -> dict:
+    """A ``/db/mvhl`` user-defined Truck/Lane vehicle record from a
+    :class:`~civilpy.structural.aashto.vehicles.RatingVehicle` -- the way
+    to run vehicles Midas's DB lacks (ODOT's FAST-Act EV2/EV3, custom
+    permit trains).
+
+    Schema verified live 2026-07-27: axles ride a ``LOAD_ITEMS`` array of
+    ``{POINT_LOAD, POINT_DIST}`` (distance to the NEXT axle; kips and
+    model length units); the lane component and concentrated moment/shear
+    loads (PLM/PLV) sit in ``VEH_DEFAULT``.  ``lane_load_klf`` defaults
+    to the vehicle's own definition.
+
+    ``length_unit`` must match the model's ``UNIT`` DIST -- axle spacings
+    and the lane load are carried in it, so a truck built for inches and
+    pushed to a model in feet is 12x too long, stores without complaint,
+    and simply produces the wrong envelope.  Read it off the model with
+    :func:`model_length_unit` rather than assuming.
+
+    .. warning::
+       ``im_percent`` is **silently discarded** for user-defined
+       vehicles.  Verified live 2026-07-28: a standard-DB record
+       (:func:`midas_standard_vehicle`) stores
+       ``VEH_DEFAULT.DYN_LOAD_ALLOWANCE``, but on a ``Truck/Lane`` user
+       vehicle Midas drops the field entirely -- it is absent from the
+       record on read-back, i.e. IM = 0.  Apply the dynamic load
+       allowance downstream instead (moving-load-case scale factor, or
+       the load combination), or the live load effect will be low by the
+       full IM.  The parameter is kept so the axle loads stay nominal and
+       auditable against the source figure.
+    """
+    if lane_load_klf is None:
+        lane_load_klf = vehicle.lane_load_klf
+    per_ft = _length_ft_per(length_unit)      # feet per model length unit
+    spac = list(vehicle.axle_spacings_ft) + [0.0]
+    items = [{"POINT_LOAD": float(p), "POINT_DIST": float(d) / per_ft}
+             for p, d in zip(vehicle.axle_loads_kip, spac)]
+    return {
+        "MVLD_CODE": 2, "VEHICLE_LOAD_NAME": vehicle.name,
+        "VEHICLE_LOAD_NUM": 2, "USER_LOAD_TYPE": "Truck/Lane",
+        "VEH_DEFAULT": {"UNIFORM_LOAD": lane_load_klf * per_ft,
+                        "PL": 0.0, "PLM": plm_kip, "PLV": plv_kip,
+                        "DYN_LOAD_ALLOWANCE": im_percent,
+                        "CENT_F": False},
+        "LOAD_ITEMS": items,
+    }
+
+
+def model_length_unit(client, default: str = "in") -> str:
+    """The live model's ``UNIT`` table DIST, lower-cased (``"in"``,
+    ``"ft"``, ...).
+
+    Axle spacings, section coordinates, material moduli and densities are
+    all carried in this one unit, and nothing in an API response says
+    which it is -- a vehicle built in feet and pushed to an inch model
+    stores cleanly and then runs a truck 12x too short.  Read it, don't
+    assume it.
+    """
+    try:
+        unit = client.request("GET", "db/UNIT").get("UNIT", {})
+        dist = next(iter(unit.values())).get("DIST")
+        return str(dist).strip().lower() if dist else default
+    except Exception:
+        return default
+
+
+#: Midas standard-DB entries for the ODOT BDM 908.3 rating vehicles,
+#: as ``{civilpy name: (STANDARD_CODE, VEHICLE_TYPE_NAME)}``.  Strings are
+#: read back off a live model where dane added them through the UI
+#: (2026-07-28).  **Note the spaces**: the online API manual renders these
+#: with all spaces stripped ("AASHTOLegalType3", "OHDOTLOAD"), which is a
+#: rendering artifact -- those forms are wrong and, because the API does
+#: not validate names, would store cleanly and then apply ZERO load
+#: silently.  Always confirm nonzero envelopes after the first analysis.
+#:
+#: The two ODOT state permit loads (S-PL60T/S-PL65T) have no DB entry at
+#: all.  Build those with :func:`midas_vehicle_payload` -- but
+#: note the IM caveat there.
+#:
+#: .. warning::
+#:    These map a BDM vehicle NAME to a Midas DB entry; they do **not**
+#:    assert that Midas's axle train matches the current BDM figure.
+#:    Midas's built-in definitions are a vendor transcription frozen at
+#:    some past spec revision -- their ODOT standard box sections are
+#:    known to be out of date, and the same risk applies here.  A DB
+#:    vehicle also hides its axle data: the stored record carries only
+#:    the type name, so the API cannot read back what Midas will
+#:    actually apply.  Verify each against
+#:    :data:`~civilpy.structural.aashto.vehicles.RATING_VEHICLES` (which
+#:    IS checked against BDM Figures 908.3-1..-5) before using the DB
+#:    entry for a rating.
+BDM_908_STANDARD_DB = {
+    "2F1": ("OHDOT LOAD", "OH Legal load 2F1"),
+    "3F1": ("OHDOT LOAD", "OH Legal load 3F1"),
+    "4F1": ("OHDOT LOAD", "OH Legal load 4F1"),
+    "5C1": ("OHDOT LOAD", "OH Legal load 5C1"),
+    "Type 3": ("AASHTO LEGAL/PERMIT LOAD", "AASHTO Legal Type 3"),
+    "Type 3S2": ("AASHTO LEGAL/PERMIT LOAD", "AASHTO Legal Type 3S2"),
+    "Type 3-3": ("AASHTO LEGAL/PERMIT LOAD", "AASHTO Legal Type 3-3"),
+    "SU4": ("AASHTO LEGAL/PERMIT LOAD", "AASHTO Posting load SU4"),
+    "SU5": ("AASHTO LEGAL/PERMIT LOAD", "AASHTO Posting load SU5"),
+    "SU6": ("AASHTO LEGAL/PERMIT LOAD", "AASHTO Posting load SU6"),
+    "SU7": ("AASHTO LEGAL/PERMIT LOAD", "AASHTO Posting load SU7"),
+    "EV2": ("FAST ACT EV LOADS", "Type EV2"),
+    "EV3": ("FAST ACT EV LOADS", "Type EV3"),
+}
+
+
+def midas_standard_vehicle(type_name: str, *, name: str | None = None,
+                           standard_code: str = "AASHTO-LRFD",
+                           im_percent: float = 33.0) -> dict:
+    """A ``/db/mvhl`` standard-DB vehicle record.
+
+    Verified live 2026-07-27: ``STANDARD_CODE`` is REQUIRED for the DB
+    reference to resolve -- without it the record stores cleanly but the
+    vehicle applies zero load, silently.  LRFD DB names include
+    "HL-93TRK", "HL-93TDM", "HS20-FTG"; ``standard_code`` "OHDOT LOAD"
+    reaches the Ohio legal/permit set ("OH Legal load 5C1", 2F1, 3F1,
+    4F1 -- the BDM's EV vehicles are absent, use
+    :func:`midas_vehicle_payload` for those).
+    """
+    return {
+        "MVLD_CODE": 2, "VEHICLE_LOAD_NAME": name or type_name,
+        "VEHICLE_LOAD_NUM": 1, "VEHICLE_TYPE_NAME": type_name,
+        "STANDARD_CODE": standard_code,
+        "VEH_DEFAULT": {"DYN_LOAD_ALLOWANCE": im_percent,
+                        "CENT_F": False},
+    }
+
+
 def midas_payloads(model: "StructuralModel", *, node_start: int = 1,
                    elem_start: int = 1, material_name: str = "A709-50",
                    db_name: str | None = "AISC10(US)") -> dict:
@@ -621,20 +877,25 @@ def midas_payloads(model: "StructuralModel", *, node_start: int = 1,
     thik_by_label: dict[str, int] = {}
     conc_by_label: dict[str, int] = {}
     next_matl = max((int(k) for k in matl), default=0)
+    per_ft = _length_ft_per(model.units.length)
     for e in plate_elems:
         tlabel = e.section or "DECK-8in"
         if tlabel not in thik_by_label:
             tid = len(thik_by_label) + 1
             thik_by_label[tlabel] = tid
-            thik.update(thickness_block(_thickness_ft_from_label(tlabel),
-                                        thik_id=tid, name=tlabel))
+            thik.update(thickness_block(
+                _thickness_ft_from_label(tlabel) / per_ft,   # ft -> model unit
+                thik_id=tid, name=tlabel))
         clabel = e.material or "Deck-4500psi"
         if clabel not in conc_by_label:
             next_matl += 1
             conc_by_label[clabel] = next_matl
+            meta = getattr(e, "metadata", None) or {}
             matl.update(concrete_material_block(
                 name=clabel, matl_id=next_matl,
-                fc_psi=_fc_psi_from_label(clabel)))
+                fc_psi=_fc_psi_from_label(clabel),
+                unit_wt_pcf=float(meta.get("matl.unit_wt_pcf", 145.0)),
+                length_unit=model.units.length))
 
     elements: dict[str, dict] = {}
     for j, elem in enumerate(model.elements.values(), start=elem_start):
@@ -757,3 +1018,137 @@ def push_midas(model: "StructuralModel", midas=None, **client_kwargs) -> dict:
         except Exception as exc:            # MidasApiError, transport, etc.
             report[table] = {"error": str(exc)}
     return report
+
+
+#: The design loads ODOT BDM 908.2 specifies for inventory/operating
+#: ratings, as ``{label: (STANDARD_CODE, VEHICLE_TYPE_NAME)}``.  Figures
+#: 908.2-1/-2 reproduce the standard AASHTO definitions unchanged (HS20
+#: lane 0.640 klf with the 18 kip moment / 26 kip shear concentrated
+#: loads; HL-93 tandem 25 kip axles at 4 ft), so the DB entries apply.
+BDM_908_DESIGN_DB = {
+    "HL-93 truck": ("AASHTO-LRFD", "HL-93TRK"),
+    "HL-93 tandem": ("AASHTO-LRFD", "HL-93TDM"),
+    "HS20-44 truck": ("AASHTO-STD", "HS20-44"),
+    "HS20-44 lane": ("AASHTO-STD", "HS20-44L"),
+}
+
+#: Entries in :data:`BDM_908_DESIGN_DB` that are a LANE load rather than a
+#: truck or tandem.  BDM 924.4.C: "Dynamic load allowance shall only be
+#: applied to the truck or tandem portion of HL93 loading (dynamic load
+#: allowance shall not be provided to the lane portion)."  These get
+#: IM = 0.
+BDM_908_LANE_LOADS = frozenset({"HS20-44 lane"})
+
+
+def load_oh_vehicles(client, *, im_percent: float = 33.0,
+                     include_design: bool = True,
+                     use_standard_db: bool = False,
+                     replace: bool = False) -> dict:
+    """Push every vehicle ODOT BDM Section 908 specifies into a live model.
+
+    Loads exactly the BDM set and nothing else -- the ten commercial legal
+    vehicles and two emergency vehicles of 908.3, the two state permit
+    loads of 908.3.3, and (with ``include_design``) the 908.2
+    inventory/operating design loads.  Vehicles Midas offers but the BDM
+    does not call for -- the AASHTO National Rating Load, the H15/H20/HS15/
+    HS25/AML standard set, Ohio 4F1 -- are deliberately excluded.
+
+    Parameters
+    ----------
+    client:
+        A live :class:`~civilpy.structural.midas.MidasCivil`.
+    im_percent:
+        Dynamic load allowance written onto standard-DB records, per BDM
+        924.4.A (33% for all non-buried bridges).  Two rules from that
+        article are applied automatically: lane loads get IM = 0
+        (924.4.C, :data:`BDM_908_LANE_LOADS`), and the state permit loads
+        get IM = 0 (924.4.E allows the allowance to be ignored for
+        permit loads under controlled conditions).  The rest of 924.4 is
+        bridge-specific and must be handled by the caller: 15% for
+        fatigue (B), no IM on wood components (D), and the buried-
+        structure reduction IM = 33(1 - 0.125*DE) (F).
+
+        **The value is silently discarded on user-defined records** --
+        see :func:`midas_vehicle_payload` -- so when ``use_standard_db``
+        is False the returned ``"im_applied"`` is False and the allowance
+        must be applied downstream.
+    include_design:
+        Also load the 908.2 HL-93 / HS20 design loads.
+    use_standard_db:
+        Reference Midas's built-in definitions instead of writing explicit
+        axle trains.  Default False: the built-ins are a vendor
+        transcription frozen at some past spec revision (Midas's ODOT
+        standard box sections are demonstrably out of date), a DB record
+        stores only its type name so the API cannot read back what will
+        actually be applied, and an unresolved name applies ZERO load
+        silently.  The user-defined axle trains come from
+        :data:`~civilpy.structural.aashto.vehicles.RATING_VEHICLES`, which
+        is checked against BDM Figures 908.3-1..-5.  The two permit loads
+        have no DB entry and are always user-defined.
+    replace:
+        Delete every vehicle already in the model first.
+
+    Returns
+    -------
+    dict
+        ``{"pushed": {id: label}, "im_applied": bool, "user_defined": [...],
+        "standard_db": [...]}``.
+    """
+    from civilpy.structural.aashto.vehicles import (
+        BDM_908_RATING_LOADS, RATING_VEHICLES)
+
+    length_unit = model_length_unit(client)
+    if replace:
+        existing = client.request("GET", "db/mvhl").get("MVHL", {})
+        for vid in sorted(existing, key=int, reverse=True):
+            client.request("DELETE", f"db/mvhl/{vid}")
+
+    assign, user_defined, standard_db = {}, [], []
+    next_id = 1
+
+    def _add(label, body, kind):
+        nonlocal next_id
+        assign[str(next_id)] = body
+        (user_defined if kind == "user" else standard_db).append(label)
+        next_id += 1
+
+    # The 908.2 design loads ALWAYS go in as standard-DB records, whatever
+    # use_standard_db says.  HL-93 is not a vehicle Midas can be handed as
+    # an axle train: LRFD 3.6.1.3.1 superimposes the 0.640 klf design lane
+    # ON the truck (or tandem), where a user "Truck/Lane" record takes the
+    # ENVELOPE of the two.  Writing HL-93 by hand would understate it by
+    # the whole lane component.  Only the code-driven DB entry combines
+    # them, so that is what gets pushed.
+    if include_design:
+        for label, (code, type_name) in BDM_908_DESIGN_DB.items():
+            # BDM 924.4.C -- no dynamic load allowance on a lane load
+            im = 0.0 if label in BDM_908_LANE_LOADS else im_percent
+            _add(label, midas_standard_vehicle(
+                type_name, name=label, standard_code=code,
+                im_percent=im), "db")
+
+    for name in BDM_908_RATING_LOADS:
+        db = BDM_908_STANDARD_DB.get(name) if use_standard_db else None
+        if db:
+            code, type_name = db
+            # BDM 924.4.E -- IM may be ignored for permit loads under
+            # controlled conditions
+            im = 0.0 if name.startswith("S-PL") else im_percent
+            _add(name, midas_standard_vehicle(
+                type_name, name=name, standard_code=code,
+                im_percent=im), "db")
+        else:
+            _add(name, midas_vehicle_payload(
+                RATING_VEHICLES[name], im_percent=im_percent,
+                length_unit=length_unit), "user")
+
+    client.request("PUT", "db/mvhl", {"Assign": assign})
+    stored = client.request("GET", "db/mvhl").get("MVHL", {})
+    return {
+        "pushed": {k: v.get("VEHICLE_LOAD_NAME") for k, v in stored.items()},
+        "im_applied": bool(standard_db) and not user_defined,
+        "user_defined": user_defined,
+        "standard_db": standard_db,
+        "design_loads": [n for n in BDM_908_DESIGN_DB if n in standard_db],
+        "length_unit": length_unit,
+    }

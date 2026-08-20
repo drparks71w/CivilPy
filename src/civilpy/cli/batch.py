@@ -42,19 +42,25 @@ def _version() -> str:
         return "unknown"
 
 
+def _help(text):
+    # argparse %-formats help strings (strictly since 3.14), but field docs are
+    # prose where a bare % is natural ("3-5% of span") — escape at the boundary
+    return text.replace("%", "%%") if text else text
+
+
 def _add_argument(parser: argparse.ArgumentParser, arg: ArgInfo) -> None:
     if arg.positional:
         parser.add_argument(arg.name, metavar=arg.metavar, type=arg.type,
-                            choices=arg.choices, help=arg.doc)
+                            choices=arg.choices, help=_help(arg.doc))
     elif arg.is_bool:
         parser.add_argument(arg.flag, dest=arg.name,
                             action=argparse.BooleanOptionalAction,
-                            default=arg.default, help=arg.doc)
+                            default=arg.default, help=_help(arg.doc))
     else:
         parser.add_argument(arg.flag, dest=arg.name, metavar=arg.metavar,
                             type=arg.type, choices=arg.choices,
                             required=arg.required, default=arg.default,
-                            help=arg.doc)
+                            help=_help(arg.doc))
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -82,7 +88,7 @@ def build_parser() -> argparse.ArgumentParser:
         for spec in specs:
             verb_parser = verbs.add_parser(
                 spec.verb,
-                help=spec.summary,
+                help=_help(spec.summary),
                 description=spec.description or spec.summary,
                 formatter_class=argparse.ArgumentDefaultsHelpFormatter,
             )

@@ -297,3 +297,73 @@ def test_report_notebook_branding_needs_webpdf(tmp_path, capsys):
         "--format", "latex", "--branding", "odot",
     ]) == 2
     assert "webpdf" in capsys.readouterr().out
+
+
+def _drawing_pdf(pikepdf, path, n_pages=1):
+    pdf = pikepdf.new()
+    for _ in range(n_pages):
+        page = pdf.add_blank_page(page_size=(792, 612))
+        page.obj.Contents = pdf.make_stream(b"36 36 720 540 re S")
+    pdf.save(path)
+    return path
+
+
+def test_pdf_tag_quick_path(tmp_path, capsys):
+    pikepdf = pytest.importorskip("pikepdf")
+    src = _drawing_pdf(pikepdf, tmp_path / "sheet.pdf")
+    assert execute(["pdf", "tag", str(src), "--title", "Demo Sheet",
+                    "--alt", "A plain bordered drawing sheet."]) == 0
+    out = capsys.readouterr().out
+    assert "sheet_tagged.pdf" in out
+    with pikepdf.open(tmp_path / "sheet_tagged.pdf") as tagged:
+        assert "/StructTreeRoot" in tagged.Root
+        assert str(tagged.docinfo["/Title"]) == "Demo Sheet"
+
+
+def test_pdf_tag_manifest_route_and_dest(tmp_path, capsys):
+    pikepdf = pytest.importorskip("pikepdf")
+    from civilpy.general.pdf_ua import SheetManifest
+
+    src = _drawing_pdf(pikepdf, tmp_path / "sheet.pdf", n_pages=2)
+    manifest = tmp_path / "sheet.json"
+    SheetManifest(title="Two Pager",
+                  alt_texts=("Sheet one.", "Sheet two.")).to_json(manifest)
+    dest = tmp_path / "published" ; dest.mkdir()
+    out_pdf = dest / "two_pager.pdf"
+    assert execute(["pdf", "tag", str(src), "--manifest", str(manifest),
+                    "--dest", str(out_pdf)]) == 0
+    capsys.readouterr()
+    with pikepdf.open(out_pdf) as tagged:
+        alts = [str(f.Alt) for f in tagged.Root.StructTreeRoot.K.K]
+        assert alts == ["Sheet one.", "Sheet two."]
+
+
+def test_pdf_tag_input_errors(tmp_path, capsys):
+    pikepdf = pytest.importorskip("pikepdf")
+    src = _drawing_pdf(pikepdf, tmp_path / "sheet.pdf")
+    manifest = tmp_path / "m.json"
+
+    # no such input file
+    assert execute(["pdf", "tag", str(tmp_path / "nope.pdf"),
+                    "--title", "t", "--alt", "a"]) == 2
+    # neither manifest nor title/alt
+    assert execute(["pdf", "tag", str(src)]) == 2
+    # manifest and flags together
+    manifest.write_text('{"title": "x", "pages": [{"alt_text": "y"}]}')
+    assert execute(["pdf", "tag", str(src), "--manifest", str(manifest),
+                    "--title", "t"]) == 2
+    # manifest path that doesn't exist
+    assert execute(["pdf", "tag", str(src),
+                    "--manifest", str(tmp_path / "ghost.json")]) == 2
+    capsys.readouterr()
+
+
+def test_pdf_tag_refuses_double_tag(tmp_path, capsys):
+    pikepdf = pytest.importorskip("pikepdf")
+    src = _drawing_pdf(pikepdf, tmp_path / "sheet.pdf")
+    assert execute(["pdf", "tag", str(src), "--title", "t",
+                    "--alt", "alt text"]) == 0
+    tagged = tmp_path / "sheet_tagged.pdf"
+    assert execute(["pdf", "tag", str(tagged), "--title", "t",
+                    "--alt", "alt text"]) == 2
+    assert "structure tree" in capsys.readouterr().out

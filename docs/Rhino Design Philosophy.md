@@ -986,9 +986,8 @@ then size plates and bolts (`size_flange_splice_plates`,
 `size_web_splice_plate`, `design_splice` — all shipped in
 `civilpy.structural.aashto.lrfd`).
 
-**Reference design (validation target):** `REF-DESIGN Beam Splice Design.pdf`
-(location redacted, ODOT; local copy at
-`(local path redacted)`) — a real
+**Reference design (validation target):** a rolled-beam beam-splice design
+set (held privately; not distributed with CivilPy) — a real
 rolled-beam bridge with **six** field splices, each a 26-page AASHTO LRFD
 9th + ODOT BDM 308.2.2.1.j check set. Splice #1 joins a W24x131 (larger
 stringer: bf 12.9", tf 0.96", tw 0.605") to a W24x104 (bf 12.8", tf 0.75",
@@ -1090,7 +1089,7 @@ this repo:
      list changes.
   2. **Reserve `gdr.deck_rebar` (in², document-level).** The NSBA composite path
      (B4/G7) drops the *top-flange* splice demand using the negative-moment deck
-     steel (7.46 in² in REF-DESIGN). That area is carried today by neither the
+     steel (7.46 in² in the reference design). That area is carried today by neither the
      `gdr.*` doc tags nor civilpy's `SpliceInput`. Add the doc-level tag now
      (C#: one `Doc*` key, default-absent) and a matching `deck_rebar_area` field
      on `SpliceInput` (Python, G7). Everything else B4 needs is already in the
@@ -1173,7 +1172,7 @@ this repo:
 - [~] **G7 (Python) — splice design for rolled shapes. Front end + fixture
   done; composite `fcf` (B4) remains.** Added `girder_side_from_w(label, grade)`
   (builds `GirderSide` from the AISC db via `steel.W`), and a selectable
-  `SpliceInput.method="odot_bdm"` that follows the REF-DESIGN/DLZ workbook:
+  `SpliceInput.method="odot_bdm"` that follows the reference workbook:
   design stress `Fcf` (`splices.flange_design_stress_fcf`, fed via
   `fcf_top`/`fcf_bot`) instead of full `Fyf`; the 6.8.3 net-area hole +
   oversize handling; and the per-plate single-shear bolt count. Filler 0.21" <
@@ -1211,7 +1210,7 @@ this repo:
   NG rows red) with select + zoom-to-station. **Still open:** exercising it
   against a real G8 file — blocked until the Python write-back exists (the
   moment-envelope overlay geometry also arrives from G8; C# just imports it).
-- [ ] **End-to-end conformance:** author the REF-DESIGN bridge with
+- [ ] **End-to-end conformance:** author the reference bridge with
   G2/G3, run G4–G8, and confirm the six splice locations and Splice #1's
   design match the PDF — the girder-pipeline analog of the STM contract
   conformance test.
@@ -1219,7 +1218,7 @@ this repo:
 **Benchmark + optimization goals (added 2026-07-03 — the point of the
 pipeline is a *better* design, not just a reproduced one):**
 
-- [ ] **B1 — MDX benchmark (Python):** the REF-DESIGN workbook records its
+- [ ] **B1 — MDX benchmark (Python):** the reference workbook records its
   MDX/Descus inputs and outputs (composite section properties for n=8 and
   3n=24, splice-point demands DC1/DC2/DW/LL+I±, service stresses). Run the
   same bridge through Rhino → civilpy → MIDAS and tabulate MIDAS vs. MDX
@@ -1230,7 +1229,7 @@ pipeline is a *better* design, not just a reproduced one):**
   > girders @ 8 ft spacing** (32 ft out-to-out), **3-span continuous
   > 60–80–60 = 200 ft**, W24x131/W24x104 stringers, 7.5″ slab / 84″ effective
   > width. **TODO(dane): replace with the surveyed span lengths, girder count,
-  > spacing, and skew from REF-DESIGN before trusting B1/B5 numbers.**
+  > spacing, and skew from the reference design before trusting B1/B5 numbers.**
 - [ ] **B2 — deflection truth:** prior research found LEAP Steel
   overestimates deflections ~10%; MDX is believed closer. Use B1 to
   calibrate confidence in the MIDAS deflections (and the L/800-type service
@@ -1247,7 +1246,7 @@ pipeline is a *better* design, not just a reproduced one):**
   auto-`fcf` wiring remains.** `aashto.lrfd.composite.CompositeGirder`
   computes the transformed non-composite / `n` / `3n` / cracked-`negative`
   section properties and the per-case flange stress (`test_composite_section`,
-  11 tests). **Validated against the REF-DESIGN MDX tables**: bare-steel
+  11 tests). **Validated against the reference MDX tables**: bare-steel
   I = 3099 vs 3100, composite `n` I = 10434 vs 10375 (0.6%), `3n` 7692 vs 7768
   (1%); bottom-flange service stresses DC1 0.4928 vs 0.4926, LL+I 9.46 vs 9.58.
   This is B1's "verify the section math independent of MIDAS." *Remaining:*
@@ -1299,7 +1298,7 @@ pipeline is a *better* design, not just a reproduced one):**
 | Packaging | pip extra ✅ | Yak ☐ |
 | Girder-line authoring (`gdr.*` contract) | **signed off** ✅ (G1); grade-name map ✅; **reader ✅ (G4, `rhino_gdr`)**; open: reserve `gdr.deck_rebar`, move bridge params to a `gdr.kind=bridge` marker | `Core/Gdr.cs` ✅ (G1); `GirderLines`+`GirderShape` ✅ (G2–G3); **TODO: `GirderParams` → object user text, not `RhinoDoc.Strings`** |
 | MIDAS moving-load run + envelope | splice designer ✅ (`design_splice`); sections/MVLD/envelope ☐ (G5) | n/a |
-| Splice placement + rolled-shape design | ☐ (G6–G7; fixture = REF-DESIGN) | n/a |
+| Splice placement + rolled-shape design | ☐ (G6–G7; fixture = reference design) | n/a |
 | Splice write-back + review | write-back ☐ (G8) | `GirderSplice` importer + check dialog ✅, live test vs. G8 ☐ (G9) |
 | MDX benchmark + steel optimization | ☐ (B1–B5; beat the as-built design) | n/a (displays results) |
 

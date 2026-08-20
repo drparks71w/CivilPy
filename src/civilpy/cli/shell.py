@@ -165,7 +165,7 @@ def _completions(state: _State) -> List[tuple]:
     if arg is not None:
         if arg.choices:
             return [(str(c), arg.doc) for c in arg.choices]
-        if arg.is_bool:
+        if arg.is_bool:   # pragma: no cover - pending_arg never yields a switch
             return []
         if arg.kind == "path":
             cands = _path_candidates(word, arg.exts)

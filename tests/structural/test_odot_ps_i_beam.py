@@ -108,17 +108,25 @@ def test_profile_closes_and_matches_flanges():
         assert max(zs) - min(zs) == pytest.approx(s.depth_in), name
         assert max(ys) - min(ys) == pytest.approx(
             max(s.top_flange_width_in, s.bottom_flange_width_in)), name
-        # shoelace area within 5% of the published gross area
+        # shoelace area vs the published gross area: AASHTO and WF
+        # sections close exactly (next test); the Modified Type 4 drawn
+        # outlines still run 1.5-2.1% over the table values (see
+        # SCD_BUILD_QUESTIONS.md)
         area = 0.5 * abs(sum(
             prof[i][0] * prof[(i + 1) % len(prof)][1]
             - prof[(i + 1) % len(prof)][0] * prof[i][1]
             for i in range(len(prof))))
-        assert area == pytest.approx(s.area_in2, rel=0.05), name
+        assert area == pytest.approx(s.area_in2, rel=0.025), name
 
 
-def test_aashto_profiles_close_exactly():
-    # the AASHTO 2/3/4 outlines close on the published areas
-    for name in ("AASHTO Type 2", "AASHTO Type 3", "AASHTO Type 4"):
+def test_aashto_and_wf_profiles_close_exactly():
+    # AASHTO 2/3/4 and every WF outline closes on the published area to
+    # the ~1 in^2 the corner chamfers remove (the WF dimension stack:
+    # 5 in top-flange tip edge, 3 in drops over 1'-5 1/2 in and 3 in
+    # runs into the 8 in web -- PSID-1-13 sheets 2-3)
+    for name in ("AASHTO Type 2", "AASHTO Type 3", "AASHTO Type 4",
+                 "WF36-49", "WF42-49", "WF48-49", "WF54-49", "WF60-49",
+                 "WF66-49", "WF72-49"):
         s = ps_i_beam_section(name)
         prof = psi.ps_i_beam_profile(name)
         area = 0.5 * abs(sum(
@@ -129,13 +137,16 @@ def test_aashto_profiles_close_exactly():
 
 
 def test_shipping_strands_modified_and_wf_only():
+    # six top-flange locations at +-6/8/10, centers 2-3/4 in below the
+    # top surface (sheets 1-3 "2 3/4 (TYP.)" bar-depth callout)
     assert ps_i_beam_section("AASHTO Type 4").shipping_strand_locations == ()
     mt = ps_i_beam_section("Modified AASHTO Type 4 (60in)")
     assert len(mt.shipping_strand_locations) == 6
-    assert all(z == 57.0 for _, z in mt.shipping_strand_locations)
+    assert all(z == 57.25 for _, z in mt.shipping_strand_locations)
     wf = ps_i_beam_section("WF72-49")
     assert sorted(y for y, _ in wf.shipping_strand_locations) == [
         -10, -8, -6, 6, 8, 10]
+    assert all(z == 69.25 for _, z in wf.shipping_strand_locations)
 
 
 def test_diaphragm_stations_sheet5():

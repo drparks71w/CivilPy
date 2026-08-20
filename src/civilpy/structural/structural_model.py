@@ -327,6 +327,10 @@ class StructuralModel:
     load_cases: dict[str, LoadCase] = field(default_factory=dict)
     results: dict[str, Result] = field(default_factory=dict)
     units: Units = field(default_factory=Units)
+    #: free-form model-level tags a builder wants to hand downstream (traffic
+    #: lane names and offsets, the dead-load breakdown, ...) -- the model-level
+    #: counterpart of :attr:`Element.metadata`.
+    metadata: dict = field(default_factory=dict)
 
     # ── Builders ────────────────────────────────────────────────────────────
 

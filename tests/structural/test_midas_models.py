@@ -360,3 +360,197 @@ def test_push_midas_keeps_going_on_table_error():
     report = mm.push_midas(m, midas=FlakyMidas())
     assert "error" in report["CONS"]
     assert report["NODE"] == {"sent": 3}     # other tables still sent
+
+
+class TestLoadOhVehicles:
+    """The ODOT BDM Section 908 vehicle loader."""
+
+    class _FakeClient:
+        def __init__(self, existing=None):
+            self.existing = dict(existing or {})
+            self.deleted, self.put = [], None
+
+        def request(self, method, command, body=None, **kw):
+            if method == "GET":
+                return {"MVHL": self.existing}
+            if method == "DELETE":
+                self.deleted.append(command.rsplit("/", 1)[-1])
+                return {}
+            self.put = body
+            self.existing = {
+                k: {"VEHICLE_LOAD_NAME": v.get("VEHICLE_LOAD_NAME")}
+                for k, v in body["Assign"].items()}
+            return {}
+
+    def _load(self, **kw):
+        from civilpy.structural.midas_models import load_oh_vehicles
+        c = self._FakeClient()
+        return c, load_oh_vehicles(c, **kw)
+
+    def test_loads_exactly_the_bdm_set(self):
+        from civilpy.structural.aashto.vehicles import BDM_908_RATING_LOADS
+        c, out = self._load(include_design=False)
+        names = set(out["pushed"].values())
+        assert names == set(BDM_908_RATING_LOADS)
+
+    def test_excludes_vehicles_the_bdm_does_not_specify(self):
+        c, out = self._load()
+        names = set(out["pushed"].values())
+        for unused in ("AASHTO National Rating Load", "4F1", "AML",
+                       "H15-44", "HS-25"):
+            assert unused not in names
+
+    def test_design_loads_always_go_in_as_db_records(self):
+        """HL-93 must be pushed even with ``use_standard_db=False``.
+
+        LRFD 3.6.1.3.1 superimposes the 0.640 klf design lane ON the truck
+        (or tandem); a user-defined "Truck/Lane" record takes the ENVELOPE
+        of the two instead, so a hand-written HL-93 is low by the whole
+        lane component.  Only the code-driven DB entry combines them --
+        which is why these four are DB records whatever the flag says.
+        Previously the flag skipped them entirely and a rating ran with no
+        design load at all.
+        """
+        for db in (False, True):
+            c, out = self._load(include_design=True, use_standard_db=db)
+            pushed = set(out["pushed"].values())
+            assert {"HL-93 truck", "HL-93 tandem"} <= pushed, db
+            assert "HL-93 truck" in out["standard_db"]
+            assert set(out["design_loads"]) >= {"HL-93 truck", "HL-93 tandem"}
+
+    def test_design_loads_can_be_declined(self):
+        c, out = self._load(include_design=False)
+        assert "HL-93 truck" not in out["pushed"].values()
+
+    def test_defaults_to_user_defined_with_explicit_axles(self):
+        c, out = self._load(include_design=False)
+        assert out["standard_db"] == []
+        assert out["im_applied"] is False        # IM dropped on user records
+        body = c.put["Assign"]["1"]
+        assert body["USER_LOAD_TYPE"] == "Truck/Lane"
+        assert body["LOAD_ITEMS"]
+
+    def test_permit_loads_are_user_defined_even_in_db_mode(self):
+        c, out = self._load(include_design=False, use_standard_db=True)
+        assert set(out["user_defined"]) == {"S-PL60T", "S-PL65T"}
+
+    def test_replace_clears_existing_first(self):
+        from civilpy.structural.midas_models import load_oh_vehicles
+        c = self._FakeClient({"1": {}, "2": {}, "3": {}})
+        load_oh_vehicles(c, replace=True, include_design=False)
+        assert c.deleted == ["3", "2", "1"]
+
+    def test_lane_load_gets_no_impact_bdm_924_4_c(self):
+        """BDM 924.4.C: no dynamic load allowance on the lane portion."""
+        c, out = self._load(include_design=True, use_standard_db=True)
+        by_name = {v["VEHICLE_LOAD_NAME"]: v
+                   for v in c.put["Assign"].values()}
+        assert by_name["HS20-44 lane"]["VEH_DEFAULT"]["DYN_LOAD_ALLOWANCE"] == 0.0
+        assert by_name["HL-93 truck"]["VEH_DEFAULT"]["DYN_LOAD_ALLOWANCE"] == 33.0
+        assert by_name["HL-93 tandem"]["VEH_DEFAULT"]["DYN_LOAD_ALLOWANCE"] == 33.0
+
+
+class TestConcreteSectionDispatch:
+    """A concrete girder must not leave as an AISC database lookup.
+
+    Before this dispatch existed, a box beam labelled ``"CB27-48"`` was
+    exported as ``DATATYPE: 1`` into ``AISC10(US)`` -- a name that
+    database does not contain -- with A709 steel at 490 pcf.  MIDAS
+    stored it without complaint, so every analysis ran on a section that
+    was not there.
+    """
+
+    def _hub(self):
+        from civilpy.structural.box_beam_pipeline import (
+            structural_model_from_box)
+
+        return structural_model_from_box("CB27-48", 70.0, 3, mesh_ft=0)
+
+    def test_box_girder_exports_as_a_psc_value_section(self):
+        from civilpy.structural.midas_models import midas_payloads
+
+        p = midas_payloads(self._hub())
+        box = next(v for v in p["SECT"].values()
+                   if v["SECT_NAME"] == "CB27-48")
+        assert box["SECTTYPE"] == "PSC"
+        assert box["SECT_BEFORE"]["SHAPE"] == "VALU"
+        assert "DB_NAME" not in str(box)
+        key = next(v for v in p["SECT"].values()
+                   if v["SECT_NAME"] == "KEY-CB27-48")
+        assert key["SECT_BEFORE"]["SHAPE"] == "VALU"
+
+    def test_concrete_members_get_concrete_not_steel(self):
+        from civilpy.structural.midas_models import midas_payloads
+
+        p = midas_payloads(self._hub())
+        by_name = {m["NAME"]: m["PARAM"][0] for m in p["MATL"].values()}
+        for name in ("PS-5500psi", "GROUT-5000psi", "Deck-4500psi"):
+            assert by_name[name]["DEN"] == pytest.approx(0.150)
+            assert by_name[name]["ELAST"] < 1_000_000    # ksf, not steel
+
+    def test_tie_rods_are_steel_and_round(self):
+        """PSBD-1-25 sheet 1: a 1 in ASTM A307 rod.  Modelling it as
+        5500 psi concrete gave it roughly a seventh of the right axial
+        stiffness and a density it does not have."""
+        from civilpy.structural.midas_models import midas_payloads
+
+        hub = self._hub()
+        p = midas_payloads(hub)
+        rod = next(m for m in p["MATL"].values() if m["NAME"] == "A307-rod")
+        assert rod["PARAM"][0]["ELAST"] == pytest.approx(4_176_000.0)  # ksf
+        assert rod["PARAM"][0]["DEN"] == pytest.approx(0.490)
+        sect = next(s for s in p["SECT"].values()
+                    if s["SECT_NAME"] == "ROD-1in")
+        assert sect["SECT_BEFORE"]["SHAPE"] == "SR"      # solid round, not SB
+        assert sect["SECT_BEFORE"]["SECT_I"]["vSIZE"] == pytest.approx([1 / 12], abs=1e-6)
+        rods = [e for e in hub.elements.values() if e.role == "tie-rod"]
+        assert rods and all(e.material == "A307-rod" for e in rods)
+
+    def test_lane_lines_are_weightless_dummies(self):
+        from civilpy.structural.midas_models import DUMMY_PROPS, midas_payloads
+
+        p = midas_payloads(self._hub())
+        dummy = next(m for m in p["MATL"].values() if m["NAME"] == "DUMMY")
+        assert dummy["PARAM"][0]["DEN"] == 0.0
+        assert dummy["PARAM"][0]["ELAST"] == DUMMY_PROPS["ELAST"]
+
+    def test_solid_and_open_cells_are_separate_sections(self):
+        """The void stops at the end blocks and the diaphragms."""
+        from civilpy.structural.midas_models import midas_payloads
+
+        p = midas_payloads(self._hub())
+        names = {s["SECT_NAME"] for s in p["SECT"].values()}
+        assert {"CB27-48", "CB27-48-SOLID"} <= names
+        solid = next(s for s in p["SECT"].values()
+                     if s["SECT_NAME"] == "CB27-48-SOLID")
+        assert "INNER_POLYGON" not in solid["SECT_BEFORE"]["SECT_I"]
+        open_ = next(s for s in p["SECT"].values()
+                     if s["SECT_NAME"] == "CB27-48")
+        assert "INNER_POLYGON" in open_["SECT_BEFORE"]["SECT_I"]
+
+    def test_section_coordinates_use_the_model_length_unit(self):
+        """The hub is in feet; a 48 in box must go out as 4 ft."""
+        from civilpy.structural.midas_models import midas_payloads
+
+        p = midas_payloads(self._hub())
+        box = next(v for v in p["SECT"].values()
+                   if v["SECT_NAME"] == "CB27-48")
+        assert box["SECT_BEFORE"]["SECT_I"]["vSIZE"][:2] == [2.25, 4.0]
+
+    def test_material_blocks_rescale_with_the_length_unit(self):
+        from civilpy.structural.midas_models import (
+            concrete_material_block, steel_material_block)
+
+        ksf = concrete_material_block(fc_psi=4500)["1"]["PARAM"][0]
+        ksi = concrete_material_block(fc_psi=4500,
+                                      length_unit="in")["1"]["PARAM"][0]
+        assert ksi["ELAST"] == pytest.approx(ksf["ELAST"] / 144.0, rel=1e-6)
+        assert ksi["DEN"] == pytest.approx(ksf["DEN"] / 1728.0, rel=1e-6)
+        s = steel_material_block(length_unit="in")["1"]["PARAM"][0]
+        assert s["ELAST"] == pytest.approx(29000.0, rel=1e-3)
+
+    def test_unknown_length_unit_is_refused(self):
+        from civilpy.structural.midas_models import concrete_material_block
+
+        with pytest.raises(ValueError, match="unsupported model length unit"):
+            concrete_material_block(length_unit="cubit")

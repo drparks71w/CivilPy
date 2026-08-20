@@ -1,28 +1,53 @@
 # DEFINE STAGES EXPLICITLY TO CONTROL ORDER
 stages:
-  - sanity  # The blocker stage
-  - test    # The matrix stage
-  - deploy  # The release stage
+  - sanity    # The blocker stage
+  - test      # The matrix stage
+  - security  # SBOM/SCA/SAST evidence jobs (scheduled + master; skipped on tags)
+  - deploy    # The release stage
+
+# Security/evidence jobs — vendored from the (private) Dane/compliance-evidence
+# repo's ci/security.gitlab-ci.yml; vendored rather than include:project so fork
+# MR pipelines still compile. Scan output publishes to the private evidence repo,
+# never to this repository.
+include:
+  - local: .gitlab/security.gitlab-ci.yml
 
 variables:
   PIP_CACHE_DIR: "$CI_PROJECT_DIR/.pip_cache"
+  UV_CACHE_DIR: "$CI_PROJECT_DIR/.uv_cache"
 
-# Global Cache
+# Superseded pipelines release their runners instead of finishing doomed jobs
+default:
+  interruptible: true
+
+# Global Cache — uv's wheel cache works across Python versions, so one
+# per-branch cache serves the whole matrix (a cached venv/ never did:
+# site-packages is version-specific, so every job rebuilt it anyway)
 cache:
   key: "$CI_COMMIT_REF_SLUG"
   paths:
-    - .pip_cache/
-    - venv/
+    - .uv_cache/
 
-# --- TEMPLATE (Does not run, just holds the script) ---
+# --- TEMPLATES (Do not run, just hold the scripts) ---
+.install_deps:
+  script:
+    - pip install uv
+    - uv venv --clear venv   # --clear: stale venv/ can arrive via the pre-uv branch cache
+    - source venv/bin/activate
+    - uv pip install setuptools -e ".[db,geo,web,jupyter,validation]" pytest pytest-cov pytest-xdist
+
+# matrix jobs: no coverage — the smoke job already measures it, and the
+# tracer is the expensive part of the suite
 .test_logic:
   script:
-    - python -m venv venv
-    - source venv/bin/activate
-    - pip install --upgrade setuptools pip
-    - pip install -e ".[db,geo,web,jupyter,validation]"
-    - pip install pytest pytest-cov
-    - python -m pytest --cov --cov-report term --cov-report xml:coverage.xml
+    - !reference [.install_deps, script]
+    - python -m pytest -n auto
+
+# smoke job: coverage for the GitLab widget + MR annotations
+.test_logic_cov:
+  script:
+    - !reference [.install_deps, script]
+    - python -m pytest -n auto --cov --cov-report term --cov-report xml:coverage.xml
   coverage: '/TOTAL.*\s+(\d+\%)/'
   artifacts:
     reports:
@@ -35,7 +60,7 @@ cache:
 # Skip with: git tag docs && git push --tags
 #        or: -no_tests in commit title
 smoke-test-3.11:
-  extends: .test_logic
+  extends: .test_logic_cov
   stage: sanity
   image: python:3.11
   rules:
@@ -108,6 +133,7 @@ verify-3.14:
 pypi_publish:
   stage: deploy
   image: python:3.11
+  interruptible: false
   rules:
     - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+/     # tags like v0.1.41, v1.0.0
   script:
@@ -118,6 +144,7 @@ pypi_publish:
 gitlab_publish:
   stage: deploy
   image: python:3.11
+  interruptible: false
   rules:
     - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+/     # tags like v0.1.41, v1.0.0
   script:
@@ -129,8 +156,8 @@ pages:
   stage: deploy
   image: python:3.11
   script:
-    - pip install -r docs/requirements.txt
-    - pip install .
+    - pip install uv
+    - uv pip install --system -r docs/requirements.txt .
     - python -m sphinx docs public
   artifacts:
     paths:

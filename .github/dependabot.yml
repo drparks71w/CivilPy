@@ -1,0 +1,15 @@
+# Dependabot on the GitHub mirror — advisory only.
+# The GitLab repo (daneparks.com) is the source of truth and runs Renovate;
+# treat Dependabot PRs here as notifications, not merge targets (the mirror
+# push would overwrite them). Security alerts are the main value.
+version: 2
+updates:
+  - package-ecosystem: pip
+    directory: "/"
+    schedule:
+      interval: monthly
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies

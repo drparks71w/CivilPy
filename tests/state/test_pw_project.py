@@ -1,0 +1,181 @@
+"""ProjectWiseProject object model, exercised against a fake PW client.
+
+The fake mirrors the folder shapes verified on the live datasource
+(2026-07-21 probes): the 01 Active Projects path, 400-Engineering/Structures,
+SFN_* folders with {PID}_SFN_{SFN}_{sheet} filenames, and a
+"Bridge Load Rating Files" folder with {PID}_{SFN}_{sheet} filenames.
+"""
+import pytest
+
+from civilpy import ProjectWiseProject
+
+
+def doc(doc_id, filename, folder_id):
+    return {"doc_id": doc_id, "name": filename, "filename": filename,
+            "desc": "", "size": 1000, "created": "", "updated": "",
+            "folder_id": folder_id}
+
+
+class FakeClient:
+    """Duck-typed stand-in for civilpy.general.bentley.projectwise."""
+
+    PATH = "01 Active Projects\\District 06\\Franklin\\112665"
+
+    def __init__(self):
+        self.folders = {
+            1: [("100-Admin", 10), ("400-Engineering", 11)],
+            10: [],
+            11: [("Structures", 12), ("Structure Type Study", 16)],
+            12: [("SFN_2510774", 13), ("SFN_2500000", 14),
+                 ("Bridge Load Rating Files", 15)],
+            13: [], 14: [], 15: [], 16: [],
+        }
+        self.docs = {
+            13: [doc(101, "112665_SFN_2510774_SI001.dgn", 13),
+                 doc(102, "112665_SFN_2510774_SI002.dgn", 13)],
+            14: [doc(103, "112665_SFN_2500000_SI001.dgn", 14)],
+            15: [doc(104, "112665_2510774_BR100.pdf", 15),
+                 doc(105, "112665_2500000_BR100.pdf", 15)],
+            16: [doc(106, "112665_STS_Report.pdf", 16)],
+        }
+        self.pulled = []
+
+    def resolve_path(self, path):
+        return 1 if path == self.PATH else 0
+
+    def list_children(self, folder_id):
+        return self.folders.get(folder_id, [])
+
+    def list_documents(self, folder_id):
+        return list(self.docs.get(folder_id, []))
+
+    def copy_out(self, folder_id, doc_id, dest):
+        self.pulled.append((folder_id, doc_id, str(dest)))
+        return f"{dest}/pulled_{doc_id}"
+
+
+@pytest.fixture()
+def project():
+    return ProjectWiseProject("112665", district="6", county="Franklin",
+                              client=FakeClient())
+
+
+def test_path_resolution(project):
+    assert project.project_path == FakeClient.PATH   # district zero-padded
+    assert project.root.id == 1
+
+
+def test_sfns_and_sheets(project):
+    sfns = project.sfns
+    assert [s.sfn for s in sfns] == ["2510774", "2500000"]
+    sheets = sfns[0].sheets
+    assert {s["sheet"] for s in sheets} == {"SI001", "SI002"}
+    assert all(s["sfn"] == "2510774" for s in sheets)
+
+
+def test_sfn_lookup_and_load_rating(project):
+    lr = project.sfn("2510774").load_rating
+    assert [d["filename"] for d in lr] == ["112665_2510774_BR100.pdf"]
+
+
+def test_deliverable_registry_and_getattr(project):
+    sts = project.sts
+    assert [d["filename"] for d in sts] == ["112665_STS_Report.pdf"]
+    assert project.deliverable("sts") is sts          # cached
+    with pytest.raises(KeyError):
+        project.deliverable("nope")
+    with pytest.raises(AttributeError):
+        project.not_a_deliverable
+
+
+def test_structures_fallback_search(project):
+    # break the canonical path; the name search should still find Structures
+    project._client.folders[11] = [("Bridges&Structures", 12),
+                                   ("Structure Type Study", 16)]
+    assert project.structures.id == 12
+
+
+def test_pull_and_survey(project, tmp_path):
+    written = project.sfn("2500000").pull(tmp_path)
+    assert written and project._client.pulled[0][1] == 103
+    tree = project.survey()
+    assert tree["pid"] == "112665"
+    names = {c["name"] for c in tree["tree"]["children"]}
+    assert "400-Engineering" in names
+
+
+def test_missing_location_raises():
+    p = ProjectWiseProject("999999", client=FakeClient())
+    with pytest.raises(LookupError):
+        _ = p.project_path
+
+
+def test_custom_deliverable_override():
+    p = ProjectWiseProject("112665", district="06", county="Franklin",
+                           client=FakeClient(),
+                           deliverables={"admin": [r"^100-Admin$"]})
+    assert p.deliverable("admin") == []               # folder exists, no docs
+    assert "sts" in p.deliverables                    # defaults preserved
+
+
+# --- sheet taxonomy (L&D Vol. 3 §1204.3.4) -----------------------------------
+
+from civilpy.projectwise import classify_filename
+
+
+def test_classify_filename_formats():
+    c = classify_filename("123456_GP005.dgn")
+    assert (c["format"], c["code"], c["description"]) == (
+        "standard", "GP", "Plan and Profile or Plan")
+    c = classify_filename("123456_SFN1234567_SD002.dgn")       # manual form
+    assert (c["format"], c["sfn"], c["code"]) == ("structure", "1234567", "SD")
+    c = classify_filename("116581_SFN_2510774_SI001.dgn")      # observed form
+    assert (c["sfn"], c["code"], c["description"]) == (
+        "2510774", "SI", "Piers")
+    c = classify_filename("123456_WALL001_WP005.dgn")
+    assert (c["format"], c["wall"], c["code"]) == ("wall", "001", "WP")
+    assert classify_filename("random_notes.docx") is None
+
+
+@pytest.fixture()
+def sheet_project():
+    client = FakeClient()
+    client.folders[11].append(("Design Data", 17))
+    client.folders[17] = []
+    client.docs[17] = [doc(201, "112665_BK001.dgn", 17),
+                       doc(202, "112665_VK001.dgn", 17),
+                       doc(203, "112665_KD001.dgn", 17),
+                       doc(204, "112665_GT001.dgn", 17)]
+    client.docs[13].append(doc(205, "112665_SFN2510774_SP001.dgn", 13))
+    client.docs[14].append(doc(206, "112665_SFN_2500000_SM001.dgn", 14))
+    return ProjectWiseProject("112665", district="06", county="Franklin",
+                              client=client)
+
+
+def test_project_sheet_accessors(sheet_project):
+    assert {d["filename"] for d in sheet_project.alignments} == {
+        "112665_BK001.dgn", "112665_VK001.dgn"}
+    assert [d["filename"] for d in sheet_project.terrain_models] == [
+        "112665_KD001.dgn"]
+    assert [d["filename"] for d in sheet_project.title_sheet] == [
+        "112665_GT001.dgn"]
+    with pytest.raises(KeyError):
+        sheet_project.sheet_set("nope")
+
+
+def test_sfn_sheet_accessors_filter_by_sfn(sheet_project):
+    s1 = sheet_project.sfn("2510774")
+    assert [d["filename"] for d in s1.site_plans] == [
+        "112665_SFN2510774_SP001.dgn"]          # compact-form file, own SFN only
+    assert [d["filename"] for d in s1.piers] == [
+        "112665_SFN_2510774_SI001.dgn", "112665_SFN_2510774_SI002.dgn"]
+    s2 = sheet_project.sfn("2500000")
+    assert [d["filename"] for d in s2.details] == [
+        "112665_SFN_2500000_SM001.dgn"]
+    assert s2.site_plans == []                   # other bridge's SP not leaked
+
+
+def test_project_structure_scope_is_union(sheet_project):
+    # both bridges' pier sheets: 2510774's SI001+SI002 and 2500000's SI001
+    assert len(sheet_project.piers) == 3
+    assert len(sheet_project.details) == 1

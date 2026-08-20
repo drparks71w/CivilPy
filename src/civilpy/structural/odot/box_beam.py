@@ -51,11 +51,42 @@ MAX_SKEW_DEG = 30.0
 # checked against the drawn "37"" void width) and void height = depth -
 # 2*wall (e.g. 27 - 11 = 16 in, matching the drawn "16"" void height).
 
-#: Top/bottom flange and web wall thickness, inches (uniform across every
-#: standard depth and width).
-BOX_WALL_THICKNESS_IN = 5.5
-#: Void corner fillet, inches (square, e.g. "3 x 3").
+#: Top/bottom flange thickness, inches -- PSBD-1-25 sheet 2/6 LEFT
+#: dimension chain (5 1/2" | void | 5 1/2"), identical at every depth, so
+#: the void is centred on the beam.  Verified: this geometry reproduces
+#: the sheet 4/6 published Ab, Yb and Ib to 0.2% at all five depths.
+BOX_FLANGE_THICKNESS_IN = 5.5
+#: Side web thickness, inches (sheet 2/6: 6" | 3'-0" | 6" bottom chain).
+BOX_WEB_THICKNESS_IN = 6.0
+#: Void corner fillet, inches (square).  Only the 17 in beam uses
+#: 1 1/2" x 1 1/2"; every deeper beam uses 3" x 3".
 BOX_VOID_FILLET_IN = 3.0
+BOX_VOID_FILLET_SHALLOW_IN = 1.5
+
+# Exterior side-face (shear key) profile, PSBD-1-25 sheet 2/6 RIGHT
+# dimension chain -- 5" | (D - 10) | 5" -- read off the drawing:
+#   0 .. 5              full width (48 in), the bearing band
+#   5 .. 6.25           1 1/4" x 1 1/4" chamfer inward
+#   6.25 .. D-5.5       keyway recess, 1 1/4" deep each side
+#   D-5.5 .. D-5        1/2" x 1/2" chamfer outward
+#   D-5 .. D            top band, recessed 3/4" each side (46 1/2" wide)
+#: Height of the full-width band at the soffit, inches.
+KEYWAY_BOTTOM_BAND_IN = 5.0
+#: Lower chamfer leg into the keyway recess, inches.
+KEYWAY_LOWER_CHAMFER_IN = 1.25
+#: Depth of the keyway recess from the nominal face, inches.
+KEYWAY_RECESS_DEPTH_IN = 1.25
+#: Upper chamfer leg out of the keyway recess, inches.
+KEYWAY_UPPER_CHAMFER_IN = 0.5
+#: Height of the top band, inches, and how far it is set in per side.
+KEYWAY_TOP_BAND_IN = 5.0
+KEYWAY_TOP_SETBACK_IN = 0.75
+#: 3/4 in x 3/4 in chamfer at each bottom (soffit) corner (ODOT's standard
+#: chamfer), so the soffit is 46.5 in wide on a 48 in beam.  The top
+#: corners are square.  Not dimensioned on sheet 2/6 -- recovered from the
+#: published areas, which it reproduces to +-0.01% at all five depths
+#: (1 in gives -0.07%, 1 1/2 in gives -0.25%).
+BOX_BOTTOM_CHAMFER_IN = 0.75
 
 #: Composite (CIP) topping: structural thickness carried in the composite
 #: section properties, plus a non-structural monolithic wearing surface on
@@ -66,13 +97,103 @@ COMPOSITE_SLAB_WEARING_SURFACE_IN = 1.0
 #: properties (PSBD-1-25 sheet 4/6 note).
 COMPOSITE_MODULAR_RATIO = 0.90
 
+# ── solid (voidless) blocks ──────────────────────────────────────────────
+# The void does not run the full length: the beam is cast solid at each end
+# and through each intermediate diaphragm (PSBD-1-25 sheets 3 and 4).  The
+# end block houses the end diaphragm, the anchor dowels and the lifting
+# inserts; the intermediate block is the diaphragm itself.  A model that
+# runs the voided section end to end understates the end reaction by ~30%.
+
+#: Length of the solid block at each beam end, inches: 3'-3" on the 27/33/42
+#: in beams, 2'-9" on the 17/21 in beams (PSBD-1-25 sheet 3).
+SOLID_END_BLOCK_IN = 39.0
+SOLID_END_BLOCK_SHALLOW_IN = 33.0
+
+#: Longitudinal length of the solid block at an intermediate diaphragm,
+#: inches, at zero skew (PSBD-1-25 sheet 4).  Skewed beams widen it to
+#: ``X/2 + 6`` where ``X = width * tan(theta)``.
+SOLID_DIAPHRAGM_BLOCK_IN = 18.0
+
+
+def solid_end_block_in(depth_in: int) -> float:
+    """Length of the solid end block for a beam of ``depth_in``."""
+    if depth_in not in BOX_BEAM_DEPTHS:
+        raise ValueError(f"non-standard beam depth {depth_in} in")
+    return (SOLID_END_BLOCK_SHALLOW_IN if depth_in <= 21
+            else SOLID_END_BLOCK_IN)
+
+
+def solid_diaphragm_block_in(skew_deg: float = 0.0,
+                             width_in: float = BOX_WIDTH_IN) -> float:
+    """Longitudinal length of an intermediate diaphragm's solid block.
+
+    Zero skew gives :data:`SOLID_DIAPHRAGM_BLOCK_IN`; a skewed beam needs
+    ``X/2 + 6`` inches, ``X = width * tan(skew)``, so the block still
+    contains the full diaphragm once it runs on the bias.
+    """
+    if not skew_deg:
+        return SOLID_DIAPHRAGM_BLOCK_IN
+    x = width_in * math.tan(math.radians(float(skew_deg)))
+    return max(SOLID_DIAPHRAGM_BLOCK_IN, x / 2.0 + 6.0)
+
+
+# ── BDM dead-load rules ──────────────────────────────────────────────────
+# The wearing surface a box beam carries is decided by BDM 309.1, and it
+# is NOT a free choice -- it follows from composite vs. non-composite:
+#
+#   309.1.A  1 in monolithic concrete wearing surface: "the top 1-in of a
+#            concrete deck slab.  Do not include the top 1-in thickness in
+#            the structural design of the deck slab or as part of the
+#            composite section."   -> composite (CB) beams
+#   309.1.B  3 in asphalt concrete: "the minimum asphaltic concrete
+#            wearing surface on non-composite prestressed box beams.  Use
+#            ... only on non-composite prestressed box beams."
+#            -> non-composite (B) beams, 8 in max per BDM 308.2.3.3
+#
+# so :data:`COMPOSITE_SLAB_STRUCTURAL_THICKNESS_IN` +
+# :data:`COMPOSITE_SLAB_WEARING_SURFACE_IN` = 6 in is exactly the
+# BDM 308.2.3.3.c minimum composite deck, split at the 309.1.A line.
+
+#: Future wearing surface allowance, ksf.  BDM 303.1.2: "Design all new
+#: bridges that carry highway traffic for a future wearing surface (FWS)
+#: of 0.060-ksf."  Unqualified -- it applies whether or not the bridge
+#: also carries an asphalt wearing surface today.  Two exceptions in the
+#: manual: temporary structures take 0.0 ksf (BDM 501), and FWS is
+#: excluded from the dead load used for shop camber (BDM 308.2.2.1.f).
+BDM_FUTURE_WEARING_SURFACE_KSF = 0.060
+
+#: Minimum composite deck slab on prestressed box beams, inches
+#: (BDM 308.2.3.3.c, "#6 bars, longitudinal at 18-in max, transverse at
+#: 9-in max").
+BDM_COMPOSITE_DECK_MIN_IN = 6.0
+
+#: Asphalt concrete wearing surface on NON-composite box beams, inches:
+#: 3 in minimum (BDM 309.1.B, two 1.5 in lifts of Item 441), 8 in maximum
+#: (BDM 308.2.3.3).  The first lift is placed at variable thickness to
+#: take up camber and grade, so the mean is often thicker than 3 in --
+#: use the computed topping depth (BDM 308.2.3.3.e) for a real design.
+BDM_ASPHALT_MIN_IN = 3.0
+BDM_ASPHALT_MAX_IN = 8.0
+
+#: Unit weights, pcf, from BDM 909 ("assumptions ... while performing the
+#: load rating analysis unless more accurate site information is
+#: available").  Note asphalt is **145 pcf**, not the 140 pcf of LRFD
+#: Table 3.5.1-1.
+BDM_ASPHALT_PCF = 145.0
+BDM_CONCRETE_PCF = 150.0
+BDM_LATEX_MODIFIED_CONCRETE_PCF = 150.0
+BDM_SOIL_PCF = 120.0
+BDM_STEEL_PCF = 490.0
+
 
 def box_void_dimensions(depth_in: float, width_in: float = BOX_WIDTH_IN
                          ) -> tuple[float, float]:
     """Void ``(width, height)`` in inches for a box beam of ``depth_in`` /
-    ``width_in``, uniform-wall (:data:`BOX_WALL_THICKNESS_IN` each side)."""
-    return (width_in - 2.0 * BOX_WALL_THICKNESS_IN,
-            depth_in - 2.0 * BOX_WALL_THICKNESS_IN)
+    ``width_in``: :data:`BOX_WEB_THICKNESS_IN` webs each side,
+    :data:`BOX_FLANGE_THICKNESS_IN` flanges top and bottom (PSBD-1-25
+    sheet 2/6 dimension chains)."""
+    return (width_in - 2.0 * BOX_WEB_THICKNESS_IN,
+            depth_in - 2.0 * BOX_FLANGE_THICKNESS_IN)
 
 
 @dataclass(frozen=True)
@@ -100,8 +221,33 @@ class BoxSectionProperties:
     zbc: float = 0.0          # in^3 (composite)
 
 
-#: 48 in wide box-beam section properties by depth (PSBD-1-25 sheet 4/6).
+#: 48 in wide box-beam section properties by depth, as published on
+#: PSBD-1-25 sheet 4/6.
+#:
+#: VERIFIED (2026-07-28) against the section dimensioned on sheet 2/6:
+#: recomputing Ab, Yb and Ib from that geometry reproduces every value in
+#: this table to within 0.2% (the residual is the small exterior corner
+#: chamfers, which the polygon does not draw).  The table is internally
+#: self-consistent as well -- S = I/c closes both beam-only and composite.
 BOX_SECTION_PROPERTIES: dict[int, BoxSectionProperties] = {
+    17: BoxSectionProperties(17, area=580.8, i=18652, yb=8.42, zt=2175, zb=2214,
+                              ic=39506, ybc=11.59, ztc=7302, zbc=3409),
+    21: BoxSectionProperties(21, area=632.3, i=33551, yb=10.40, zt=3165, zb=3226,
+                              ic=63190, ybc=13.92, ztc=8925, zbc=4540),
+    27: BoxSectionProperties(27, area=689.3, i=65398, yb=13.38, zt=4802, zb=4888,
+                              ic=111083, ybc=17.44, ztc=11620, zbc=6369),
+    33: BoxSectionProperties(33, area=746.2, i=109652, yb=16.50, zt=6646, zb=6646,
+                              ic=175131, ybc=20.90, ztc=14474, zbc=8379),
+    42: BoxSectionProperties(42, area=831.8, i=201537, yb=20.82, zt=9515, zb=9680,
+                              ic=303890, ybc=26.00, ztc=18993, zbc=11688),
+}
+
+#: The superseded PSBD-2-07 (2007) sheet 4/4 "48 in wide box beam" table.
+#: That standard's section is geometrically DIFFERENT from PSBD-1-25:
+#: 5 1/2 in uniform walls and a 37 in wide void.  Use these when rating
+#: existing bridges built under PSBD-2-07 and earlier; the 12 in depth of
+#: that table is omitted because PSBD-1-25 dropped it.
+PSBD_2_07_SECTION_PROPERTIES: dict[int, BoxSectionProperties] = {
     17: BoxSectionProperties(17, area=590.3, i=18819, yb=8.44, zt=2198, zb=2230,
                               ic=38620, ybc=11.40, ztc=6898, zbc=3387),
     21: BoxSectionProperties(21, area=647.8, i=33884, yb=10.42, zt=3202, zb=3253,
@@ -229,20 +375,50 @@ def diaphragm_end_offset(beam_depth: int) -> float:
     return 24.0 if beam_depth <= 21 else 30.0
 
 
-def diaphragm_stations_ft(span_ft: float, beam_depth: int) -> tuple[float, ...]:
-    """Longitudinal station (ft, from the beam start) of each intermediate
-    diaphragm: :func:`diaphragm_count` of them, evenly spaced between the
-    :func:`diaphragm_end_offset` inset from each end (a single diaphragm sits
-    at midspan). The drawing (sheet 4/6) states the count and the end offset
-    but not an explicit multi-diaphragm spacing rule; even spacing between
-    the end-offset points is the standard detailing assumption.
+def end_diaphragm_stations_ft(span_ft: float,
+                              beam_depth: int) -> tuple[float, float]:
+    """Station (ft) of the two end diaphragms, one
+    :func:`diaphragm_end_offset` in from each beam end (PSBD-1-25 sheet
+    4/6).  These are cast inside the solid end blocks -- see
+    :func:`solid_end_block_in` -- not in the voided length."""
+    offset_ft = diaphragm_end_offset(beam_depth) / 12.0
+    return (offset_ft, span_ft - offset_ft)
+
+
+def intermediate_diaphragm_stations_ft(span_ft: float, beam_depth: int
+                                       ) -> tuple[float, ...]:
+    """Station (ft) of each **intermediate** diaphragm.
+
+    :func:`diaphragm_count` of them, dividing the length between the two
+    end diaphragms into equal bays: one lands at midspan, two at the third
+    points of that length, three at the quarter points.  The drawing states
+    the count and the end offset but not an explicit multi-diaphragm
+    spacing rule; equal bays is the standard detailing assumption.
+
+    .. note::
+       This used to be folded into ``diaphragm_stations_ft`` with an
+       ``k / (n - 1)`` interpolation, which for two diaphragms returned the
+       two **end** stations and so produced no intermediate diaphragms at
+       all -- a 70 ft span came back as ``(2.5, 67.5)``.  A model built on
+       that had its tie rods buried in the end blocks and no diaphragm
+       anywhere in the span.
     """
     n = diaphragm_count(span_ft)
-    offset_ft = diaphragm_end_offset(beam_depth) / 12.0
-    if n == 1:
-        return (span_ft / 2.0,)
-    lo, hi = offset_ft, span_ft - offset_ft
-    return tuple(lo + (hi - lo) * k / (n - 1) for k in range(n))
+    lo, hi = end_diaphragm_stations_ft(span_ft, beam_depth)
+    return tuple(lo + (hi - lo) * (k + 1) / (n + 1) for k in range(n))
+
+
+def diaphragm_stations_ft(span_ft: float, beam_depth: int) -> tuple[float, ...]:
+    """Station (ft, from the beam start) of **every** diaphragm, sorted:
+    the two end diaphragms plus :func:`diaphragm_count` intermediate ones.
+
+    A 70 ft CB27-48 therefore has four -- ends at 2.5 and 67.5 ft,
+    intermediates at 24.17 and 45.83 -- which is what PSBD-1-25 sheet 4/6
+    details and what the beam is cast solid at.
+    """
+    return tuple(sorted(
+        (*end_diaphragm_stations_ft(span_ft, beam_depth),
+         *intermediate_diaphragm_stations_ft(span_ft, beam_depth))))
 
 
 @dataclass(frozen=True)

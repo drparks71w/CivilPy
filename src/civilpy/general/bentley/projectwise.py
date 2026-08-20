@@ -299,6 +299,211 @@ def display_project_properties(properties):
     print("-" * 26)
 
 
+# --- Document API (calibrated against the ODOT dmscli build, 2026-07-21) ---
+# Property ids below were measured with a property-id sweep on the live
+# datasource (snbi_ui Bridge Plan Puller, Probe B) — they do not match the
+# guesses one would make from SDK headers.  aaApi_CopyOutDocument's signature
+# is cross-checked against the public MostOfDavesClasses C# wrapper.
+
+DOC_PROP_ID = 1            # varies per document
+DOC_PROP_FILESIZE = 7      # bytes
+DOC_PROP_NAME = 20
+DOC_PROP_FILENAME = 21
+DOC_PROP_DESC = 22
+DOC_PROP_CREATE_TIME = 24
+DOC_PROP_UPDATE_TIME = 27  # file-level time; 25 is a batch-migration stamp
+DOC_PROP_PROJECTID = 29    # parent folder id
+
+_EXTENDED = False
+
+
+class GUID(ctypes.Structure):
+    _fields_ = [("Data1", ctypes.c_ulong), ("Data2", ctypes.c_ushort),
+                ("Data3", ctypes.c_ushort), ("Data4", ctypes.c_ubyte * 8)]
+
+
+def as_guid(value):
+    """Coerce a uuid.UUID / hex string into a ctypes GUID struct."""
+    import uuid as _uuid
+    if not isinstance(value, _uuid.UUID):
+        value = _uuid.UUID(str(value))
+    g = GUID()
+    ctypes.memmove(ctypes.byref(g), value.bytes_le, ctypes.sizeof(g))
+    return g
+
+
+def extend_prototypes():
+    """Prototype the document/GUID dmscli calls the original wrapper lacks.
+
+    Call after a PW_SESSION has loaded the DLLs.  Missing exports are
+    reported, not fatal (builds vary).
+    """
+    global _EXTENDED
+    if _EXTENDED:
+        return
+    protos = [
+        ("aaApi_SelectDocumentsByProjectId", [ctypes.c_long], ctypes.c_long),
+        ("aaApi_GetDocumentStringProperty",
+         [ctypes.c_long, ctypes.c_long], ctypes.c_wchar_p),
+        ("aaApi_GetDocumentNumericProperty",
+         [ctypes.c_long, ctypes.c_long], ctypes.c_long),
+        # (proj, doc, workdir, out-filename buffer, bufsize); workdir must be
+        # non-null (native zero-byte-file bug)
+        ("aaApi_CopyOutDocument",
+         [ctypes.c_long, ctypes.c_long, ctypes.c_wchar_p, ctypes.c_wchar_p,
+          ctypes.c_long], ctypes.wintypes.BOOL),
+        ("aaApi_GetProjectIdsByGUIDs",
+         [ctypes.c_long, ctypes.POINTER(GUID), ctypes.POINTER(ctypes.c_long)],
+         ctypes.c_long),
+        ("aaApi_GUIDSelectProject", [ctypes.POINTER(GUID)], ctypes.c_long),
+    ]
+    missing = []
+    for name, argtypes, restype in protos:
+        try:
+            fn = getattr(dmscli, name)
+        except AttributeError:
+            missing.append(name)
+            continue
+        fn.argtypes, fn.restype = argtypes, restype
+    if missing:
+        print("NOTE: this dmscli build lacks:", ", ".join(missing))
+    _EXTENDED = True
+
+
+def resolve_guid(value):
+    """Folder/project GUID -> numeric id (0 if it does not resolve)."""
+    extend_prototypes()
+    g = as_guid(value)
+    out = ctypes.c_long(0)
+    dmscli.aaApi_GetProjectIdsByGUIDs(1, ctypes.byref(g), ctypes.byref(out))
+    if out.value > 0:
+        return out.value
+    if dmscli.aaApi_GUIDSelectProject(ctypes.byref(g)) > 0:
+        return dmscli.aaApi_GetProjectNumericProperty(PROJ_PROP_ID, 0)
+    return 0
+
+
+def resolve_path(name_path):
+    """Folder name path -> numeric id (0 if it does not resolve)."""
+    return max(dmscli.aaApi_GetProjectIdByNamePath(name_path), 0)
+
+
+def folder_path(folder_id, full=True, delim="\\", bufsize=2048):
+    """Numeric folder id -> canonical name path (None if the call fails).
+
+    The inverse of :func:`resolve_path` — use it on a folder id you already
+    hold (from a pwlink GUID, a tree survey, ...) to learn the exact path
+    string ``aaApi_GetProjectIdByNamePath`` expects, instead of guessing
+    the root segments.
+    """
+    buf = ctypes.create_unicode_buffer(bufsize)
+    ok = dmscli.aaApi_GetProjectNamePath2(folder_id, bool(full), delim,
+                                          buf, bufsize)
+    return buf.value if ok else None
+
+
+def list_children(folder_id):
+    """[(name, id), ...] of a folder's immediate subfolders."""
+    buf = dmscli.aaApi_SelectProjectDataBufferChilds2(folder_id, False)
+    if not buf:
+        return []
+    try:
+        return [(dmscli.aaApi_DmsDataBufferGetStringProperty(buf, PROJ_PROP_NAME, i),
+                 dmscli.aaApi_DmsDataBufferGetNumericProperty(buf, PROJ_PROP_ID, i))
+                for i in range(dmscli.aaApi_DmsDataBufferGetCount(buf))]
+    finally:
+        dmscli.aaApi_DmsDataBufferFree(buf)
+
+
+def list_children_info(folder_id):
+    """[(name, id, description), ...] of a folder's immediate subfolders.
+
+    Same buffer as :func:`list_children` but also reads PROJ_PROP_DESC —
+    active-project folders often carry the PID or project label in the
+    description when the folder *name* is descriptive.
+    """
+    buf = dmscli.aaApi_SelectProjectDataBufferChilds2(folder_id, False)
+    if not buf:
+        return []
+    try:
+        return [(dmscli.aaApi_DmsDataBufferGetStringProperty(buf, PROJ_PROP_NAME, i),
+                 dmscli.aaApi_DmsDataBufferGetNumericProperty(buf, PROJ_PROP_ID, i),
+                 dmscli.aaApi_DmsDataBufferGetStringProperty(buf, PROJ_PROP_DESC, i) or "")
+                for i in range(dmscli.aaApi_DmsDataBufferGetCount(buf))]
+    finally:
+        dmscli.aaApi_DmsDataBufferFree(buf)
+
+
+def list_documents(folder_id):
+    """One dict per document in the folder (calibrated properties)."""
+    extend_prototypes()
+    n = dmscli.aaApi_SelectDocumentsByProjectId(folder_id)
+    return [{
+        "doc_id": dmscli.aaApi_GetDocumentNumericProperty(DOC_PROP_ID, i),
+        "name": dmscli.aaApi_GetDocumentStringProperty(DOC_PROP_NAME, i),
+        "filename": dmscli.aaApi_GetDocumentStringProperty(DOC_PROP_FILENAME, i),
+        "desc": dmscli.aaApi_GetDocumentStringProperty(DOC_PROP_DESC, i),
+        "size": dmscli.aaApi_GetDocumentNumericProperty(DOC_PROP_FILESIZE, i),
+        "created": dmscli.aaApi_GetDocumentStringProperty(DOC_PROP_CREATE_TIME, i),
+        "updated": dmscli.aaApi_GetDocumentStringProperty(DOC_PROP_UPDATE_TIME, i),
+        "folder_id": folder_id,
+    } for i in range(n)]
+
+
+def copy_out(folder_id, doc_id, dest_dir):
+    """Copy one document to dest_dir; returns the written file path or None."""
+    import os as _os
+    extend_prototypes()
+    _os.makedirs(dest_dir, exist_ok=True)
+    buf = ctypes.create_unicode_buffer(1024)
+    ok = dmscli.aaApi_CopyOutDocument(folder_id, doc_id, str(dest_dir),
+                                      buf, len(buf))
+    return buf.value if ok else None
+
+
+def scan_dll_exports(dll_path):
+    """All export names of a PE DLL, read straight off the file (no loading).
+
+    How the document-API calls above were discovered: scan for candidate
+    names here, verify signatures against public wrappers, then calibrate
+    property ids empirically.
+    """
+    import struct
+    with open(dll_path, "rb") as fh:
+        data = fh.read()
+    pe = struct.unpack_from("<I", data, 0x3C)[0]
+    nsec = struct.unpack_from("<H", data, pe + 6)[0]
+    opt_size = struct.unpack_from("<H", data, pe + 20)[0]
+    magic = struct.unpack_from("<H", data, pe + 24)[0]
+    dd_off = pe + 24 + (0x70 if magic == 0x20B else 0x60)
+    exp_rva = struct.unpack_from("<I", data, dd_off)[0]
+    if not exp_rva:
+        return []
+    sec_off = pe + 24 + opt_size
+    secs = []
+    for i in range(nsec):
+        vsize, va, rsize, rptr = struct.unpack_from("<IIII", data,
+                                                    sec_off + i * 40 + 8)
+        secs.append((va, max(vsize, rsize), rptr))
+
+    def off(rva):
+        for va, sz, rp in secs:
+            if va <= rva < va + sz:
+                return rp + (rva - va)
+        raise ValueError(f"rva {rva:#x} outside all sections")
+
+    ed = off(exp_rva)
+    n_names = struct.unpack_from("<I", data, ed + 24)[0]
+    names_rva = struct.unpack_from("<I", data, ed + 32)[0]
+    arr = off(names_rva)
+    out = []
+    for i in range(n_names):
+        srva = struct.unpack_from("<I", data, arr + i * 4)[0]
+        so = off(srva)
+        out.append(data[so:data.index(b"\0", so)].decode("ascii", "replace"))
+    return out
+
+
 # --- Example Usage ---
 # This block demonstrates how to use the library to build the map and then query it.
 if __name__ == "__main__":

@@ -36,6 +36,22 @@ civilpy.general.photos module
    :undoc-members:
    :show-inheritance:
 
+civilpy.general.pdf\_reflow module
+-----------------------------------
+
+.. automodule:: civilpy.general.pdf_reflow
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+civilpy.general.pdf\_ua module
+------------------------------
+
+.. automodule:: civilpy.general.pdf_ua
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 Module contents
 ---------------
 

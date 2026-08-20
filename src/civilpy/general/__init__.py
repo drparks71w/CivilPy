@@ -21,6 +21,8 @@ import ``units`` from that module instead.
 """
 
 from pint import UnitRegistry
+import re
+
 import pandas as pd
 
 try:
@@ -36,7 +38,11 @@ def get_table_as_df(conn, schema, table):
             "SQLAlchemy is required for database functions. "
             "Install with: pip install civilpy[db]"
         )
-    query = text(f"SELECT * FROM {schema}.{table}")
+    # schema/table are SQL identifiers — they cannot be bound parameters, so
+    # validate them strictly before interpolation to rule out injection
+    if not all(re.fullmatch(r"[A-Za-z_][A-Za-z0-9_$]*", part) for part in (schema, table)):
+        raise ValueError(f"invalid SQL identifier in {schema!r}.{table!r}")
+    query = text(f"SELECT * FROM {schema}.{table}")  # nosemgrep: python.sqlalchemy.security.audit.avoid-sqlalchemy-text.avoid-sqlalchemy-text
     result = conn.execute(query)
     df = pd.DataFrame(result.fetchall(), columns=result.keys())
 

@@ -15,11 +15,9 @@ import torch
 import torchvision
 from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
 from PIL import Image
-import matplotlib.pyplot as plt
 import fitz  # PyMuPDF
 import torchvision.transforms as T
 import os
-import camelot
 import pandas as pd
 import re
 import tempfile
@@ -27,7 +25,10 @@ import subprocess
 import sys
 import json
 
-import pytesseract
+# camelot, pytesseract, and matplotlib are imported inside the functions
+# that use them -- they are heavy/optional and the detection path
+# (load_trained_model / detect_sections / render_region) must not
+# require them.
 
 # --- Global Configuration & Model Loading ---
 
@@ -71,6 +72,89 @@ def load_trained_model(model_path):
 
 
 # --- Step 1: Finder Functions ---
+
+#: torchvision's GeneralizedRCNNTransform resizes every input to
+#: min 800 / max 1333 px before the backbone sees it, so rendering a
+#: 34x22-in sheet at 300 DPI (~67 MP) just burns time in the render, the
+#: ToTensor copy, and the internal resize.  Rendering straight to the
+#: size the model actually consumes is ~2.3x faster per inference with
+#: identical post-transform pixels.
+DETECT_LONG_SIDE = 1333
+
+
+def render_page(pdf_path, page_number=1, long_side=DETECT_LONG_SIDE):
+    """Render one PDF page to a PIL image whose long side is
+    ``long_side`` px (the detection-input size).  Returns
+    ``(image, page_dimensions)`` with dimensions in PDF points."""
+    doc = fitz.open(pdf_path)
+    page = doc[page_number - 1]
+    dims = (page.rect.width, page.rect.height)
+    zoom = long_side / max(dims)
+    pix = page.get_pixmap(matrix=fitz.Matrix(zoom, zoom))
+    image = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+    doc.close()
+    return image, dims
+
+
+def detect_sections(model, pdf_path, page_number=1, score_thresh=0.5,
+                    long_side=DETECT_LONG_SIDE):
+    """Locate **every** labelled section of a page in ONE inference.
+
+    The per-label API (:func:`find_section_in_pdf`) rebuilds the pixmap
+    and reruns the model for each label, discarding the other classes'
+    predictions each time — six labels cost six inferences.  A Faster
+    R-CNN forward pass already scores all classes, so this returns them
+    all at once: ``{label: {"score", "box_px", "box_pdf", ...}}`` with
+    ``box_pdf`` in PDF points, ready for :func:`render_region` /
+    Camelot.  Best box per label wins; labels under ``score_thresh``
+    are absent.
+    """
+    image, page_dims = render_page(pdf_path, page_number, long_side)
+    id2label = {i + 1: name for i, name in enumerate(DISCOVERED_LABELS)}
+    tensor = T.ToTensor()(image).to(DEVICE)
+    with torch.inference_mode():
+        prediction = model([tensor])[0]
+    scale = page_dims[0] / image.size[0]
+    out = {}
+    for score, label_id, box in zip(prediction["scores"],
+                                    prediction["labels"],
+                                    prediction["boxes"]):
+        name = id2label.get(label_id.item())
+        score = score.item()
+        if name is None or score < score_thresh:
+            continue
+        if name in out and out[name]["score"] >= score:
+            continue
+        box_px = tuple(float(v) for v in box.cpu().numpy())
+        out[name] = {
+            "score": score,
+            "box_px": box_px,
+            "box_pdf": tuple(v * scale for v in box_px),
+            "image_size": image.size,
+            "page_dimensions": page_dims,
+            "page_number": page_number,
+        }
+    return out
+
+
+def render_region(pdf_path, page_number, box_pdf, dpi=300, pad_pts=6.0):
+    """High-DPI render of just one region (for OCR / table extraction).
+
+    ``box_pdf`` is ``(x0, y0, x1, y1)`` in PDF points (top-left origin,
+    as returned by :func:`detect_sections`).  Rendering only the clip
+    keeps OCR at full quality without ever rasterizing the whole sheet
+    at 300 DPI.  Returns a PIL image.
+    """
+    doc = fitz.open(pdf_path)
+    page = doc[page_number - 1]
+    clip = fitz.Rect(box_pdf[0] - pad_pts, box_pdf[1] - pad_pts,
+                     box_pdf[2] + pad_pts, box_pdf[3] + pad_pts) \
+        & page.rect
+    pix = page.get_pixmap(dpi=dpi, clip=clip)
+    image = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+    doc.close()
+    return image
+
 
 def find_section_in_pdf(model, pdf_path, target_label, page_number=1):
     """
@@ -120,17 +204,27 @@ def find_section_in_image(model, image_obj_or_path, target_label):
 
     id2label = {i + 1: name for i, name in enumerate(DISCOVERED_LABELS)}
 
-    transform = T.ToTensor()
-    img_tensor = transform(original_image).to(DEVICE)
+    # The detection transform resizes to <=1333 px internally, so running
+    # inference on anything bigger only slows the ToTensor copy + resize.
+    # Downscale first and map the boxes back to original coordinates.
+    infer_image, scale_back = original_image, 1.0
+    if max(original_image.size) > DETECT_LONG_SIDE:
+        scale_back = max(original_image.size) / DETECT_LONG_SIDE
+        infer_image = original_image.resize(
+            (round(original_image.width / scale_back),
+             round(original_image.height / scale_back)))
 
-    with torch.no_grad():
+    transform = T.ToTensor()
+    img_tensor = transform(infer_image).to(DEVICE)
+
+    with torch.inference_mode():
         prediction = model([img_tensor])[0]
 
     best_box, best_score = None, 0.0
     for score, label_id, box in zip(prediction["scores"], prediction["labels"], prediction["boxes"]):
         if label_id.item() in id2label and id2label[label_id.item()] == target_label:
             if score > best_score:
-                best_score, best_box = score, box.cpu().numpy()
+                best_score, best_box = score, box.cpu().numpy() * scale_back
 
     if best_box is not None:
         print(f"Found '{target_label}' with confidence {best_score:.4f}")
@@ -151,6 +245,7 @@ def ocr_image_table_to_dataframe(image_obj: Image.Image) -> pd.DataFrame:
     Performs OCR on a PIL Image object containing a table and reconstructs
     it into a pandas DataFrame.
     """
+    import pytesseract
     print("🤖 Starting structured OCR on image...")
     try:
         ocr_data = pytesseract.image_to_data(
@@ -232,6 +327,7 @@ def extract_table_or_text(pdf_path, bounding_box_info):
     cropped_image = original_image.crop((xmin_pix_exp, ymin_pix_exp, xmax_pix_exp, ymax_pix_exp))
 
     try:
+        import camelot
         tables = camelot.read_pdf(pdf_path, pages=str(page_num), flavor='stream', table_areas=[table_area_str])
         if tables.n > 0:
             print("✅ Camelot found a table. PDF is likely text-based in this region.")

@@ -5,7 +5,7 @@
 #  See the LICENSE file in the project root for full license text.
 
 """B4 -- composite steel-girder transformed-section properties, validated
-against the REF-DESIGN workbook's MDX/Descus section-property and service-
+against the reference workbook's MDX/Descus section-property and service-
 stress tables (smaller stringer W24x104, section without bolt holes, pp. 1 & 3).
 This is the "verify the composite section math independent of MIDAS" leg of B1.
 Only plain numeric results are checked; no copyrighted content is reproduced."""
@@ -91,7 +91,7 @@ class TestServiceStresses:
 
 class TestDesignRolledSplice:
     """The end-to-end wrapper computes fcf from the composite deck section, so
-    it reproduces REF-DESIGN Splice #1 with NO MDX-supplied stress."""
+    it reproduces reference Splice #1 with NO MDX-supplied stress."""
 
     def test_reproduces_splice_1_without_supplied_fcf(self):
         from civilpy.structural.aashto.lrfd import (

@@ -66,15 +66,17 @@ def is_quiet() -> bool:
 
 def ok(message: str) -> None:
     if not _quiet:
-        _console.print(f"[civilpy.ok]✓[/] {message}")
+        _console.print(f"[civilpy.ok]✓[/] {message}", soft_wrap=True)
 
 
 def warn(message: str) -> None:
-    _console.print(f"[civilpy.warn]⚠ {message}[/]")
+    _console.print(f"[civilpy.warn]⚠ {message}[/]", soft_wrap=True)
 
 
 def error(message: str) -> None:
-    _console.print(f"[civilpy.err]✗ {message}[/]")
+    # soft_wrap: never hard-wrap status lines at console width — messages
+    # carry file paths that must stay greppable/copy-pasteable on one line
+    _console.print(f"[civilpy.err]✗ {message}[/]", soft_wrap=True)
 
 
 def _live_ok() -> bool:

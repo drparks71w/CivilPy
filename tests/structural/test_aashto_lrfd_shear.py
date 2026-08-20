@@ -200,3 +200,114 @@ class TestDeflection:
         assert ped.capacity == pytest.approx(0.96)
         cant = lrfd.deflection_limit(span=120.0, cantilever=True)
         assert cant.capacity == pytest.approx(0.4)
+
+
+class TestEffectiveShearDepth:
+    def test_prestressed_only_hand_calc(self):
+        # de = dp = 24 with no mild steel; dv = max(24 - 4.78/2,
+        # 0.9*24, 0.72*27) = max(21.61, 21.6, 19.44)
+        r = lrfd.rc_effective_shear_depth(
+            h=27.0, a=4.78, a_ps=5.344, f_ps=255.5, d_p=24.0)
+        assert r.details["de"] == pytest.approx(24.0)
+        assert r.capacity == pytest.approx(21.61, abs=0.01)
+        assert r.details["governing"] == "de - a/2"
+
+    def test_mixed_steel_weights_de(self):
+        # 5.7.2.8-2: de is the force-weighted depth of strands + bars
+        r = lrfd.rc_effective_shear_depth(
+            h=40.0, a=6.0, a_ps=3.0, f_ps=250.0, d_p=36.0,
+            a_s=2.0, f_y=60.0, d_s=37.5)
+        de = (3.0 * 250.0 * 36.0 + 120.0 * 37.5) / (750.0 + 120.0)
+        assert r.details["de"] == pytest.approx(de)
+
+    def test_072h_can_govern(self):
+        # shallow tension steel: 0.72h controls
+        r = lrfd.rc_effective_shear_depth(
+            h=40.0, a=4.0, a_ps=1.0, f_ps=250.0, d_p=20.0)
+        assert r.details["governing"] == "0.72h"
+        assert r.capacity == pytest.approx(28.8)
+
+    def test_needs_tension_steel(self):
+        with pytest.raises(ValueError):
+            lrfd.rc_effective_shear_depth(h=40.0, a=4.0)
+
+
+class TestMuFloor:
+    def test_small_mu_floored_to_vu_dv(self):
+        # 5.7.3.4.2: |Mu| >= |Vu - Vp|*dv — near supports the floor
+        # governs; eps_s must match Mu = Vu*dv exactly
+        lo = lrfd.rc_mcft_beta_theta(
+            m_u=100.0, v_u=100.0, d_v=30.0, e_s_a_s=29000.0 * 4.0)
+        floor = lrfd.rc_mcft_beta_theta(
+            m_u=100.0 * 30.0, v_u=100.0, d_v=30.0, e_s_a_s=29000.0 * 4.0)
+        assert lo.eps_s == pytest.approx(floor.eps_s)
+
+    def test_large_mu_unaffected(self):
+        p = lrfd.rc_mcft_beta_theta(
+            m_u=6000.0, v_u=100.0, d_v=30.0, e_s_a_s=29000.0 * 4.0)
+        assert p.eps_s == pytest.approx((6000.0 / 30.0 + 100.0) / 116000.0)
+
+
+class TestTransverseReinfProvisions:
+    def test_skip_threshold_5723(self):
+        # Vu <= 0.5*phi*(Vc + Vp) -> stirrup checks may be skipped
+        r = lrfd.rc_transverse_reinf_required(v_u=30.0, v_c=80.0)
+        assert r.capacity == pytest.approx(0.5 * 0.9 * 80.0)
+        assert not r.details["required"]
+        assert lrfd.rc_transverse_reinf_required(
+            v_u=50.0, v_c=80.0).details["required"]
+
+    def test_inclined_stirrups_add_cot_alpha(self):
+        # 45-degree legs at theta = 45: (cot45 + cot45)*sin45 = sqrt(2)
+        # times the vertical-leg cot45 = 1
+        vert = lrfd.rc_shear_resistance(
+            b_v=12.0, d_v=30.0, f_c=4.0, a_v=0.4, s=12.0,
+            beta=2.0, theta_deg=45.0)
+        incl = lrfd.rc_shear_resistance(
+            b_v=12.0, d_v=30.0, f_c=4.0, a_v=0.4, s=12.0,
+            beta=2.0, theta_deg=45.0, alpha_deg=45.0)
+        assert incl.details["Vs"] == pytest.approx(
+            vert.details["Vs"] * math.sqrt(2.0))
+
+    def test_vertical_default_unchanged(self):
+        r = lrfd.rc_shear_resistance(
+            b_v=12.0, d_v=30.0, f_c=4.0, a_v=0.4, s=12.0,
+            beta=2.0, theta_deg=45.0)
+        assert r.details["Vs"] == pytest.approx(0.4 * 60.0 * 30.0 / 12.0)
+
+
+class TestTorsion:
+    def test_box_tcr_form(self):
+        # 5.7.2.1-5: Tcr = 0.126*sqrt(7)*2*903*5.5 * sqrt(1 + fpc/0.3334)
+        k = 0.126 * math.sqrt(7.0)
+        r = lrfd.rc_torsion_threshold(
+            a_cp=1296.0, p_c=150.0, f_c=7.0, f_pc=1.0, a_o=903.0, b_e=5.5)
+        expect = k * 2.0 * 903.0 * 5.5 * math.sqrt(1.0 + 1.0 / k)
+        assert r.details["Tcr"] == pytest.approx(expect)
+        assert r.capacity == pytest.approx(0.25 * 0.9 * expect)
+        assert "box" in r.details["form"]
+
+    def test_solid_form_unchanged(self):
+        k = 0.126 * math.sqrt(4.0)
+        r = lrfd.rc_torsion_threshold(a_cp=864.0, p_c=120.0, f_c=4.0)
+        assert r.details["Tcr"] == pytest.approx(k * 864.0**2 / 120.0)
+        assert "solid" in r.details["form"]
+
+    def test_box_form_needs_both_args(self):
+        with pytest.raises(ValueError):
+            lrfd.rc_torsion_threshold(a_cp=1296.0, p_c=150.0, f_c=7.0,
+                                      a_o=903.0)
+
+    def test_tn_hand_calc(self):
+        # Tn = 2*903*0.20*60*cot(45)/12 = 1806 kip-in
+        r = lrfd.rc_torsion_resistance(a_o=903.0, a_t=0.20, s=12.0)
+        assert r.capacity == pytest.approx(1806.0)
+        # steeper theta reduces Tn by cot(theta)
+        r2 = lrfd.rc_torsion_resistance(a_o=903.0, a_t=0.20, s=12.0,
+                                        theta_deg=30.0)
+        assert r2.capacity == pytest.approx(1806.0 / math.tan(math.radians(30.0)))
+
+    def test_alt_hand_calc(self):
+        # Alt = (2000/0.9)*127/(2*903*60) = 2.604 in^2
+        r = lrfd.rc_torsion_longitudinal(t_u=2000.0, p_h=127.0, a_o=903.0)
+        assert r.capacity == pytest.approx(2.604, abs=0.005)

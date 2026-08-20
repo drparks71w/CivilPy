@@ -15,7 +15,9 @@ from civilpy.structural.odot import (
     BEVELED_LOAD_PLATE,
     BOX_BEAM_DEPTHS,
     BOX_SECTION_PROPERTIES,
-    BOX_WALL_THICKNESS_IN,
+    BOX_FLANGE_THICKNESS_IN,
+    BOX_WEB_THICKNESS_IN,
+    PSBD_2_07_SECTION_PROPERTIES,
     BOX_WIDTH_IN,
     DESIGN_DATA_SHEET,
     DESIGN_SPEC,
@@ -28,6 +30,8 @@ from civilpy.structural.odot import (
     diaphragm_count,
     diaphragm_end_offset,
     diaphragm_stations_ft,
+    end_diaphragm_stations_ft,
+    intermediate_diaphragm_stations_ft,
     layout_load_plate,
     load_plate_bevel,
     strand_group_height_in,
@@ -168,18 +172,86 @@ class TestSectionProperties:
     def test_cb27_48_beam_only(self):
         s = box_section_properties(27)
         assert s.width == BOX_WIDTH_IN
-        assert s.area == pytest.approx(713.8)
-        assert s.i == pytest.approx(66222)
-        assert s.yb == pytest.approx(13.39)
-        assert s.zt == pytest.approx(4866)
-        assert s.zb == pytest.approx(4945)
+        assert s.area == pytest.approx(689.3)
+        assert s.i == pytest.approx(65398)
+        assert s.yb == pytest.approx(13.38)
+        assert s.zt == pytest.approx(4802)
+        assert s.zb == pytest.approx(4888)
 
     def test_cb27_48_composite(self):
         s = box_section_properties(27)
-        assert s.ic == pytest.approx(109704)
-        assert s.ybc == pytest.approx(17.13)
-        assert s.ztc == pytest.approx(11119)
-        assert s.zbc == pytest.approx(6403)
+        assert s.ic == pytest.approx(111083)
+        assert s.ybc == pytest.approx(17.44)
+        assert s.ztc == pytest.approx(11620)
+        assert s.zbc == pytest.approx(6369)
+
+    @pytest.mark.parametrize("depth", BOX_BEAM_DEPTHS)
+    def test_tabulated_moduli_agree_with_inertia_and_centroid(self, depth):
+        """The sheet's own values are self-consistent: S = I/c about both
+        the beam-only and composite centroids.  This is what caught the
+        table being wrong -- transcribe a value badly and it stops closing.
+        """
+        s = box_section_properties(depth)
+        assert s.zb == pytest.approx(s.i / s.yb, rel=1e-3)
+        assert s.zt == pytest.approx(s.i / (s.depth - s.yb), rel=1e-3)
+        assert s.zbc == pytest.approx(s.ic / s.ybc, rel=1e-3)
+        # composite top modulus is referenced to the top of the PRECAST
+        # beam, not the top of the topping
+        assert s.ztc == pytest.approx(s.ic / (s.depth - s.ybc), rel=1e-3)
+
+    @pytest.mark.parametrize("depth", BOX_BEAM_DEPTHS)
+    def test_legacy_psbd_2_07_table_self_consistent(self, depth):
+        """The superseded 2007 table (5 1/2 in walls, 37 in void) must be
+        equally self-consistent -- it's what existing bridges rate against."""
+        s = PSBD_2_07_SECTION_PROPERTIES[depth]
+        assert s.zb == pytest.approx(s.i / s.yb, rel=2e-3)
+        assert s.zt == pytest.approx(s.i / (s.depth - s.yb), rel=2e-3)
+        assert s.zbc == pytest.approx(s.ic / s.ybc, rel=2e-3)
+        assert s.ztc == pytest.approx(s.ic / (s.depth - s.ybc), rel=2e-3)
+
+    def test_legacy_table_is_the_2007_sheet(self):
+        # spot values straight off PSBD-2-07 sheet 4/4 (the values civilpy
+        # carried, mis-attributed to PSBD-1-25, until 2026-07-28)
+        s = PSBD_2_07_SECTION_PROPERTIES[27]
+        assert (s.area, s.i, s.yb) == (713.8, 66222, 13.39)
+        assert (s.ic, s.ybc) == (109704, 17.13)
+
+    @pytest.mark.parametrize("depth", BOX_BEAM_DEPTHS)
+    def test_drawn_geometry_reproduces_published_table(self, depth):
+        """The sheet 2/6 dimensions and the sheet 4/6 table agree.
+
+        This is the check that matters: recomputing Ab / Yb / Ib from the
+        drawn section lands within a fraction of a percent of the
+        published values at every depth (residual = the small exterior
+        corner chamfers, which the polygon omits).
+        """
+        import numpy as np
+
+        from civilpy.structural.psc_section import box_beam_shape
+
+        def moments(poly):
+            p = np.asarray(poly, float)
+            y, z = p[:, 0], p[:, 1]
+            y2, z2 = np.roll(y, -1), np.roll(z, -1)
+            cr = y * z2 - y2 * z
+            return (abs(cr.sum() / 2.0),
+                    abs(((z + z2) * cr).sum() / 6.0),
+                    abs(((z ** 2 + z * z2 + z2 ** 2) * cr).sum() / 12.0))
+
+        shape = box_beam_shape(f"B{depth}-48")
+        a_o, q_o, i_o = moments(shape.outline)
+        a_v, q_v, i_v = moments(shape.voids[0])
+        area, q, i0 = a_o - a_v, q_o - q_v, i_o - i_v
+        yb = q / area
+        pub = box_section_properties(depth)
+        assert area == pytest.approx(pub.area, rel=0.003)
+        assert i0 - area * yb ** 2 == pytest.approx(pub.i, rel=0.003)
+        # Yb lands within a hundredth at 17/21/27/42.  The 33 in row is
+        # the one outlier: the sheet publishes Yb = 16.50 = D/2 exactly
+        # (and St = Sb = 6646 with it), i.e. it was computed as if the
+        # section were symmetric, where the drawn section gives 16.34.
+        tol = 0.2 if depth == 33 else 0.02
+        assert yb == pytest.approx(pub.yb, abs=tol)
 
     def test_deeper_beam_has_larger_area_and_inertia(self):
         depths = sorted(BOX_SECTION_PROPERTIES)
@@ -193,34 +265,52 @@ class TestSectionProperties:
             box_section_properties(30)
 
     def test_void_dimensions_match_wall_thickness(self):
-        # void width = 48 - 2 x 5.5 = 37 in; void height = D - 2 x 5.5
+        # PSBD-1-25 sheet 2/6: 6 in webs -> 36 in void; 5 1/2 in flanges
+        # -> void height = D - 11
         for d in BOX_BEAM_DEPTHS:
             w, h = box_void_dimensions(d)
-            assert w == pytest.approx(BOX_WIDTH_IN - 2 * BOX_WALL_THICKNESS_IN)
-            assert h == pytest.approx(d - 2 * BOX_WALL_THICKNESS_IN)
+            assert w == pytest.approx(BOX_WIDTH_IN - 2 * BOX_WEB_THICKNESS_IN)
+            assert h == pytest.approx(d - 2 * BOX_FLANGE_THICKNESS_IN)
 
     def test_void_dimensions_spot_values(self):
-        assert box_void_dimensions(27) == pytest.approx((37.0, 16.0))
-        assert box_void_dimensions(17) == pytest.approx((37.0, 6.0))
-        assert box_void_dimensions(42) == pytest.approx((37.0, 31.0))
+        assert box_void_dimensions(27) == pytest.approx((36.0, 16.0))
+        assert box_void_dimensions(17) == pytest.approx((36.0, 6.0))
+        assert box_void_dimensions(42) == pytest.approx((36.0, 31.0))
 
 
 class TestDiaphragmStations:
-    def test_single_diaphragm_at_midspan(self):
-        assert diaphragm_stations_ft(40.0, 27) == (20.0,)
+    """Every diaphragm: the two ends plus ``diaphragm_count`` intermediate.
 
-    def test_two_diaphragms_symmetric(self):
-        stations = diaphragm_stations_ft(60.0, 27)
-        assert len(stations) == 2
-        assert stations[0] == pytest.approx(60.0 - stations[1])
-        offset_ft = 30.0 / 12.0
-        assert stations[0] == pytest.approx(offset_ft)
-        assert stations[1] == pytest.approx(60.0 - offset_ft)
+    A 70 ft beam has FOUR (dane, 2026-07-29).  The old placement
+    interpolated ``k / (n - 1)`` across the end-diaphragm stations, so for
+    two it returned those two stations back and the span got no
+    intermediate diaphragm at all.
+    """
 
-    def test_three_diaphragms_include_midspan(self):
-        stations = diaphragm_stations_ft(90.0, 33)
+    def test_single_intermediate_sits_at_midspan(self):
+        assert intermediate_diaphragm_stations_ft(40.0, 27) == (20.0,)
+        assert diaphragm_stations_ft(40.0, 27) == (2.5, 20.0, 37.5)
+
+    def test_seventy_foot_beam_has_four_diaphragms(self):
+        assert end_diaphragm_stations_ft(70.0, 27) == (2.5, 67.5)
+        interm = intermediate_diaphragm_stations_ft(70.0, 27)
+        assert len(interm) == 2
+        # third points of the end-diaphragm-to-end-diaphragm length
+        assert interm == pytest.approx((2.5 + 65 / 3, 2.5 + 130 / 3))
+        assert len(diaphragm_stations_ft(70.0, 27)) == 4
+
+    def test_intermediates_are_symmetric_and_interior(self):
+        for span in (60.0, 70.0, 90.0):
+            lo, hi = end_diaphragm_stations_ft(span, 27)
+            interm = intermediate_diaphragm_stations_ft(span, 27)
+            assert all(lo < s < hi for s in interm), span
+            assert interm[0] == pytest.approx(span - interm[-1])
+
+    def test_three_intermediates_include_midspan(self):
+        stations = intermediate_diaphragm_stations_ft(90.0, 33)
         assert len(stations) == 3
         assert stations[1] == pytest.approx(45.0)
+        assert len(diaphragm_stations_ft(90.0, 33)) == 5
 
 
 class TestStrandGroupHeight:

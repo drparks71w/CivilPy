@@ -328,3 +328,450 @@ def test_barriers_reference_scd_catalog():
         girder_label="W36X150", overhang_ft=3.0))
     assert {b.edge for b in out.barriers} == {"left", "right"}
     assert all(b.designation == "SBR-1-20" for b in out.barriers)
+
+
+# ── loads and analysis-model builders ─────────────────────────────────────
+
+from civilpy.structural.bridge_layout import (  # noqa: E402
+    NOMINAL_PARAPET_PLF_PER_FT,
+    _barrier_weight_plf,
+    _girder_weight_plf,
+    _tributary_widths,
+    girder_line_loads,
+    grillage_model_from_layout,
+    structural_model_from_layout,
+)
+
+
+class _Barrier:
+    def __init__(self, weight_plf=None, height_in=None):
+        self.weight_plf = weight_plf
+        self.height_in = height_in
+
+
+class TestBarrierWeight:
+    def test_cataloged_weight_wins(self):
+        assert _barrier_weight_plf(_Barrier(475.0, 42.0)) == 475.0
+
+    def test_estimates_from_height_when_uncataloged(self):
+        w = _barrier_weight_plf(_Barrier(None, 42.0))
+        assert w == pytest.approx(NOMINAL_PARAPET_PLF_PER_FT * 42.0 / 12.0)
+
+    def test_zero_weight_is_treated_as_missing(self):
+        assert _barrier_weight_plf(_Barrier(0.0, 36.0)) == pytest.approx(
+            NOMINAL_PARAPET_PLF_PER_FT * 3.0)
+
+    def test_none_when_neither_known(self):
+        assert _barrier_weight_plf(_Barrier(None, None)) is None
+
+
+class TestGirderWeight:
+    def test_parsed_from_aisc_label(self):
+        assert _girder_weight_plf("W36X150") == 150.0
+        assert _girder_weight_plf("w24x104") == 104.0
+
+    def test_falls_back_to_shape_database(self):
+        """A label not in WxxXyyy form resolves through steel.W instead."""
+        assert _girder_weight_plf("W36X150 ") == 150.0
+        w = _girder_weight_plf("HP12X53")
+        assert w == pytest.approx(53.0)
+
+    def test_non_numeric_suffix_uses_database(self):
+        with pytest.raises(Exception):
+            _girder_weight_plf("not-a-shape")
+
+
+class TestTributaryWidths:
+    def test_fascia_take_half_spacing_plus_overhang(self, basic):
+        trib = _tributary_widths(basic.inputs)
+        s, oh = basic.inputs.girder_spacing_ft, basic.inputs.overhang_ft
+        assert len(trib) == basic.inputs.girder_count
+        assert trib[0] == pytest.approx(oh + s / 2.0)
+        assert trib[-1] == pytest.approx(oh + s / 2.0)
+        assert all(t == pytest.approx(s) for t in trib[1:-1])
+
+    def test_total_equals_deck_width(self, basic):
+        inp = basic.inputs
+        expected = (inp.girder_count - 1) * inp.girder_spacing_ft \
+            + 2 * inp.overhang_ft
+        assert sum(_tributary_widths(inp)) == pytest.approx(expected)
+
+
+class TestGirderLineLoads:
+    def test_interior_carries_no_barrier(self, basic):
+        w = girder_line_loads(basic, 2)
+        assert w["dc2"] == 0.0
+        assert w["dc1"] > 0 and w["dw"] > 0
+
+    def test_fascia_carries_barrier(self, basic):
+        for idx in (0, basic.inputs.girder_count - 1):
+            assert girder_line_loads(basic, idx)["dc2"] > 0
+
+    def test_dc1_is_girder_plus_tributary_slab(self, basic):
+        from civilpy.structural.bridge_layout import CONCRETE_UNIT_WT_KCF
+        w = girder_line_loads(basic, 2)
+        trib = _tributary_widths(basic.inputs)[2]
+        expected = (_girder_weight_plf(basic.inputs.girder_label) / 1000.0
+                    + CONCRETE_UNIT_WT_KCF
+                    * basic.deck.thickness_in / 12.0 * trib)
+        assert w["dc1"] == pytest.approx(expected)
+
+    def test_fascia_dw_is_less_than_interior_when_overhang_is_short(self, basic):
+        """DW scales with tributary width, so a 3 ft overhang on 8 ft spacing
+        gives the fascia less wearing surface than an interior line."""
+        assert girder_line_loads(basic, 0)["dw"] < \
+            girder_line_loads(basic, 2)["dw"]
+
+    @pytest.mark.parametrize("bad", [-1, 5, 99])
+    def test_index_out_of_range(self, basic, bad):
+        with pytest.raises(IndexError):
+            girder_line_loads(basic, bad)
+
+
+class TestStructuralModelFromLayout:
+    def test_one_chain_per_girder_broken_at_supports(self, basic):
+        model = structural_model_from_layout(basic)
+        inp = basic.inputs
+        n_stations = len(inp.spans_ft) + 1
+        girders = [e for e in model.elements.values() if e.role == "girder"]
+        assert len(girders) == inp.girder_count * (n_stations - 1)
+        assert len(model.nodes) == inp.girder_count * n_stations
+
+    def test_every_bearing_becomes_a_restraint(self, basic):
+        model = structural_model_from_layout(basic)
+        assert len(model.restraints) == len(basic.bearings)
+        presets = {r.preset for r in model.restraints.values()}
+        assert presets <= {"fixed", "expansion"}
+
+    def test_fixed_restraint_locks_x_expansion_does_not(self, basic):
+        model = structural_model_from_layout(basic)
+        for r in model.restraints.values():
+            assert r.fix_x is (r.preset == "fixed")
+            assert r.fix_y and r.fix_z
+
+    def test_diaphragms_tie_adjacent_girders_at_supports(self, basic):
+        model = structural_model_from_layout(basic)
+        dias = [e for e in model.elements.values() if e.role == "diaphragm"]
+        n_stations = len(basic.inputs.spans_ft) + 1
+        assert len(dias) == (basic.inputs.girder_count - 1) * n_stations
+        assert all(e.metadata["gdr.kind"] == "diaphragm" for e in dias)
+
+    def test_diaphragms_can_be_suppressed(self, basic):
+        model = structural_model_from_layout(basic, diaphragms=False)
+        assert not [e for e in model.elements.values()
+                    if e.role == "diaphragm"]
+
+    def test_dead_loads_are_downward_on_every_girder_element(self, basic):
+        model = structural_model_from_layout(basic)
+        cases = {ld.case for ld in model.beam_loads}
+        assert {"DC1", "DW", "DC2"} <= cases
+        assert all(ld.w_start < 0 for ld in model.beam_loads)
+        assert all(ld.direction == "GZ" for ld in model.beam_loads)
+
+    def test_dead_loads_can_be_suppressed(self, basic):
+        model = structural_model_from_layout(basic, dead_loads=False)
+        assert not model.beam_loads
+
+    def test_dc2_only_on_fascia_lines(self, basic):
+        model = structural_model_from_layout(basic)
+        lines = set()
+        for ld in model.beam_loads:
+            if ld.case == "DC2":
+                lines.add(model.elements[ld.element_id].metadata["gdr.line"])
+        assert lines == {"1", str(basic.inputs.girder_count)}
+
+    def test_skew_shifts_nodes_along_x(self):
+        layout = layout_bridge(BridgeInput(
+            spans_ft=(80.0,), girder_count=4, girder_spacing_ft=9.0,
+            girder_label="W36X150", overhang_ft=3.0, skew_deg=30.0))
+        model = structural_model_from_layout(layout)
+        at_start = sorted((n.y, n.x) for n in model.nodes.values()
+                          if n.label.endswith("_S0"))
+        xs = [x for _, x in at_start]
+        assert xs == sorted(xs) and xs[0] < xs[-1]
+        tan = math.tan(math.radians(30.0))
+        assert xs[-1] - xs[0] == pytest.approx(3 * 9.0 * tan)
+
+
+class TestGrillageModelFromLayout:
+    def test_deck_plates_and_bare_girders(self, basic):
+        model = grillage_model_from_layout(basic)
+        plates = [e for e in model.elements.values() if e.role == "deck"]
+        girders = [e for e in model.elements.values() if e.role == "girder"]
+        assert plates and girders
+        assert all(e.midas_type == "PLATE" for e in plates)
+        assert all(len(e.nodes) == 4 for e in plates)
+        # bare steel: the girder section is the rolled shape, not composite
+        assert all(e.section == basic.inputs.girder_label for e in girders)
+
+    def test_rigid_links_tie_deck_to_every_girder_node(self, basic):
+        model = grillage_model_from_layout(basic)
+        assert model.rigid_links
+
+    def test_composite_links_are_fully_rigid(self, basic):
+        model = grillage_model_from_layout(basic, composite=True)
+        assert {rl.dof for rl in model.rigid_links} == {"111111"}
+
+    def test_non_composite_frees_longitudinal_slip_except_one_anchor(self,
+                                                                    basic):
+        model = grillage_model_from_layout(basic, composite=False)
+        dofs = [rl.dof for rl in model.rigid_links]
+        assert "011111" in dofs, "slip DOF expected off the anchor line"
+        assert dofs.count("111111") > 0, "one anchored line expected"
+        assert dofs.count("111111") < len(dofs)
+
+    def test_composite_defaults_to_the_input_flag(self):
+        inp = BridgeInput(spans_ft=(70.0,), girder_count=4,
+                          girder_spacing_ft=8.0, girder_label="W36X150",
+                          overhang_ft=3.0, composite=False)
+        model = grillage_model_from_layout(layout_bridge(inp))
+        assert "011111" in {rl.dof for rl in model.rigid_links}
+
+    def test_seg_target_controls_plate_length(self, basic):
+        coarse = grillage_model_from_layout(basic, seg_target_ft=40.0)
+        fine = grillage_model_from_layout(basic, seg_target_ft=8.0)
+        n_coarse = len([e for e in coarse.elements.values()
+                        if e.role == "deck"])
+        n_fine = len([e for e in fine.elements.values() if e.role == "deck"])
+        assert n_fine > n_coarse
+
+    def test_support_lines_always_get_a_node(self, basic):
+        model = grillage_model_from_layout(basic, seg_target_ft=37.0)
+        xs = {round(n.x, 6) for n in model.nodes.values()}
+        station = 0.0
+        for s in basic.inputs.spans_ft:
+            station += s
+            assert round(station, 6) in xs
+
+    def test_deck_spans_overhang_to_overhang_for_the_full_bridge(self, basic):
+        model = grillage_model_from_layout(basic)
+        ys = {round(n.y, 6) for n in model.nodes.values()}
+        inp = basic.inputs
+        assert round(-inp.overhang_ft, 6) in ys
+        assert round((inp.girder_count - 1) * inp.girder_spacing_ft
+                     + inp.overhang_ft, 6) in ys
+
+    def test_girder_subset_builds_a_construction_phase(self, basic):
+        model = grillage_model_from_layout(basic, girder_subset=[0, 1])
+        lines = {e.metadata["gdr.line"] for e in model.elements.values()
+                 if e.role == "girder"}
+        assert lines == {"1", "2"}
+
+    def test_phase_deck_stops_at_the_mid_bay_closure_joint(self, basic):
+        model = grillage_model_from_layout(basic, girder_subset=[0, 1])
+        ys = {round(n.y, 6) for n in model.nodes.values()}
+        s = basic.inputs.girder_spacing_ft
+        assert round(-basic.inputs.overhang_ft, 6) in ys   # outer overhang
+        assert round(1 * s + s / 2.0, 6) in ys             # closure joint
+        assert round((basic.inputs.girder_count - 1) * s
+                     + basic.inputs.overhang_ft, 6) not in ys
+
+    def test_interior_phase_is_closure_joint_on_both_sides(self, basic):
+        model = grillage_model_from_layout(basic, girder_subset=[1, 2])
+        ys = {round(n.y, 6) for n in model.nodes.values()}
+        s = basic.inputs.girder_spacing_ft
+        assert round(1 * s - s / 2.0, 6) in ys
+        assert round(2 * s + s / 2.0, 6) in ys
+        assert round(-basic.inputs.overhang_ft, 6) not in ys
+
+    @pytest.mark.parametrize("subset", [[], [0, 2], [2, 0, 3, 1, 4, 6]])
+    def test_non_contiguous_subset_rejected(self, basic, subset):
+        with pytest.raises(ValueError, match="contiguous"):
+            grillage_model_from_layout(basic, girder_subset=subset)
+
+    def test_dead_loads_optional(self, basic):
+        assert not grillage_model_from_layout(basic,
+                                              dead_loads=False).beam_loads
+        assert grillage_model_from_layout(basic, dead_loads=True).beam_loads
+
+    def test_girder_sits_below_the_deck_mid_plane(self, basic):
+        model = grillage_model_from_layout(basic)
+        gz = [n.z for n in model.nodes.values() if n.label.startswith("G")]
+        dz = [n.z for n in model.nodes.values() if n.label.startswith("D")]
+        assert max(gz) < min(dz)
+
+
+# ── remaining geometry accessors and guard paths ──────────────────────────
+
+class TestCrownAndSoffit:
+    def test_crown_defaults_to_the_girder_group_centre(self, basic):
+        inp = basic.inputs
+        assert basic.crown_y_ft == pytest.approx(
+            (inp.girder_count - 1) * inp.girder_spacing_ft / 2.0)
+
+    def test_explicit_crown_offset_is_honoured(self):
+        layout = layout_bridge(BridgeInput(
+            spans_ft=(70.0,), girder_count=5, girder_spacing_ft=8.0,
+            girder_label="W36X150", overhang_ft=3.0, crown_offset_ft=6.0))
+        assert layout.crown_y_ft == 6.0
+        # the crown is the high point of the deck surface
+        assert layout.deck_top_z(6.0) > layout.deck_top_z(0.0)
+        assert layout.deck_top_z(6.0) > layout.deck_top_z(20.0)
+
+    def test_soffit_is_one_slab_thickness_below_the_top(self, basic):
+        for y in (-2.0, 0.0, 7.5, 30.0):
+            assert basic.deck_soffit_z(y) == pytest.approx(
+                basic.deck_top_z(y) - basic.deck.thickness_in / 12.0)
+
+    def test_soffit_is_parallel_to_the_crowned_top(self, basic):
+        drop_top = basic.deck_top_z(0.0) - basic.deck_top_z(10.0)
+        drop_bot = basic.deck_soffit_z(0.0) - basic.deck_soffit_z(10.0)
+        assert drop_top == pytest.approx(drop_bot)
+
+
+class TestRebarSegmentGeometry:
+    def test_length_ft_sums_the_polyline(self, basic):
+        from civilpy.structural.bridge_layout import deck_rebar_segments
+        segs = deck_rebar_segments(basic)
+        assert segs
+        for s in segs[:25]:
+            expected = sum(
+                math.dist(a, b)
+                for a, b in zip(s.points[:-1], s.points[1:]))
+            assert s.length_ft == pytest.approx(expected)
+            assert s.start == s.points[0]
+            assert s.end == s.points[-1]
+
+    def test_crowned_transverse_bars_crank_at_the_crown(self, basic):
+        """A transverse bar crossing the crown gains an interior vertex."""
+        from civilpy.structural.bridge_layout import deck_rebar_segments
+        transverse = [s for s in deck_rebar_segments(basic)
+                      if s.rebar_set.direction == "transverse"]
+        assert transverse
+        assert any(len(s.points) > 2 for s in transverse)
+
+    def test_flat_deck_bars_stay_straight(self):
+        layout = layout_bridge(BridgeInput(
+            spans_ft=(70.0,), girder_count=5, girder_spacing_ft=8.0,
+            girder_label="W36X150", overhang_ft=3.0, cross_slope_pct=0.0))
+        from civilpy.structural.bridge_layout import deck_rebar_segments
+        transverse = [s for s in deck_rebar_segments(layout)
+                      if s.rebar_set.direction == "transverse"]
+        assert transverse
+        assert all(len(s.points) == 2 for s in transverse)
+
+
+class TestLayoutGuards:
+    @pytest.mark.parametrize("skew", [60.0, -60.0, 75.0, -90.0])
+    def test_skew_beyond_60_degrees_rejected(self, skew):
+        with pytest.raises(ValueError, match="skew"):
+            layout_bridge(BridgeInput(
+                spans_ft=(70.0,), girder_count=5, girder_spacing_ft=8.0,
+                girder_label="W36X150", overhang_ft=3.0, skew_deg=skew))
+
+    def test_skew_just_under_the_limit_is_accepted(self):
+        layout = layout_bridge(BridgeInput(
+            spans_ft=(70.0,), girder_count=5, girder_spacing_ft=8.0,
+            girder_label="W36X150", overhang_ft=3.0, skew_deg=59.5))
+        assert layout.inputs.skew_deg == 59.5
+
+
+class TestGirderWeightDatabaseFallback:
+    def test_label_without_a_weight_suffix_uses_the_shape_database(
+            self, monkeypatch):
+        """`W36` cannot be parsed, so the AISC database supplies the weight."""
+        from civilpy.structural import steel
+
+        class _Shape:
+            weight = type("Q", (), {"magnitude": 271.0})()
+
+        monkeypatch.setattr(steel, "W", lambda label: _Shape())
+        assert _girder_weight_plf("W36") == pytest.approx(271.0)
+
+
+class TestModelBuilderEdgeCases:
+    def test_bearings_off_the_station_grid_are_skipped(self, basic):
+        """A bearing whose station index has no node must not raise."""
+        import dataclasses
+        stray = dataclasses.replace(basic.bearings[0], station_index=99)
+        patched = dataclasses.replace(
+            basic, bearings=tuple(basic.bearings) + (stray,))
+        model = structural_model_from_layout(patched)
+        assert len(model.restraints) == len(basic.bearings)
+
+    def test_grillage_skips_bearings_outside_the_phase(self, basic):
+        """Phase 0-1 must ignore bearings on girders it does not build."""
+        model = grillage_model_from_layout(basic, girder_subset=[0, 1])
+        built = {"1", "2"}
+        for r in model.restraints.values():
+            node = model.nodes[r.node_id]
+            assert node.label.split("_")[0].lstrip("G") in built
+
+
+class TestGeometryGuardsAndProfileBranches:
+    @pytest.mark.parametrize("spacing,overhang", [
+        (0.0, 3.0), (-8.0, 3.0), (8.0, -0.5),
+    ])
+    def test_spacing_and_overhang_guards(self, spacing, overhang):
+        with pytest.raises(ValueError,
+                           match="spacing must be positive"):
+            layout_bridge(BridgeInput(
+                spans_ft=(70.0,), girder_count=5,
+                girder_spacing_ft=spacing, girder_label="W36X150",
+                overhang_ft=overhang))
+
+    def test_design_without_an_overhang_bar(self):
+        """BR-1-13 at 12.5 ft effective span needs no extra overhang bar, so
+        the rebar schedule must simply omit that set."""
+        layout = layout_bridge(BridgeInput(
+            spans_ft=(70.0,), girder_count=5, girder_spacing_ft=13.5,
+            girder_label="W36X150", overhang_ft=3.0, railing="BR-1-13"))
+        names = {r.name for r in layout.deck.rebar}
+        assert "additional overhang" not in names
+        assert names, "the four standard mats are still scheduled"
+
+    def test_profile_with_no_overhang_has_no_thickened_edge(self):
+        """With the deck stopping at the fascia flange tips there is no
+        overhang step in the soffit, so the profile is top + uniform slab."""
+        layout = layout_bridge(BridgeInput(
+            spans_ft=(70.0,), girder_count=5, girder_spacing_ft=8.0,
+            girder_label="W36X150", overhang_ft=0.0))
+        profile = layout.deck_profile_yz()
+        assert profile
+        t = layout.deck.thickness_in / 12.0
+        t_oh = layout.deck.overhang_thickness_in / 12.0
+        depths = [layout.deck_top_z(y) - z for y, z in profile]
+        if t_oh > t:
+            assert max(depths) == pytest.approx(t, abs=1e-9)
+
+    def test_profile_when_the_crown_sits_outside_the_deck(self):
+        """An off-deck crown means no crown break in the surface, so the
+        top of the profile is just the two edges."""
+        layout = layout_bridge(BridgeInput(
+            spans_ft=(70.0,), girder_count=5, girder_spacing_ft=8.0,
+            girder_label="W36X150", overhang_ft=3.0,
+            crown_offset_ft=-50.0))
+        profile = layout.deck_profile_yz()
+        ys = [y for y, _ in profile]
+        assert -50.0 not in ys
+        # a one-way crossfall: the deck falls monotonically across the width
+        zs = [layout.deck_top_z(y) for y in sorted({round(y, 6) for y in ys})]
+        assert zs == sorted(zs, reverse=True)
+
+    def test_barrier_on_the_far_edge_is_not_double_counted(self, basic):
+        """Only the barrier matching the fascia's own edge loads that line."""
+        import dataclasses
+        left = [b for b in basic.barriers if b.edge == "left"]
+        right = [b for b in basic.barriers if b.edge == "right"]
+        assert left and right, "fixture should carry a barrier on each edge"
+        n = basic.inputs.girder_count
+        w0 = girder_line_loads(basic, 0)["dc2"]
+        wn = girder_line_loads(basic, n - 1)["dc2"]
+        single = dataclasses.replace(basic, barriers=tuple(right))
+        assert girder_line_loads(single, 0)["dc2"] == pytest.approx(w0)
+        assert girder_line_loads(single, n - 1)["dc2"] == 0.0
+        assert wn > 0
+
+    def test_barrier_with_neither_weight_nor_height_adds_nothing(self, basic):
+        """An uncataloged barrier of unknown height contributes no DC2 rather
+        than a guessed load."""
+        import dataclasses
+        blank = tuple(
+            dataclasses.replace(b, weight_plf=None, height_in=None)
+            for b in basic.barriers)
+        layout = dataclasses.replace(basic, barriers=blank)
+        for idx in (0, basic.inputs.girder_count - 1):
+            assert girder_line_loads(layout, idx)["dc2"] == 0.0
+        # the rest of the dead load is unaffected
+        assert girder_line_loads(layout, 0)["dc1"] == pytest.approx(
+            girder_line_loads(basic, 0)["dc1"])
