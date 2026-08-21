@@ -385,6 +385,52 @@ class AssetWiseClient:
             logger.error("Failed to fetch cover image for as_id=%s: %s", as_id, e)
             return None
 
+    def get_report_files(self, ast_id):
+        """Files mapped to one inspection report (AssetFilesReportMap).
+
+        Photos are attached PER REPORT and persist for historical reports
+        (verified 2026-08-21: approved reports back to 2020 all kept their
+        maps), so iterating a bridge's approved reports recovers the full
+        photo history. Note the asset-level file list
+        (``AssetFile/GetByAssetId``) does NOT include these — report
+        photos only surface through this map. Rows carry ``af_id`` (the
+        download key), ``af_filename``, ``af_description`` (caption),
+        ``af_date``, and ``af_cover``/``af_print`` flags. Returns [] when
+        the report has no mapped files.
+        """
+        url = (f"{self.base_url}/api/AssetFilesReportMap/"
+               f"GetMapsForReportByAstId/{ast_id}")
+        try:
+            resp = self._get_with_retry(url)
+            if resp:
+                data = resp.json()
+                rows = data.get('data') if isinstance(data, dict) else data
+                return rows or []
+        except Exception as e:
+            logger.error("Failed to fetch report file map for ast_id=%s: %s",
+                         ast_id, e)
+        return []
+
+    def download_file(self, af_id, timeout=120):
+        """Download one asset file's raw bytes by ``af_id``.
+
+        Returns ``(bytes, content_type)`` or ``(None, '')`` on failure.
+        Report photos are full-resolution originals (a few MB each), so
+        batch callers should parallelize with :meth:`map_assets`.
+        """
+        url = f"{self.base_url}/api/AssetFile/Download/{af_id}"
+        try:
+            resp = self.session.get(
+                url, headers={"Accept": "application/octet-stream"},
+                timeout=timeout)
+            if resp.status_code == 404:
+                return None, ''
+            resp.raise_for_status()
+            return resp.content, resp.headers.get('Content-Type', '')
+        except requests.exceptions.RequestException as e:
+            logger.error("Failed to download af_id=%s: %s", af_id, e)
+            return None, ''
+
     # ------------------------------------------------------------------
     # Differential sync
     # ------------------------------------------------------------------
