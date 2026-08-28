@@ -20,6 +20,7 @@ import datetime
 import logging
 import random
 import re
+from urllib.parse import unquote
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -388,15 +389,19 @@ class AssetWiseClient:
     def get_report_files(self, ast_id):
         """Files mapped to one inspection report (AssetFilesReportMap).
 
-        Photos are attached PER REPORT and persist for historical reports
+        Files attached to a report persist for historical reports
         (verified 2026-08-21: approved reports back to 2020 all kept their
         maps), so iterating a bridge's approved reports recovers the full
-        photo history. Note the asset-level file list
-        (``AssetFile/GetByAssetId``) does NOT include these — report
-        photos only surface through this map. Rows carry ``af_id`` (the
-        download key), ``af_filename``, ``af_description`` (caption),
-        ``af_date``, and ``af_cover``/``af_print`` flags. Returns [] when
-        the report has no mapped files.
+        report-attachment history. The report map and the asset-level list
+        (:meth:`get_asset_files`) are DIFFERENT attachment scopes and
+        neither is a superset of the other: one bridge keeps its photos
+        only in report maps, another (e.g. SFN 1801503, 2026-08-28) keeps
+        its photos only at asset level and its report maps hold only PDFs
+        (UW reports, FCM plans). Pull the union and route by content type.
+        Rows carry ``af_id`` (the download key), ``af_filename``,
+        ``af_description`` (caption), ``af_date``, and
+        ``af_cover``/``af_print`` flags. Returns [] when the report has no
+        mapped files.
         """
         url = (f"{self.base_url}/api/AssetFilesReportMap/"
                f"GetMapsForReportByAstId/{ast_id}")
@@ -411,10 +416,48 @@ class AssetWiseClient:
                          ast_id, e)
         return []
 
-    def download_file(self, af_id, timeout=120):
-        """Download one asset file's raw bytes by ``af_id``.
+    def get_asset_files(self, as_id):
+        """Asset-level file list (``AssetFile/GetByAssetId``).
 
-        Returns ``(bytes, content_type)`` or ``(None, '')`` on failure.
+        Rows carry ``af_id``, ``af_size``, ``af_content_type`` (e.g.
+        ``image/jpeg``, ``image/bitmap``, ``application/pdf``),
+        ``af_date_inserted`` and ``af_deleted``; there is NO filename or
+        caption at this level. Deleted rows are dropped. Returns [] on
+        error. See :meth:`get_report_files` for how this relates to the
+        per-report map.
+        """
+        url = f"{self.base_url}/api/AssetFile/GetByAssetId/{as_id}"
+        try:
+            resp = self._get_with_retry(url)
+            if resp:
+                data = resp.json()
+                rows = data.get('data') if isinstance(data, dict) else data
+                return [r for r in (rows or []) if not r.get('af_deleted')]
+        except Exception as e:
+            logger.error("Failed to fetch asset file list for as_id=%s: %s",
+                         as_id, e)
+        return []
+
+    @staticmethod
+    def _disposition_filename(headers):
+        """Filename from a ``Content-Disposition`` header — the RFC 5987
+        ``filename*=UTF-8''...`` form first, else the quoted ``filename=``.
+        AssetWise's download endpoint is the ONLY place the original
+        filename of an asset-level file is exposed (the GetByAssetId rows
+        carry just a GUID)."""
+        cd = headers.get('Content-Disposition', '') or ''
+        m = re.search(r"filename\*=UTF-8''([^;]+)", cd, re.I)
+        if m:
+            return unquote(m.group(1).strip())
+        m = re.search(r'filename="?([^";]+)"?', cd, re.I)
+        return m.group(1).strip() if m else ''
+
+    def download_file_named(self, af_id, timeout=120):
+        """Download one asset file by ``af_id``.
+
+        Returns ``(bytes, content_type, filename)``; ``(None, '', '')`` on
+        failure or 404 (AssetWise keeps dangling file rows whose bytes are
+        gone — a 404 here is a vendor-side orphan, not a transport error).
         Report photos are full-resolution originals (a few MB each), so
         batch callers should parallelize with :meth:`map_assets`.
         """
@@ -424,12 +467,38 @@ class AssetWiseClient:
                 url, headers={"Accept": "application/octet-stream"},
                 timeout=timeout)
             if resp.status_code == 404:
-                return None, ''
+                return None, '', ''
             resp.raise_for_status()
-            return resp.content, resp.headers.get('Content-Type', '')
+            return (resp.content, resp.headers.get('Content-Type', ''),
+                    self._disposition_filename(resp.headers))
         except requests.exceptions.RequestException as e:
             logger.error("Failed to download af_id=%s: %s", af_id, e)
-            return None, ''
+            return None, '', ''
+
+    def download_file(self, af_id, timeout=120):
+        """:meth:`download_file_named` without the filename —
+        ``(bytes, content_type)`` or ``(None, '')``."""
+        content, ctype, _ = self.download_file_named(af_id, timeout=timeout)
+        return content, ctype
+
+    def file_name(self, af_id, timeout=30):
+        """Original filename of an asset file without downloading it:
+        a streamed GET whose body is closed after the headers arrive.
+        Returns '' when unknown."""
+        url = f"{self.base_url}/api/AssetFile/Download/{af_id}"
+        try:
+            resp = self.session.get(
+                url, headers={"Accept": "application/octet-stream"},
+                timeout=timeout, stream=True)
+            try:
+                if resp.status_code != 200:
+                    return ''
+                return self._disposition_filename(resp.headers)
+            finally:
+                resp.close()
+        except requests.exceptions.RequestException as e:
+            logger.error("Failed to read filename for af_id=%s: %s", af_id, e)
+            return ''
 
     # ------------------------------------------------------------------
     # Differential sync
