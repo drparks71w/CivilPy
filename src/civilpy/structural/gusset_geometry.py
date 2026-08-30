@@ -711,7 +711,11 @@ def thickness_field_from_points(points, t_nominal: float, cell: float = 0.5,
 
 def mesh_vertices_from_3dm(path: str, layer: str | None = None):
     """Vertices (N, 3) of all meshes in a Rhino .3dm (optionally one layer).
-    Requires ``rhino3dm``; a scanner export brought into Rhino lands here."""
+    Requires ``rhino3dm``; a scanner export brought into Rhino lands here.
+
+    A ``layer`` that does not exist is an error rather than a silent
+    fall-back to every mesh in the file: a mistyped layer would otherwise
+    hand a section-loss rating the wrong plate's scan."""
     import numpy as np
     import rhino3dm  # noqa: F401  (optional dependency)
     f = rhino3dm.File3dm.Read(path)
@@ -720,6 +724,10 @@ def mesh_vertices_from_3dm(path: str, layer: str | None = None):
         for i, ly in enumerate(f.Layers):
             if ly.FullPath == layer or ly.Name == layer:
                 layer_idx = i
+        if layer_idx is None:
+            raise ValueError(
+                f"no layer named {layer!r} in {path}; found "
+                f"{sorted(ly.FullPath for ly in f.Layers)}")
     pts = []
     for obj in f.Objects:
         if layer_idx is not None and obj.Attributes.LayerIndex != layer_idx:
@@ -730,3 +738,75 @@ def mesh_vertices_from_3dm(path: str, layer: str | None = None):
                 p = g.Vertices[k]
                 pts.append((p.X, p.Y, p.Z))
     return np.asarray(pts, dtype=float)
+
+
+# --------------------------------------------------------------------------- #
+# serialization (one JSON per joint: the drawing-parser -> Rhino hand-off)
+# --------------------------------------------------------------------------- #
+def joint_to_dict(joint: GussetJoint) -> dict:
+    """A JSON-safe dict holding everything needed to rebuild ``joint``.
+
+    The seeding format: the failure-plane drawing parser writes one of these
+    per joint, and anything that cannot import this module's dependencies --
+    Rhino's own Python, say -- rebuilds the joint from it with
+    :func:`joint_from_dict`.  Only *inputs* are stored; every derived
+    quantity is recomputed."""
+    def plate_d(p: GussetPlate) -> dict:
+        return {"outline": [list(pt) for pt in p.outline], "fy": p.fy,
+                "fu": p.fu, "label": p.label,
+                "thickness": {"t_nominal": p.thickness.t_nominal,
+                              "n_samples": p.thickness.n_samples,
+                              "patches": [{"polygon": [list(pt) for pt in q.polygon],
+                                           "t_remaining": q.t_remaining,
+                                           "note": q.note}
+                                          for q in p.thickness.patches]}}
+
+    def member_d(m: MemberEnd) -> dict:
+        return {"name": m.name, "axis": list(m.axis), "member_type": m.member_type,
+                "is_chord": m.is_chord, "spliced_at_joint": m.spliced_at_joint,
+                "milled_butt": m.milled_butt,
+                "fasteners": [{"x": f.x, "y": f.y, "diameter": f.diameter,
+                               "hole": f.hole, "kind": f.kind} for f in m.fasteners]}
+
+    out = {"name": joint.name, "work_point": list(joint.work_point),
+           "fastener_diameter": joint.fastener_diameter,
+           "inside": plate_d(joint.inside),
+           "members": [member_d(m) for m in joint.members]}
+    if joint.outside is not None:
+        out["outside"] = plate_d(joint.outside)
+    if joint.members_outside:
+        out["members_outside"] = [member_d(m) for m in joint.members_outside]
+    return out
+
+
+def joint_from_dict(d: dict) -> GussetJoint:
+    """Rebuild a :class:`GussetJoint` from :func:`joint_to_dict` output."""
+    wp = tuple(d["work_point"])
+
+    def plate(pd):
+        t = pd["thickness"]
+        return GussetPlate([tuple(pt) for pt in pd["outline"]],
+                           ThicknessField(t["t_nominal"],
+                                          [ThicknessPatch([tuple(pt) for pt in q["polygon"]],
+                                                          q["t_remaining"], q.get("note", ""))
+                                           for q in t.get("patches", [])],
+                                          t.get("n_samples", 200)),
+                           fy=pd.get("fy", 45.0), fu=pd.get("fu", 70.0),
+                           label=pd.get("label", ""))
+
+    def member(md):
+        return MemberEnd(md["name"], wp, tuple(md["axis"]),
+                         [Fastener(f["x"], f["y"], f.get("diameter", 1.0),
+                                   f.get("hole"), f.get("kind", "rivet"))
+                          for f in md["fasteners"]],
+                         member_type=md.get("member_type", "diagonal"),
+                         is_chord=md.get("is_chord", False),
+                         spliced_at_joint=md.get("spliced_at_joint", False),
+                         milled_butt=md.get("milled_butt", False))
+
+    return GussetJoint(d["name"], wp, plate(d["inside"]),
+                       outside=plate(d["outside"]) if d.get("outside") else None,
+                       members=[member(m) for m in d["members"]],
+                       members_outside=([member(m) for m in d["members_outside"]]
+                                        if d.get("members_outside") else None),
+                       fastener_diameter=d.get("fastener_diameter", 1.0))
