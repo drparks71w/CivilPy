@@ -627,3 +627,26 @@ def panel_point_tags(bid: str, *, joint: str, line: str, span: str,
     if depth_ft is not None:
         tags["pp.truss_depth_ft"] = f"{depth_ft:.4g}"
     return tags
+
+
+def rivet_tags(bid: str, *, host: str, diameter_in: float = 1.0,
+               grip_in: float | None = None, member: str = "",
+               row: int | None = None, col: int | None = None,
+               kind: str = "rivet") -> dict:
+    """One driven rivet (or the bolt that replaced it) in a connection.
+
+    ``host`` is the ``bim.id`` of the plate it passes through and ``member``
+    the member end it connects, so a reviewer can select a member's whole
+    rivet group.  Rivets are producer-counted, not measured, so the pay block
+    carries the count rather than a length or a weight."""
+    tags = {**_base("rivet", bid), "rivet.host": host,
+            "rivet.diameter_in": f"{diameter_in:g}", "rivet.kind": kind}
+    if member:
+        tags["rivet.member"] = member
+    if grip_in is not None:
+        tags["rivet.grip_in"] = f"{grip_in:g}"
+    if row is not None:
+        tags["rivet.row"] = str(row)
+    if col is not None:
+        tags["rivet.col"] = str(col)
+    return tags
