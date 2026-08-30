@@ -166,8 +166,14 @@ class TrussMember:
 
 @dataclass(frozen=True)
 class FramingMember:
-    """A floor beam, stringer or bracing member: drawn as a box, since the
-    floor-system sections are estimates rather than sheet values."""
+    """A floor beam, stringer or bracing member, described as an I: overall
+    depth and flange width with the web and flange thicknesses.
+
+    Carrying the plate thicknesses rather than a fill fraction matters more
+    than it looks -- a 55 in deep floor beam is about 48 in^2 of steel, and
+    guessing it as a fraction of its 55 x 14 in envelope overstates the floor
+    system several times over, which on a truss bridge is a large share of
+    the dead load."""
     id: str
     i: str
     j: str
@@ -175,9 +181,27 @@ class FramingMember:
     role: str = "floor_beam"
     depth_in: float = 18.0
     width_in: float = 8.0
+    web_t_in: float = 0.375
+    flange_t_in: float = 0.5
     level: str = ""
     span: str = ""
     normal: Point3 = (0.0, 0.0, 1.0)
+
+    @property
+    def area_in2(self) -> float:
+        """Cross-sectional area of the I (in^2)."""
+        web = self.web_t_in * max(self.depth_in - 2 * self.flange_t_in, 0.0)
+        return web + 2 * self.width_in * self.flange_t_in
+
+    def rects(self):
+        """``(b_y, h_z, y_c, z_c)`` per plate, the way
+        :func:`civilpy.structural.builtup.rects` reports a truss member."""
+        d, b = self.depth_in, self.width_in
+        tw, tf = self.web_t_in, self.flange_t_in
+        out = [(tw, max(d - 2 * tf, 0.0), 0.0, 0.0)]
+        for sz in (-1, 1):
+            out.append((b, tf, 0.0, sz * (d / 2 - tf / 2)))
+        return out
 
 
 @dataclass(frozen=True)
@@ -315,19 +339,36 @@ def member_objects(model: TrussModel, m: TrussMember, *, lod: int = 400,
     return out
 
 
-def framing_objects(model: TrussModel, f: FramingMember) -> list:
-    """One box solid for a floor beam, stringer or brace."""
+def framing_objects(model: TrussModel, f: FramingMember, *,
+                    lod: int = 400) -> list:
+    """The solids for a floor beam, stringer or brace: web and flanges at
+    LOD 400, one enveloping box below that."""
     p_i = model.nodes[f.i].point
     p_j = model.nodes[f.j].point
     u, v, w, length = member_frame(p_i, p_j, f.normal)
-    area_in2 = f.depth_in * f.width_in * 0.35          # ~35% of the box is steel
-    weight_lb = area_in2 / 144.0 * builtup.STEEL_PCF * length
-    tags = bim.truss_framing_tags(
-        f.id, role=f.role, section=f.section, length_ft=length,
-        weight_lb=weight_lb, level=f.level or None, span=f.span or None)
-    return [EmitObject("prism", TYPE_LAYER[f.role],
-                       _rect_loop(p_i, v, w, 0.0, 0.0, f.width_in, f.depth_in),
-                       tags, _scale(u, length))]
+    weight_lb = f.area_in2 / 144.0 * builtup.STEEL_PCF * length
+    vector = _scale(u, length)
+    layer = TYPE_LAYER[f.role]
+    if lod < 400:
+        tags = bim.truss_framing_tags(
+            f.id, role=f.role, section=f.section, length_ft=length,
+            weight_lb=weight_lb, level=f.level or None, span=f.span or None)
+        return [EmitObject("prism", layer,
+                           _rect_loop(p_i, v, w, 0.0, 0.0, f.width_in, f.depth_in),
+                           tags, vector)]
+    names = ("web", "bottom flange", "top flange")
+    out = []
+    for k, (b, h, y_c, z_c) in enumerate(f.rects()):
+        if b <= 0.0 or h <= 0.0:
+            continue
+        tags = bim.truss_framing_tags(
+            f.id, role=f.role, section=f.section, length_ft=length,
+            weight_lb=weight_lb if k == 0 else None,
+            level=f.level or None, span=f.span or None)
+        tags["framing.piece"] = names[k] if k < len(names) else "piece %d" % k
+        out.append(EmitObject("prism", layer,
+                              _rect_loop(p_i, v, w, y_c, z_c, b, h), tags, vector))
+    return out
 
 
 def gusset_objects(model: TrussModel, g: GussetPlacement) -> list:
@@ -400,7 +441,7 @@ def truss_emit(model: TrussModel, *, lod: int = 400, shorten_ft: float = 0.0,
             out.extend(member_objects(model, m, lod=lod, shorten_ft=shorten_ft))
     if framing:
         for f in model.framing:
-            out.extend(framing_objects(model, f))
+            out.extend(framing_objects(model, f, lod=lod))
     if gussets:
         for g in model.gussets:
             out.extend(gusset_objects(model, g))
