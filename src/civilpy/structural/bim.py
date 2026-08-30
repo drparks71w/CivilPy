@@ -650,3 +650,46 @@ def rivet_tags(bid: str, *, host: str, diameter_in: float = 1.0,
     if col is not None:
         tags["rivet.col"] = str(col)
     return tags
+
+
+# -- review overlay ---------------------------------------------------------
+
+def repair_tags(bid: str, *, item: str, target: str, sheet: str = "",
+                plan_set: str = "", scope: str = "", status: str = "proposed",
+                target_type: str = "", quantity: str = "") -> dict:
+    """A proposed repair located on the element it acts on.
+
+    ``item`` is the plan callout (``"LC-1"``, ``"PR/SP-72"``), ``target`` the
+    ``bim.id`` it applies to, ``sheet`` where to read it.  Carried both as its
+    own overlay object *and* as ``repair.*`` on the target element, so a
+    reviewer can either isolate the proposed work or pick a chord and see
+    what is being done to it.  No pay block: the overlay is commentary, and
+    pricing it here would double-count against the plan quantities."""
+    tags = {**_base("repair", bid), "repair.item": item,
+            "repair.target": target, "repair.status": status}
+    for key, val in (("sheet", sheet), ("plan_set", plan_set),
+                     ("scope", scope), ("target_type", target_type),
+                     ("quantity", quantity)):
+        if val:
+            tags["repair." + key] = str(val)
+    return tags
+
+
+def finding_tags(bid: str, *, target: str, summary: str, year: str = "",
+                 severity: str = "", source: str = "", element: str = "",
+                 condition_state: str = "", quantity: str = "") -> dict:
+    """An inspection finding located on the element it was found on.
+
+    ``summary`` is the inspector's words, ``year`` the report, ``source`` the
+    document.  Like :func:`repair_tags` this is commentary -- it carries no
+    pay block and no material, and it is the *record* of a finding, not an
+    assessment of one."""
+    tags = {**_base("finding", bid), "finding.target": target,
+            "finding.summary": summary}
+    for key, val in (("year", year), ("severity", severity),
+                     ("source", source), ("element", element),
+                     ("condition_state", condition_state),
+                     ("quantity", quantity)):
+        if val:
+            tags["finding." + key] = str(val)
+    return tags

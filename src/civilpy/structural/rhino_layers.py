@@ -100,6 +100,16 @@ LAYER_SWAY_BRACING = "Superstructure::Sway Bracing"
 LAYER_PANEL_POINTS = "Superstructure::Panel Points"
 LAYER_RIVETS = "Superstructure::Rivets"
 
+#: PROPOSED review overlay (:mod:`civilpy.structural.rhino_truss`): what a
+#: proposed repair set touches, and what past inspections found, located on
+#: the model instead of described in prose.  Like ``Gusset`` and
+#: ``Substructure::STM`` this is an overlay -- non-pay, excluded from every
+#: estimate rollup -- and it is deliberately top-level rather than under
+#: Superstructure so a reviewer can switch the whole commentary on and off.
+LAYER_REVIEW = "Review"
+LAYER_REVIEW_REPAIRS = "Review::Proposed Repairs"
+LAYER_REVIEW_FINDINGS = "Review::Inspection Findings"
+
 #: PROPOSED leaves under the (reserved) Substructure group, mirroring the
 #: Superstructure taxonomy one component per layer: cap beams, the stepped
 #: beam seats on top of them, columns, footings, driven piles, abutment
@@ -184,6 +194,10 @@ DEFAULT_COLORS: dict[str, tuple[int, int, int, int]] = {
     LAYER_SWAY_BRACING: (140, 130, 150, 255),
     LAYER_PANEL_POINTS: (230, 200, 60, 255),
     LAYER_RIVETS: (60, 60, 65, 255),
+    # review overlay: proposed work hot magenta, past findings amber
+    LAYER_REVIEW: (200, 40, 160, 255),
+    LAYER_REVIEW_REPAIRS: (220, 40, 170, 255),
+    LAYER_REVIEW_FINDINGS: (245, 170, 40, 255),
     LAYER_SUB_CAPS: (155, 145, 130, 255),
     LAYER_SUB_SEATS: (170, 160, 145, 255),
     LAYER_SUB_COLUMNS: (140, 130, 115, 255),

@@ -66,6 +66,8 @@ from civilpy.structural.rhino_layers import (
     LAYER_GUSSET_PLATES,
     LAYER_LATERAL_BRACING,
     LAYER_PANEL_POINTS,
+    LAYER_REVIEW_FINDINGS,
+    LAYER_REVIEW_REPAIRS,
     LAYER_RIVETS,
     LAYER_STRINGERS,
     LAYER_SWAY_BRACING,
@@ -94,6 +96,8 @@ TYPE_LAYER = {
     "portal_brace": LAYER_SWAY_BRACING,
     "panel_point": LAYER_PANEL_POINTS,
     "rivet": LAYER_RIVETS,
+    "repair": LAYER_REVIEW_REPAIRS,
+    "finding": LAYER_REVIEW_FINDINGS,
 }
 
 
@@ -236,6 +240,27 @@ class GussetPlacement:
     steel: str = "silicon 1917-1936"
 
 
+@dataclass(frozen=True)
+class ReviewItem:
+    """A proposed repair, or a past inspection finding, located on an element.
+
+    This is what turns the model into a *review* model.  A repair set and an
+    inspection history are normally prose plus a sheet number, and answering
+    "where on the bridge is this, and what else is happening there?" means
+    holding the whole structure in your head.  Attached to the element the
+    question becomes a click.
+
+    ``kind`` is ``"repair"`` or ``"finding"``; ``target`` the ``bim.id`` of
+    the member, plate or node it applies to; ``tags`` the
+    :func:`~civilpy.structural.bim.repair_tags` /
+    :func:`~civilpy.structural.bim.finding_tags` block.
+    """
+    id: str
+    kind: str
+    target: str
+    tags: dict = field(default_factory=dict)
+
+
 @dataclass
 class TrussModel:
     """A whole truss bridge: work points, members, framing and gusset plates."""
@@ -244,6 +269,7 @@ class TrussModel:
     members: list = field(default_factory=list)
     framing: list = field(default_factory=list)
     gussets: list = field(default_factory=list)
+    reviews: list = field(default_factory=list)
     doc_tags: dict = field(default_factory=dict)
 
     def node(self, nid: str) -> TrussNode:
@@ -454,6 +480,87 @@ def _polygon_area(poly) -> float:
     return a / 2.0
 
 
+def review_objects(model: TrussModel, item: ReviewItem, *,
+                   margin_in: float = 3.0) -> list:
+    """A highlight sleeve around whatever the review item points at.
+
+    A box enveloping the target member -- inflated by ``margin_in`` so it
+    reads as a sleeve around it rather than z-fighting with it -- or the
+    plate, or a marker at a node.  The item tags ride on it, and the same
+    tags are stamped on the target element by :func:`review_element_tags`,
+    so the overlay can be isolated *and* the element answers for itself.
+    """
+    layer = TYPE_LAYER.get(item.kind, LAYER_REVIEW_REPAIRS)
+    member = next((m for m in model.members if m.id == item.target), None)
+    if member is not None:
+        p_i = model.nodes[member.i].point
+        p_j = model.nodes[member.j].point
+        u, v, w, length = member_frame(p_i, p_j, member.normal)
+        b, h = builtup.envelope(member.spec)
+        return [EmitObject("prism", layer,
+                           _rect_loop(p_i, v, w, 0.0, 0.0,
+                                      b + 2 * margin_in, h + 2 * margin_in),
+                           dict(item.tags), _scale(u, length))]
+    fram = next((f for f in model.framing if f.id == item.target), None)
+    if fram is not None:
+        p_i = model.nodes[fram.i].point
+        p_j = model.nodes[fram.j].point
+        u, v, w, length = member_frame(p_i, p_j, fram.normal)
+        return [EmitObject("prism", layer,
+                           _rect_loop(p_i, v, w, 0.0, 0.0,
+                                      fram.width_in + 2 * margin_in,
+                                      fram.depth_in + 2 * margin_in),
+                           dict(item.tags), _scale(u, length))]
+    gus = next((g for g in model.gussets if g.id == item.target), None)
+    if gus is not None:
+        obj = gusset_objects(model, gus)[0]
+        return [EmitObject("prism", layer, obj.points, dict(item.tags),
+                           obj.vector)]
+    node = model.nodes.get(item.target)
+    if node is not None:
+        return [EmitObject("point", layer, (node.point,), dict(item.tags))]
+    return []
+
+
+def unresolved_reviews(model: TrussModel) -> list:
+    """Review items whose target is not in the model.
+
+    A repair pointing at a member that does not exist is a mapping error
+    worth seeing, not something to swallow silently."""
+    known = {m.id for m in model.members}
+    known |= {f.id for f in model.framing}
+    known |= {g.id for g in model.gussets}
+    known |= set(model.nodes)
+    return [i for i in model.reviews if i.target not in known]
+
+
+def review_element_tags(model: TrussModel) -> dict:
+    """``{target bim.id: extra tags}`` -- the review commentary flattened onto
+    the elements it refers to, so a member carries its own repair and finding
+    history in the file.
+
+    Several items on one element are numbered (``repair.item``,
+    ``repair2.item``, ...) rather than overwriting each other; a lower chord
+    with pack-rust removal *and* an LC-1 rebuild has to show both."""
+    out = {}
+    seen = {}
+    for item in model.reviews:
+        acc = out.setdefault(item.target, {})
+        n = seen.get((item.target, item.kind), 0)
+        seen[(item.target, item.kind)] = n + 1
+        prefix = item.kind if n == 0 else "%s%d" % (item.kind, n + 1)
+        for k, v in item.tags.items():
+            if k in ("bim.type", "bim.id"):
+                continue
+            acc[k.replace(item.kind + ".", prefix + ".", 1)] = v
+    for target, acc in out.items():
+        for kind in ("repair", "finding"):
+            c = seen.get((target, kind), 0)
+            if c:
+                acc["%s.count" % kind] = str(c)
+    return out
+
+
 def panel_point_objects(model: TrussModel, node: TrussNode) -> list:
     """The work-point marker for a panel point."""
     tags = bim.panel_point_tags(node.id, joint=node.joint or node.id,
@@ -468,7 +575,7 @@ def panel_point_objects(model: TrussModel, node: TrussNode) -> list:
 def truss_emit(model: TrussModel, *, lod: int = 400, shorten_ft: float = 0.0,
                panel_points: bool = True, framing: bool = True,
                gussets: bool = True, members: bool = True,
-               rivets: bool = False) -> tuple:
+               rivets: bool = False, reviews: bool = True) -> tuple:
     """Every drawable object of ``model`` as neutral ``EmitObject`` records.
 
     ``lod`` 400 or more draws the built-up members piece by piece; 300 draws
@@ -478,17 +585,30 @@ def truss_emit(model: TrussModel, *, lod: int = 400, shorten_ft: float = 0.0,
     traced rivets as hardware (LOD 500); it is off by default because a whole
     bridge is six figures of them."""
     out = []
+    extra = review_element_tags(model) if reviews else {}
     if members:
         for m in model.members:
-            out.extend(member_objects(model, m, lod=lod, shorten_ft=shorten_ft))
+            objs = member_objects(model, m, lod=lod, shorten_ft=shorten_ft)
+            for o in objs:
+                o.tags.update(extra.get(m.id, {}))
+            out.extend(objs)
     if framing:
         for f in model.framing:
-            out.extend(framing_objects(model, f, lod=lod))
+            objs = framing_objects(model, f, lod=lod)
+            for o in objs:
+                o.tags.update(extra.get(f.id, {}))
+            out.extend(objs)
     if gussets:
         for g in model.gussets:
-            out.extend(gusset_objects(model, g))
+            objs = gusset_objects(model, g)
+            for o in objs:
+                o.tags.update(extra.get(g.id, {}))
+            out.extend(objs)
             if rivets:
                 out.extend(gusset_rivet_objects(model, g))
+    if reviews:
+        for item in model.reviews:
+            out.extend(review_objects(model, item))
     if panel_points:
         for node in model.nodes.values():
             if node.chord in ("U", "L"):
@@ -513,6 +633,7 @@ def model_doc_tags(model: TrussModel, *, lod: int) -> dict:
             "bridge.truss_members": str(len(model.members)),
             "bridge.framing_members": str(len(model.framing)),
             "bridge.gusset_plates": str(len(model.gussets)),
+            "bridge.review_items": str(len(model.reviews)),
             "bridge.generator": "civilpy.structural.rhino_truss"}
     tags.update(model.doc_tags)
     return tags
