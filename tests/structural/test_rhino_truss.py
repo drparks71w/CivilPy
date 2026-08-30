@@ -338,3 +338,30 @@ def test_six_inch_angles_widen_the_assumed_web_spacing():
 def test_a_spec_without_plates_or_angles_is_rejected():
     with pytest.raises(ValueError, match="no web plates"):
         builtup.parse("W24x76")
+
+
+def test_framing_weight_comes_from_the_plates_not_a_fill_fraction():
+    """A 4'-7 3/8 in floor beam is about 48 in^2 of steel.  Guessing it as a
+    fraction of its 55 x 14 in envelope overstates it several times over, and
+    on a truss bridge the floor system is a large share of the dead load --
+    it put the whole model 60% heavy before this was fixed."""
+    fb = rt.FramingMember("fb", "U0", "U1", "FB upper", depth_in=55.375,
+                          width_in=14.0, web_t_in=0.375, flange_t_in=1.0)
+    assert fb.area_in2 == pytest.approx(0.375 * 53.375 + 2 * 14.0 * 1.0)
+    assert fb.area_in2 == pytest.approx(48.0, abs=0.1)
+    assert fb.area_in2 / 144 * 490 == pytest.approx(163.0, abs=1.0)   # plf
+    # nowhere near the envelope
+    assert fb.area_in2 < 0.07 * fb.depth_in * fb.width_in
+
+
+def test_framing_draws_a_web_and_two_flanges_at_lod400():
+    m = panel_truss()
+    f = rt.FramingMember("fb", "U0", "U1", "FB upper", role="floor_beam",
+                         depth_in=55.375, width_in=14.0, web_t_in=0.375,
+                         flange_t_in=1.0)
+    objs = rt.framing_objects(m, f, lod=400)
+    assert len(objs) == 3
+    assert [o.tags["framing.piece"] for o in objs] == \
+        ["web", "bottom flange", "top flange"]
+    assert sum("pay.qty" in o.tags for o in objs) == 1     # counted once
+    assert len(rt.framing_objects(m, f, lod=300)) == 1
