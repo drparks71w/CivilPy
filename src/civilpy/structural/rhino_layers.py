@@ -98,6 +98,7 @@ LAYER_STRINGERS = "Superstructure::Stringers"
 LAYER_LATERAL_BRACING = "Superstructure::Lateral Bracing"
 LAYER_SWAY_BRACING = "Superstructure::Sway Bracing"
 LAYER_PANEL_POINTS = "Superstructure::Panel Points"
+LAYER_RIVETS = "Superstructure::Rivets"
 
 #: PROPOSED leaves under the (reserved) Substructure group, mirroring the
 #: Superstructure taxonomy one component per layer: cap beams, the stepped
@@ -182,6 +183,7 @@ DEFAULT_COLORS: dict[str, tuple[int, int, int, int]] = {
     LAYER_LATERAL_BRACING: (150, 150, 110, 255),
     LAYER_SWAY_BRACING: (140, 130, 150, 255),
     LAYER_PANEL_POINTS: (230, 200, 60, 255),
+    LAYER_RIVETS: (60, 60, 65, 255),
     LAYER_SUB_CAPS: (155, 145, 130, 255),
     LAYER_SUB_SEATS: (170, 160, 145, 255),
     LAYER_SUB_COLUMNS: (140, 130, 115, 255),

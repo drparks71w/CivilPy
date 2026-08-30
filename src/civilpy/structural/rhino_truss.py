@@ -66,6 +66,7 @@ from civilpy.structural.rhino_layers import (
     LAYER_GUSSET_PLATES,
     LAYER_LATERAL_BRACING,
     LAYER_PANEL_POINTS,
+    LAYER_RIVETS,
     LAYER_STRINGERS,
     LAYER_SWAY_BRACING,
     LAYER_TRUSS_CHORDS,
@@ -92,6 +93,7 @@ TYPE_LAYER = {
     "sway_brace": LAYER_SWAY_BRACING,
     "portal_brace": LAYER_SWAY_BRACING,
     "panel_point": LAYER_PANEL_POINTS,
+    "rivet": LAYER_RIVETS,
 }
 
 
@@ -226,6 +228,8 @@ class GussetPlacement:
     plane_x: Point3 = (1.0, 0.0, 0.0)
     normal: Point3 = (0.0, 1.0, 0.0)
     members: str = ""
+    rivets: tuple = ()          # (x, y) in plate coordinates, inches
+    rivet_diameter_in: float = 1.0
     t_remaining_in: float = None
     rating_rf: float = None
     governing: str = ""
@@ -405,6 +409,41 @@ def gusset_objects(model: TrussModel, g: GussetPlacement) -> list:
                        _scale(n, g.thickness_in * ft))]
 
 
+def gusset_rivet_objects(model: TrussModel, g: GussetPlacement, *,
+                         grip_in: float = None) -> list:
+    """One cylinder per traced rivet, driven through the plate.
+
+    This is what takes a gusset from LOD 400 to 500: the plate is no longer a
+    blank, it is the plate with the connection that is actually on it, and a
+    reviewer can see which member each rivet belongs to and count them
+    against the rating.  The rivet runs the full grip -- the plate plus the
+    member webs behind it -- so it reads as hardware rather than as a dimple
+    on a face."""
+    if not g.rivets:
+        return []
+    node = model.nodes[g.node]
+    n = _unit(g.normal)
+    ex = _unit(_sub(g.plane_x, _scale(n, _dot(g.plane_x, n))))
+    ey = _cross(ex, n)
+    ft = 1.0 / 12.0
+    base = _add(node.point, _scale(n, g.offset_in * ft))
+    wx, wy = g.work_point
+    grip = grip_in if grip_in is not None else g.thickness_in * 2.0
+    out = []
+    for k, r in enumerate(g.rivets):
+        px, py = r[0], r[1]
+        member = r[2] if len(r) > 2 else ""
+        c = _add(base, _add(_scale(ex, (px - wx) * ft), _scale(ey, (py - wy) * ft)))
+        tip = _add(c, _scale(n, grip * ft))
+        tags = bim.rivet_tags("%s-r%d" % (g.id, k), host=g.id,
+                              diameter_in=g.rivet_diameter_in, grip_in=grip,
+                              member=member)
+        tags["rivet.joint"] = g.joint or g.node
+        out.append(EmitObject("cylinder", LAYER_RIVETS, (c, tip), tags,
+                              radius_ft=g.rivet_diameter_in / 2.0 * ft))
+    return out
+
+
 def _polygon_area(poly) -> float:
     a = 0.0
     n = len(poly)
@@ -428,13 +467,16 @@ def panel_point_objects(model: TrussModel, node: TrussNode) -> list:
 # --------------------------------------------------------------------------- #
 def truss_emit(model: TrussModel, *, lod: int = 400, shorten_ft: float = 0.0,
                panel_points: bool = True, framing: bool = True,
-               gussets: bool = True, members: bool = True) -> tuple:
+               gussets: bool = True, members: bool = True,
+               rivets: bool = False) -> tuple:
     """Every drawable object of ``model`` as neutral ``EmitObject`` records.
 
     ``lod`` 400 or more draws the built-up members piece by piece; 300 draws
     each as one enveloping box, which is what a whole-bridge file wants.
-    The four content switches let a caller emit, say, only the gusset plates
-    and the panel points for a joint-by-joint review file."""
+    The content switches let a caller emit, say, only the gusset plates and
+    the panel points for a joint-by-joint review file.  ``rivets`` draws the
+    traced rivets as hardware (LOD 500); it is off by default because a whole
+    bridge is six figures of them."""
     out = []
     if members:
         for m in model.members:
@@ -445,6 +487,8 @@ def truss_emit(model: TrussModel, *, lod: int = 400, shorten_ft: float = 0.0,
     if gussets:
         for g in model.gussets:
             out.extend(gusset_objects(model, g))
+            if rivets:
+                out.extend(gusset_rivet_objects(model, g))
     if panel_points:
         for node in model.nodes.values():
             if node.chord in ("U", "L"):
