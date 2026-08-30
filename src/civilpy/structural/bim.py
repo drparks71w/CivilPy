@@ -490,3 +490,140 @@ def rebar_tags(bid: str, *, size: int, coating: str = "epoxy", mat: str = "top",
             # GFRP: item known, weight producer-specific -> qty left off
             tags.update(_pay_tags(item))
     return tags
+
+
+# ── riveted truss ───────────────────────────────────────────────────────────
+
+#: ``bim.type`` values for the members of a riveted truss span.  Each is its
+#: own type (rather than one "truss_member" with a subtype) so the model tree
+#: in a viewer groups the way an inspector reads the bridge -- and so the
+#: gusset plates, which is where a truss rating usually turns, are one click
+#: away.
+TRUSS_MEMBER_TYPES = (
+    "truss_chord_top", "truss_chord_bottom", "truss_vertical",
+    "truss_diagonal", "truss_end_post", "truss_strut",
+)
+
+#: Riveted members of the 1900-1940 era are silicon or carbon steel; MBE
+#: Table 6A.6.2.1-1 gives Fy 45 / Fu 80 ksi for silicon steel built 1917-1936
+#: and Fy 30 / Fu 60 for carbon steel of the same years.
+HISTORIC_STEEL = {
+    "silicon 1917-1936": (45.0, 80.0),
+    "carbon 1917-1936": (30.0, 60.0),
+    "carbon pre-1905": (26.0, 52.0),
+}
+
+
+def historic_steel_mat(kind: str = "silicon 1917-1936") -> dict:
+    """Material block for an as-built riveted member, with the MBE yield and
+    tensile values that a load rating of that vintage uses."""
+    fy, fu = HISTORIC_STEEL.get(kind, HISTORIC_STEEL["silicon 1917-1936"])
+    return {"mat.spec": "as-built riveted steel", "mat.grade": kind,
+            "mat.type": "carbon steel", "mat.treatment": "painted",
+            "mat.fy_ksi": f"{fy:g}", "mat.fu_ksi": f"{fu:g}",
+            "mat.source": "MBE Table 6A.6.2.1-1"}
+
+
+def truss_member_tags(bid: str, *, role: str, spec: str,
+                      length_ft: float | None = None,
+                      weight_lb: float | None = None,
+                      line: str | None = None, span: str | None = None,
+                      steel: str = "silicon 1917-1936",
+                      piece: str | None = None) -> dict:
+    """A truss chord / vertical / diagonal / strut.
+
+    ``role`` is one of :data:`TRUSS_MEMBER_TYPES`; ``spec`` the plan-sheet
+    built-up shorthand (``"2P24x9/16 4L6x4x3/8"``) that
+    :mod:`civilpy.structural.builtup` decomposes.  ``piece`` names the single
+    plate or angle leg this solid represents when the member is drawn at
+    LOD 400 -- the whole member is then several objects sharing one
+    ``bim.id``, and only the first carries the pay quantity so the takeoff
+    does not double-count."""
+    if role not in TRUSS_MEMBER_TYPES:
+        raise ValueError("unknown truss member role %r; expected one of %s"
+                         % (role, ", ".join(TRUSS_MEMBER_TYPES)))
+    tags = {**_base(role, bid), "truss.spec": spec,
+            **historic_steel_mat(steel)}
+    if line is not None:
+        tags["truss.line"] = line
+    if span is not None:
+        tags["truss.span"] = str(span)
+    if length_ft is not None:
+        tags["truss.length_ft"] = f"{length_ft:.4g}"
+    if piece is not None:
+        tags["truss.piece"] = piece
+    tags.update(_pay_tags("513E10220", weight_lb))
+    return tags
+
+
+def gusset_plate_tags(bid: str, *, joint: str, thickness_in: float,
+                      face: str = "outside", area_in2: float | None = None,
+                      weight_lb: float | None = None,
+                      members: str | None = None,
+                      t_remaining_in: float | None = None,
+                      rating_rf: float | None = None,
+                      governing: str | None = None,
+                      steel: str = "silicon 1917-1936") -> dict:
+    """One gusset plate at one panel point.
+
+    ``joint`` is the panel-point id the plate belongs to and ``face`` which
+    side of the truss it is on, so the two plates of a joint are
+    distinguishable; ``members`` lists the member ends it connects.
+    ``t_remaining_in`` records measured section loss, and ``rating_rf`` /
+    ``governing`` carry the rating write-back so a viewer can colour the
+    model by rating factor."""
+    tags = {**_base("gusset_plate", bid), "gusset.joint": joint,
+            "gusset.face": face, "gusset.thickness_in": f"{thickness_in:g}",
+            **historic_steel_mat(steel)}
+    if members is not None:
+        tags["gusset.members"] = members
+    if area_in2 is not None:
+        tags["gusset.area_in2"] = f"{area_in2:.6g}"
+    if t_remaining_in is not None:
+        tags["gusset.t_remaining_in"] = f"{t_remaining_in:g}"
+        tags["gusset.loss_in"] = f"{thickness_in - t_remaining_in:g}"
+    if rating_rf is not None:
+        tags["gusset.rf"] = f"{rating_rf:.4g}"
+    if governing is not None:
+        tags["gusset.governing"] = governing
+    tags.update(_pay_tags("513E10220", weight_lb))
+    return tags
+
+
+#: ``bim.type`` values for the floor system and bracing of a truss span.
+TRUSS_FRAMING_TYPES = ("floor_beam", "stringer", "lateral_brace",
+                       "sway_brace", "portal_brace")
+
+
+def truss_framing_tags(bid: str, *, role: str, section: str,
+                       length_ft: float | None = None,
+                       weight_lb: float | None = None,
+                       level: str | None = None, span: str | None = None,
+                       steel: str = "silicon 1917-1936") -> dict:
+    """A floor beam, stringer, or bracing member.  ``level`` distinguishes
+    the decks of a two-level floor system (``"upper"`` / ``"utility"``)."""
+    if role not in TRUSS_FRAMING_TYPES:
+        raise ValueError("unknown truss framing role %r; expected one of %s"
+                         % (role, ", ".join(TRUSS_FRAMING_TYPES)))
+    tags = {**_base(role, bid), "framing.section": section,
+            **historic_steel_mat(steel)}
+    if level is not None:
+        tags["framing.level"] = level
+    if span is not None:
+        tags["framing.span"] = str(span)
+    if length_ft is not None:
+        tags["framing.length_ft"] = f"{length_ft:.4g}"
+    tags.update(_pay_tags("513E10220", weight_lb))
+    return tags
+
+
+def panel_point_tags(bid: str, *, joint: str, line: str, span: str,
+                     chord: str, pp: int, depth_ft: float | None = None) -> dict:
+    """The work-point marker at a panel point: no geometry to pay for, but it
+    anchors the joint id that the gusset plates, the member ends and the
+    2012 rating tables all key on."""
+    tags = {**_base("panel_point", bid), "pp.joint": joint, "pp.line": line,
+            "pp.span": str(span), "pp.chord": chord, "pp.index": str(pp)}
+    if depth_ft is not None:
+        tags["pp.truss_depth_ft"] = f"{depth_ft:.4g}"
+    return tags

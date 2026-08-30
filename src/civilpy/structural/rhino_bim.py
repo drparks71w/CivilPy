@@ -1579,17 +1579,30 @@ def emit_to_3dm(emit: BridgeEmit, path, *, version: int = 7,
     ``Notebooks/Rhino Components/draw_bim_emit.py`` remains the
     live-document twin (same JSON payload via :func:`emit_to_json`) when
     a running Rhino 8 should host the model instead of a file."""
+    return objects_to_3dm(emit.objects, path, version=version, mesh=mesh)
+
+
+def objects_to_3dm(objects, path, *, version: int = 7, mesh: bool = False,
+                   unit_system=None) -> dict[str, int]:
+    """Bake any sequence of :class:`EmitObject` records into a ``.3dm``.
+
+    The body of :func:`emit_to_3dm`, split out so other emitters --
+    :mod:`civilpy.structural.rhino_truss`, and anything else that speaks the
+    neutral record -- bake through exactly the same path: same layer
+    taxonomy, same user-text stamping, same brep/mesh choice.  ``mesh=True``
+    is required for a file a web viewer must shade, since headless
+    ``rhino3dm`` cannot tessellate a brep."""
     import rhino3dm as r3
 
-    from civilpy.structural.rhino_layers import ensure_layer
+    from civilpy.structural.rhino_layers import DEFAULT_COLORS, ensure_layer
 
     f = r3.File3dm()
-    f.Settings.ModelUnitSystem = r3.UnitSystem.Feet
-    layer_idx = {name: ensure_layer(f, name)
-                 for name in sorted({o.layer for o in emit.objects})}
+    f.Settings.ModelUnitSystem = unit_system or r3.UnitSystem.Feet
+    layer_idx = {name: ensure_layer(f, name, DEFAULT_COLORS.get(name))
+                 for name in sorted({o.layer for o in objects})}
 
     counts: dict[str, int] = {}
-    for o in emit.objects:
+    for o in objects:
         a = r3.ObjectAttributes()
         a.LayerIndex = layer_idx[o.layer]
         for k, v in o.tags.items():
