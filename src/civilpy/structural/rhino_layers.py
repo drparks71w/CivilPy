@@ -99,6 +99,26 @@ LAYER_SUB_STM = "Substructure::STM"
 LAYER_SUB_STM_TIES = "Substructure::STM::Ties"
 LAYER_SUB_STM_STRUTS = "Substructure::STM::Struts"
 
+#: PROPOSED leaves for the truss gusset-plate rating overlay
+#: (:mod:`civilpy.structural.rhino_gusset`).  Like ``Substructure::STM``
+#: this is an *analysis* overlay -- non-pay, excluded from every estimate
+#: rollup -- and unlike every other group here it is drawn in the plate's
+#: own 2-D coordinate system (inches, x right / y up, z the plate normal),
+#: not bridge coordinates, so a reviewer can toggle one failure mechanism
+#: at a time against the plate outline the way the 2012 B&N failure-plane
+#: sheets are drawn.
+LAYER_GUSSET = "Gusset"
+LAYER_GUSSET_OUTLINE = "Gusset::Outline"
+LAYER_GUSSET_FASTENERS = "Gusset::Fasteners"
+LAYER_GUSSET_WORKLINES = "Gusset::WorkLines"
+LAYER_GUSSET_WHITMORE = "Gusset::Whitmore"
+LAYER_GUSSET_UNBRACED = "Gusset::Unbraced"
+LAYER_GUSSET_BLOCKSHEAR = "Gusset::BlockShear"
+LAYER_GUSSET_SECTIONS = "Gusset::Sections"
+LAYER_GUSSET_LOSS = "Gusset::Loss"
+LAYER_GUSSET_SCANDEPTH = "Gusset::ScanDepth"
+LAYER_GUSSET_TEXT = "Gusset::Text"
+
 #: Default RGBA colors, keyed by full layer path -- kept alongside the path
 #: constants so every writer paints the same layer the same color.
 DEFAULT_COLORS: dict[str, tuple[int, int, int, int]] = {
@@ -142,6 +162,19 @@ DEFAULT_COLORS: dict[str, tuple[int, int, int, int]] = {
     LAYER_SUB_STM: (150, 150, 150, 255),
     LAYER_SUB_STM_TIES: (200, 40, 40, 255),
     LAYER_SUB_STM_STRUTS: (40, 80, 200, 255),
+    # gusset rating overlay: outline near-black, each failure mechanism its
+    # own hue so a screenshot reads without a legend
+    LAYER_GUSSET: (40, 40, 40, 255),
+    LAYER_GUSSET_OUTLINE: (40, 40, 40, 255),
+    LAYER_GUSSET_FASTENERS: (95, 95, 100, 255),
+    LAYER_GUSSET_WORKLINES: (0, 110, 200, 255),
+    LAYER_GUSSET_WHITMORE: (0, 160, 80, 255),
+    LAYER_GUSSET_UNBRACED: (215, 165, 20, 255),
+    LAYER_GUSSET_BLOCKSHEAR: (200, 30, 30, 255),
+    LAYER_GUSSET_SECTIONS: (150, 60, 180, 255),
+    LAYER_GUSSET_LOSS: (170, 80, 20, 255),
+    LAYER_GUSSET_SCANDEPTH: (60, 120, 200, 255),
+    LAYER_GUSSET_TEXT: (20, 20, 20, 255),
 }
 
 
