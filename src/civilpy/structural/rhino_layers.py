@@ -81,6 +81,24 @@ LAYER_HAUNCHES = "Superstructure::Haunches"
 LAYER_SHEAR_STUDS = "Superstructure::Shear Studs"
 LAYER_LOAD_PLATES = "Superstructure::Load Plates"
 
+#: PROPOSED leaves for a riveted truss span (:mod:`civilpy.structural.
+#: rhino_truss`).  Real superstructure geometry -- unlike the ``Gusset``
+#: analysis overlay -- so it lives under Superstructure beside the girder
+#: leaves, one layer per member family the way an inspector walks a truss:
+#: chords, verticals, diagonals, end posts, the struts across the pier
+#: towers, the gusset plates, and the floor system and bracing.
+LAYER_TRUSS_CHORDS = "Superstructure::Truss Chords"
+LAYER_TRUSS_VERTICALS = "Superstructure::Truss Verticals"
+LAYER_TRUSS_DIAGONALS = "Superstructure::Truss Diagonals"
+LAYER_TRUSS_END_POSTS = "Superstructure::Truss End Posts"
+LAYER_TRUSS_STRUTS = "Superstructure::Truss Struts"
+LAYER_GUSSET_PLATES = "Superstructure::Gusset Plates"
+LAYER_FLOOR_BEAMS = "Superstructure::Floor Beams"
+LAYER_STRINGERS = "Superstructure::Stringers"
+LAYER_LATERAL_BRACING = "Superstructure::Lateral Bracing"
+LAYER_SWAY_BRACING = "Superstructure::Sway Bracing"
+LAYER_PANEL_POINTS = "Superstructure::Panel Points"
+
 #: PROPOSED leaves under the (reserved) Substructure group, mirroring the
 #: Superstructure taxonomy one component per layer: cap beams, the stepped
 #: beam seats on top of them, columns, footings, driven piles, abutment
@@ -151,6 +169,19 @@ DEFAULT_COLORS: dict[str, tuple[int, int, int, int]] = {
     LAYER_HAUNCHES: (200, 200, 190, 255),
     LAYER_SHEAR_STUDS: (200, 120, 40, 255),
     LAYER_LOAD_PLATES: (90, 90, 100, 255),
+    # riveted truss: the three member families read apart at a glance, the
+    # gusset plates hot so they stand out at every panel point
+    LAYER_TRUSS_CHORDS: (55, 70, 90, 255),
+    LAYER_TRUSS_VERTICALS: (80, 100, 120, 255),
+    LAYER_TRUSS_DIAGONALS: (100, 120, 140, 255),
+    LAYER_TRUSS_END_POSTS: (45, 55, 70, 255),
+    LAYER_TRUSS_STRUTS: (120, 130, 145, 255),
+    LAYER_GUSSET_PLATES: (200, 90, 30, 255),
+    LAYER_FLOOR_BEAMS: (90, 110, 100, 255),
+    LAYER_STRINGERS: (120, 140, 125, 255),
+    LAYER_LATERAL_BRACING: (150, 150, 110, 255),
+    LAYER_SWAY_BRACING: (140, 130, 150, 255),
+    LAYER_PANEL_POINTS: (230, 200, 60, 255),
     LAYER_SUB_CAPS: (155, 145, 130, 255),
     LAYER_SUB_SEATS: (170, 160, 145, 255),
     LAYER_SUB_COLUMNS: (140, 130, 115, 255),
