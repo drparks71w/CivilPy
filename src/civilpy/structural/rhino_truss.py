@@ -59,7 +59,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass, field
 
-from civilpy.structural import bim, builtup
+from civilpy.structural import bim, builtup, laced_member
 from civilpy.structural.rhino_bim import EmitObject
 from civilpy.structural.rhino_layers import (
     LAYER_FLOOR_BEAMS,
@@ -168,6 +168,10 @@ class TrussMember:
     span: str = ""
     normal: Point3 = (0.0, 1.0, 0.0)
     steel: str = "silicon 1917-1936"
+    #: The fabrication the plan-sheet spec does not carry -- lacing and tie
+    #: plates, read off the shop sheets.  With it the member emits at LOD 400
+    #: as its real pieces; without it only the bare section can be drawn.
+    fabrication: object = None
 
 
 @dataclass(frozen=True)
@@ -352,6 +356,9 @@ def member_objects(model: TrussModel, m: TrussMember, *, lod: int = 400,
         return [EmitObject("prism", layer, _rect_loop(p_i, v, w, 0.0, 0.0, b, h),
                            tags, vector)]
 
+    if lod >= 400 and m.fabrication is not None:
+        return _fabricated_objects(m, p_i, u, v, w, length, layer)
+
     rects, _meta = builtup.rects(m.spec)
     labels = builtup.piece_labels(m.spec)
     out = []
@@ -366,6 +373,55 @@ def member_objects(model: TrussModel, m: TrussMember, *, lod: int = 400,
         out.append(EmitObject("prism", layer,
                               _rect_loop(p_i, v, w, y_c, z_c, b, h),
                               tags, vector))
+    return out
+
+
+def _fabricated_objects(m, p_i, u, v, w, length, layer) -> list:
+    """Every piece of a laced member as its own solid.
+
+    Full-length pieces (web plates, angles, cover plates) run along the
+    member axis.  Tie plates do too but start partway along and are short.
+    Lacing bars run at their inclination *within* a face, so their axis is a
+    combination of the member axis and the across direction and their
+    thickness lies through the face."""
+    lm = m.fabrication
+    if getattr(lm, "length_ft", None) != length:
+        lm = laced_member.LacedMember(
+            spec=lm.spec, length_ft=length, lacing=lm.lacing,
+            tie_plates=lm.tie_plates, rivet_dia_in=lm.rivet_dia_in,
+            rivet_hole_in=lm.rivet_hole_in, source=lm.source)
+    ft = 1.0 / 12.0
+    out = []
+    first = True
+    for piece in lm.pieces():
+        tags = bim.member_piece_tags(
+            m.id, role=m.role, spec=m.spec, piece_kind=piece.kind,
+            label=piece.label, designation=piece.designation,
+            length_ft=piece.length_ft,
+            weight_lb=lm.weight_lb() if first else None,
+            face=piece.face, source=piece.source, line=m.line, span=m.span,
+            steel=m.steel)
+        first = False
+        start = _add(p_i, _scale(u, piece.along_ft))
+        if piece.kind == "lacing bar":
+            # the bar lies in its face: axis is inclined from the member axis
+            # by angle_deg, thickness through the face
+            th = math.radians(abs(piece.angle_deg))
+            sign = 1.0 if piece.angle_deg >= 0 else -1.0
+            axis = _unit(_add(_scale(u, math.cos(th)),
+                              _scale(v, sign * math.sin(th))))
+            across = _cross(w, axis)                   # in the face, across the bar
+            origin = _add(_add(start, _scale(w, piece.z_in * ft)),
+                          _scale(v, -sign * lm.lacing_gauge_in() / 2.0 * ft))
+            loop = _rect_loop(origin, across, w, 0.0, 0.0,
+                              piece.b_in, piece.h_in)
+            out.append(EmitObject("prism", layer, loop, tags,
+                                  _scale(axis, piece.length_ft)))
+        else:
+            loop = _rect_loop(start, v, w, piece.y_in, piece.z_in,
+                              piece.b_in, piece.h_in)
+            out.append(EmitObject("prism", layer, loop, tags,
+                                  _scale(u, piece.length_ft)))
     return out
 
 

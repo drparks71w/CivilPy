@@ -693,3 +693,40 @@ def finding_tags(bid: str, *, target: str, summary: str, year: str = "",
         if val:
             tags["finding." + key] = str(val)
     return tags
+
+
+def member_piece_tags(bid: str, *, role: str, spec: str, piece_kind: str,
+                      label: str, designation: str = "", length_ft: float = None,
+                      weight_lb: float = None, face: str = "",
+                      source: str = "", line: str = "", span: str = "",
+                      steel: str = "silicon 1917-1936") -> dict:
+    """One fabricated piece of a built-up member -- a web plate, an angle, a
+    cover plate, a lacing bar, a tie plate.
+
+    This is what makes a truss model LOD 400 rather than LOD 300: the member
+    is not a prism with a spec written on it, it is the pieces a shop cut and
+    riveted, each with its own size, length and catalogue designation, and
+    each answerable on its own.  ``source`` records the sheet the dimension
+    was read from, so a value that came from a drawing can be told from one
+    that did not.
+
+    All the pieces of a member share its ``bim.id``; only the first carries a
+    pay quantity so a takeoff does not multiply the member by its piece
+    count."""
+    tags = {**_base(role, bid), "truss.spec": spec,
+            "piece.kind": piece_kind, "piece.label": label,
+            **historic_steel_mat(steel)}
+    if designation:
+        tags["piece.designation"] = designation
+    if face:
+        tags["piece.face"] = face
+    if source:
+        tags["piece.source"] = source
+    if length_ft is not None:
+        tags["piece.length_ft"] = f"{length_ft:.4g}"
+    if line:
+        tags["truss.line"] = line
+    if span:
+        tags["truss.span"] = str(span)
+    tags.update(_pay_tags("513E10220", weight_lb))
+    return tags
