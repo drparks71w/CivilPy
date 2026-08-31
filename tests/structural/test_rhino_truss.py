@@ -518,3 +518,34 @@ def test_offset_convex_outward_pushes_every_edge_out():
     assert min(q[1] for q in out) == pytest.approx(-2.0)
     assert max(q[0] for q in out) == pytest.approx(12.0)
     assert max(q[1] for q in out) == pytest.approx(12.0)
+
+
+def test_the_fastener_field_alone_makes_a_plate():
+    """At a joint whose members the model does not fully carry -- a sway
+    frame, a lateral, a splice -- there is still the 1932 edge-distance rule
+    to fall back on, and it beats a traced polygon that clips fasteners off
+    the steel."""
+    field = [(10.0, 10.0), (50.0, 10.0), (50.0, 40.0), (10.0, 40.0),
+             (30.0, 55.0)]
+    poly = rt.gusset_outline_from_members([], fasteners=field, edge_in=2.0)
+    assert len(poly) >= 3
+
+    def inside(p, q):
+        n, w = len(p), False
+        for i in range(n):
+            x0, y0 = p[i]
+            x1, y1 = p[(i + 1) % n]
+            if (y0 > q[1]) != (y1 > q[1]) and \
+               q[0] < (x1 - x0) * (q[1] - y0) / (y1 - y0) + x0:
+                w = not w
+        return w
+
+    assert all(inside(poly, f) for f in field)
+    # and it sits an edge distance outside them, not on them
+    assert min(q[0] for q in poly) < 10.0 - 1.0
+    assert max(q[1] for q in poly) > 55.0 + 1.0
+
+
+def test_no_members_and_no_fasteners_is_still_nothing():
+    assert rt.gusset_outline_from_members([]) == []
+    assert rt.gusset_outline_from_members([], fasteners=[(0.0, 0.0)]) == []

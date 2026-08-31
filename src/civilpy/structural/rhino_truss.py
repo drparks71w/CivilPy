@@ -689,7 +689,12 @@ def gusset_outline_from_members(ends, *, edge_in: float = 2.0,
 
     Returns the polygon in plate coordinates (inches), counter-clockwise.
     """
-    if len(ends) < 2:
+    if len(ends) < 2 and not (fasteners is not None and len(fasteners) >= 3):
+        # With fewer than two members and no fastener field there is nothing
+        # to build from.  With a field there is: the plate is then just the
+        # 1932 edge-distance rule applied to the fasteners, which is what to
+        # fall back on at a joint whose members the model does not fully
+        # carry -- a sway frame, a lateral connection, a splice.
         return []
     wx, wy = work_point
     corners = []
@@ -706,7 +711,8 @@ def gusset_outline_from_members(ends, *, edge_in: float = 2.0,
         for sgn in (-1.0, 1.0):
             corners.append((base[0] + sgn * half * px,
                             base[1] + sgn * half * py))
-    if len(corners) < 3:
+    if len(corners) < 3 and not (fasteners is not None
+                                 and len(fasteners) >= 3):
         return []
     # angular order about the work point closes the polygon the way the
     # members sit around the joint
@@ -725,7 +731,8 @@ def gusset_outline_from_members(ends, *, edge_in: float = 2.0,
     #   span less than a half turn and do not close around the work point.
     #   Including the work point in the hull closes the plate on it there,
     #   and changes nothing at an interior joint, where it falls inside.
-    corners = corners + [(wx, wy)]
+    if ends:
+        corners = corners + [(wx, wy)]
     if fasteners is not None and len(fasteners):
         field = [(float(f[0]), float(f[1])) for f in fasteners]
         if len(field) >= 3:
