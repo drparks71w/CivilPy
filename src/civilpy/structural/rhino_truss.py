@@ -536,6 +536,246 @@ def _polygon_area(poly) -> float:
     return a / 2.0
 
 
+@dataclass(frozen=True)
+class MemberEndAtJoint:
+    """One member framing into a joint, as the gusset sees it.
+
+    ``axis`` points away from the work point in plate coordinates (x along
+    the bridge, y up); ``depth_in`` is the member's depth in the truss plane,
+    which is how wide the plate must be where that member lands;
+    ``connection_in`` is how far out along the member the connection runs --
+    the 2012 rating tabulates exactly this ("connection length for one line
+    of connectors").  ``through`` marks a member that passes through the
+    joint rather than terminating in it, i.e. a continuous chord."""
+    name: str
+    axis: tuple
+    depth_in: float
+    connection_in: float
+    through: bool = False
+
+
+def _convex_hull(points) -> list:
+    """Counter-clockwise convex hull (Andrew's monotone chain)."""
+    pts = sorted(set((round(x, 9), round(y, 9)) for x, y in points))
+    if len(pts) <= 2:
+        return list(pts)
+
+    def half(seq):
+        out = []
+        for q in seq:
+            while len(out) >= 2:
+                (x0, y0), (x1, y1) = out[-2], out[-1]
+                if (x1 - x0) * (q[1] - y0) - (y1 - y0) * (q[0] - x0) > 0:
+                    break
+                out.pop()
+            out.append(q)
+        return out
+
+    lower, upper = half(pts), half(reversed(pts))
+    return lower[:-1] + upper[:-1]
+
+
+def offset_convex_outward(poly, d: float) -> list:
+    """Push every edge of a convex counter-clockwise polygon out by ``d``.
+
+    Corners come out mitred rather than rounded, which is what a sheared
+    plate edge actually looks like.
+    """
+    lines = []
+    n = len(poly)
+    for i in range(n):
+        x0, y0 = poly[i]
+        x1, y1 = poly[(i + 1) % n]
+        ex, ey = x1 - x0, y1 - y0
+        L = math.hypot(ex, ey)
+        if L < 1e-9:
+            continue
+        nx, ny = ey / L, -ex / L                 # outward for CCW
+        lines.append((nx, ny, nx * x0 + ny * y0 + d))
+    pts = []
+    m = len(lines)
+    for i in range(m):
+        a1, b1, c1 = lines[i]
+        a2, b2, c2 = lines[(i + 1) % m]
+        det = a1 * b2 - a2 * b1
+        if abs(det) < 1e-9:
+            continue
+        pts.append(((c1 * b2 - c2 * b1) / det, (a1 * c2 - a2 * c1) / det))
+    return _convex_hull(pts) if len(pts) >= 3 else list(poly)
+
+
+def clip_polygon_to_rect(poly, x0: float, y0: float, x1: float,
+                         y1: float) -> list:
+    """Sutherland-Hodgman clip of a simple polygon to an axis-aligned box."""
+    def _clip(pts, keep, cut):
+        out = []
+        for i, cur in enumerate(pts):
+            prv = pts[i - 1]
+            kc, kp = keep(cur), keep(prv)
+            if kc:
+                if not kp:
+                    out.append(cut(prv, cur))
+                out.append(cur)
+            elif kp:
+                out.append(cut(prv, cur))
+        return out
+
+    def _x(v):
+        return lambda a, b: (v, a[1] + (b[1] - a[1]) * (v - a[0]) / (b[0] - a[0])
+                             if abs(b[0] - a[0]) > 1e-12 else a[1])
+
+    def _y(v):
+        return lambda a, b: (a[0] + (b[0] - a[0]) * (v - a[1]) / (b[1] - a[1])
+                             if abs(b[1] - a[1]) > 1e-12 else a[0], v)
+
+    out = list(poly)
+    for keep, cut in ((lambda q: q[0] >= x0, _x(x0)),
+                      (lambda q: q[0] <= x1, _x(x1)),
+                      (lambda q: q[1] >= y0, _y(y0)),
+                      (lambda q: q[1] <= y1, _y(y1))):
+        if not out:
+            return []
+        out = _clip(out, keep, cut)
+    return out
+
+
+def gusset_outline_from_members(ends, *, edge_in: float = 2.0,
+                                work_point=(0.0, 0.0), fasteners=None,
+                                bounds=None) -> list:
+    """Build a gusset outline from the members it connects.
+
+    The shape of a gusset is not a free choice and it is not something to
+    trace off a drawing: it follows from the members.  Each member end needs
+    the plate to reach its **full depth**, and the plate is cut **square to
+    that member's own axis** just beyond its last row of fasteners.  Between
+    one member's connection and the next the plate runs a **straight slope**
+    from corner to corner.  A chord passing through the joint is not cut off
+    at all -- the plate simply follows it.
+
+    So each member contributes two corners::
+
+        corner = work_point + (connection + edge) * axis  +/-  depth/2 * normal
+
+    and the outline is those corners taken in angular order about the work
+    point.  The square end-cut is the segment between a member's own two
+    corners; the slope is the segment between adjacent members' corners.
+    Where the members all leave on one side -- an end joint -- the work point
+    closes the shape.
+
+    ``edge_in`` is the edge distance carried beyond the connection.
+
+    The result is the convex hull of those corners together with the work
+    point -- see the body for why the hull is the right closure and not
+    merely a convenience.
+
+    ``fasteners``, if given as the plate's rivet field in plate coordinates,
+    also sizes the plate to the field: a 1932 plate edge sits an edge
+    distance beyond the outermost fastener, so the field's own hull pushed
+    out by ``edge_in`` is a lower bound on the plate.  It matters because the
+    reach only sees the rivets inside a member's own depth, and a real
+    fastener field spreads wider than that -- without it the outline leaves a
+    median 13% of the rivets off the plate, which no gusset does.
+
+    ``bounds``, if given as ``(x0, y0, x1, y1)``, clips the result to the
+    plate's overall size.  The rule places each corner where its member needs
+    it, which at a tight joint can put a corner past the edge of the plate the
+    shop actually cut; the overall width and depth are tabulated in the rating
+    and are the one plate dimension that is independently confirmed, so
+    clipping to them keeps the shape inside what is known to be true.
+
+    Returns the polygon in plate coordinates (inches), counter-clockwise.
+    """
+    if len(ends) < 2:
+        return []
+    wx, wy = work_point
+    corners = []
+    for e in ends:
+        ax, ay = e.axis
+        n = math.hypot(ax, ay)
+        if n < 1e-9:
+            continue
+        ax, ay = ax / n, ay / n
+        px, py = -ay, ax                      # normal to the member
+        reach = e.connection_in + edge_in
+        half = e.depth_in / 2.0
+        base = (wx + reach * ax, wy + reach * ay)
+        for sgn in (-1.0, 1.0):
+            corners.append((base[0] + sgn * half * px,
+                            base[1] + sgn * half * py))
+    if len(corners) < 3:
+        return []
+    # angular order about the work point closes the polygon the way the
+    # members sit around the joint
+    # The plate is convex -- which is what the sheets and the field
+    # photographs show, and what the half-plane trace already assumes -- so
+    # the outline is the hull of the corners.  Taking the hull rather than
+    # the corners in angular order does two things the rule needs:
+    #
+    # * a member whose connection is short and crowded has both its corners
+    #   *inside* its neighbours'.  In angular order the outline dives in to
+    #   them and back out, notching a deep V into the middle of the plate.
+    #   On the hull the plate simply passes over that member, which is still
+    #   covered to its full depth -- Dane's straight slope from one
+    #   connection point to the next.
+    # * at an end joint every member leaves on the same side, so the corners
+    #   span less than a half turn and do not close around the work point.
+    #   Including the work point in the hull closes the plate on it there,
+    #   and changes nothing at an interior joint, where it falls inside.
+    corners = corners + [(wx, wy)]
+    if fasteners is not None and len(fasteners):
+        field = [(float(f[0]), float(f[1])) for f in fasteners]
+        if len(field) >= 3:
+            corners += offset_convex_outward(_convex_hull(field), edge_in)
+    corners = _convex_hull(corners)
+    if bounds is not None:
+        corners = _dedupe_polygon(clip_polygon_to_rect(corners, *bounds))
+    return corners
+
+
+def _dedupe_polygon(poly, tol=0.5):
+    out = []
+    for q in poly:
+        if not out or math.hypot(q[0] - out[-1][0], q[1] - out[-1][1]) > tol:
+            out.append(q)
+    if len(out) > 2 and math.hypot(out[0][0] - out[-1][0],
+                                   out[0][1] - out[-1][1]) <= tol:
+        out.pop()
+    return out
+
+
+def member_ends_at(model: TrussModel, node: TrussNode, connections=None,
+                   default_connection_in: float = 30.0) -> list:
+    """The :class:`MemberEndAtJoint` records for a panel point.
+
+    Directions come from the model, depths from the members' own built-up
+    sections, and connection lengths from ``connections`` -- a mapping of
+    member name to inches, which for CUY-10-1613 is the 2012 rating's own
+    tabulated connection length."""
+    connections = connections or {}
+    out = []
+    for m in model.members:
+        if m.i == node.id:
+            far = model.nodes[m.j].point
+        elif m.j == node.id:
+            far = model.nodes[m.i].point
+        else:
+            continue
+        dx, dz = far[0] - node.point[0], far[2] - node.point[2]
+        n = math.hypot(dx, dz)
+        if n < 1e-9:
+            continue
+        short = m.id.rsplit("-", 1)[-1]
+        try:
+            depth = builtup.envelope(m.spec)[1]
+        except Exception:
+            depth = 24.0
+        out.append(MemberEndAtJoint(
+            short, (dx / n, dz / n), depth,
+            float(connections.get(short, default_connection_in)),
+            through=m.role.startswith("truss_chord")))
+    return out
+
+
 def review_objects(model: TrussModel, item: ReviewItem, *,
                    margin_in: float = 3.0) -> list:
     """A highlight sleeve around whatever the review item points at.

@@ -365,3 +365,156 @@ def test_framing_draws_a_web_and_two_flanges_at_lod400():
         ["web", "bottom flange", "top flange"]
     assert sum("pay.qty" in o.tags for o in objs) == 1     # counted once
     assert len(rt.framing_objects(m, f, lod=300)) == 1
+
+
+# --------------------------------------------------------------------------- #
+# the outline is clipped to the plate size that is independently known
+# --------------------------------------------------------------------------- #
+def _ends_at_a_four_member_joint():
+    """Chord through, vertical down, diagonal down -- a normal panel point."""
+    d = math.sqrt(0.5)
+    return [
+        rt.MemberEndAtJoint("Lm", (-1.0, 0.0), 24.0, 40.0, through=True),
+        rt.MemberEndAtJoint("Lp", (1.0, 0.0), 24.0, 40.0, through=True),
+        rt.MemberEndAtJoint("V", (0.0, 1.0), 20.0, 45.0),
+        rt.MemberEndAtJoint("D", (d, d), 24.0, 60.0),
+    ]
+
+
+def test_clipping_keeps_the_outline_inside_the_tabulated_plate():
+    """The rule puts each corner where its member needs it, which at a tight
+    joint lands outside the plate the shop actually cut.  The overall width
+    and depth are the one plate dimension the 2012 rating confirms, so the
+    outline is held to them."""
+    ends = _ends_at_a_four_member_joint()
+    wp = (45.0, 15.0)
+    free = rt.gusset_outline_from_members(ends, work_point=wp)
+    assert max(q[0] for q in free) > 90.0          # the diagonal runs out
+    held = rt.gusset_outline_from_members(ends, work_point=wp,
+                                       bounds=(0.0, 0.0, 90.0, 80.0))
+    assert held and len(held) >= 3
+    for x, y in held:
+        assert -1e-6 <= x <= 90.0 + 1e-6
+        assert -1e-6 <= y <= 80.0 + 1e-6
+
+
+def test_clipping_only_removes_area():
+    ends = _ends_at_a_four_member_joint()
+    wp = (45.0, 15.0)
+
+    def area(poly):
+        a = 0.0
+        for i, (x0, y0) in enumerate(poly):
+            x1, y1 = poly[(i + 1) % len(poly)]
+            a += x0 * y1 - x1 * y0
+        return abs(a) / 2.0
+
+    free = rt.gusset_outline_from_members(ends, work_point=wp)
+    held = rt.gusset_outline_from_members(ends, work_point=wp,
+                                       bounds=(0.0, 0.0, 90.0, 80.0))
+    assert 0.0 < area(held) < area(free)
+
+
+def test_a_polygon_already_inside_the_bounds_is_left_alone():
+    ends = _ends_at_a_four_member_joint()
+    wp = (45.0, 15.0)
+    free = rt.gusset_outline_from_members(ends, work_point=wp)
+    x0 = min(q[0] for q in free) - 5.0
+    y0 = min(q[1] for q in free) - 5.0
+    x1 = max(q[0] for q in free) + 5.0
+    y1 = max(q[1] for q in free) + 5.0
+    held = rt.gusset_outline_from_members(ends, work_point=wp,
+                                       bounds=(x0, y0, x1, y1))
+    assert len(held) == len(free)
+    for a, b in zip(held, free):
+        assert a[0] == pytest.approx(b[0])
+        assert a[1] == pytest.approx(b[1])
+
+
+def test_clip_polygon_to_rect_on_a_plain_square():
+    sq = [(-5.0, -5.0), (15.0, -5.0), (15.0, 15.0), (-5.0, 15.0)]
+    out = rt.clip_polygon_to_rect(sq, 0.0, 0.0, 10.0, 10.0)
+    assert sorted(round(v, 6) for v in {q[0] for q in out}) == [0.0, 10.0]
+    assert sorted(round(v, 6) for v in {q[1] for q in out}) == [0.0, 10.0]
+    assert rt.clip_polygon_to_rect(sq, 100.0, 100.0, 110.0, 110.0) == []
+
+
+def test_an_end_joint_closes_on_its_work_point():
+    """At the end of a span every member leaves on the same side, so the
+    corners span less than a half turn.  The fan they make does not enclose
+    the work point, and the plate has to come back to it."""
+    wp = (0.0, 0.0)
+    d = math.sqrt(0.5)
+    ends = [
+        rt.MemberEndAtJoint("C", (1.0, 0.0), 24.0, 40.0),
+        rt.MemberEndAtJoint("V", (0.0, -1.0), 24.0, 50.0),
+        rt.MemberEndAtJoint("D", (d, -d), 24.0, 60.0),
+    ]
+    poly = rt.gusset_outline_from_members(ends, work_point=wp)
+    assert wp in poly
+    assert len(poly) >= 4
+
+
+def test_an_interior_joint_does_not_pick_up_its_work_point():
+    poly = rt.gusset_outline_from_members(_ends_at_a_four_member_joint(),
+                                          work_point=(0.0, 0.0))
+    assert (0.0, 0.0) not in poly
+    assert len(poly) >= 4
+
+
+def test_a_crowded_short_member_does_not_notch_the_plate():
+    """A member whose connection is short has both its corners inside its
+    neighbours'.  Taken in angular order the outline dives in to them and
+    back out, cutting a deep V into the middle of the plate; on the hull it
+    just passes over, and the member is still covered to its full depth."""
+    d = math.sqrt(0.5)
+    ends = [
+        rt.MemberEndAtJoint("Lm", (-1.0, 0.0), 24.0, 60.0, through=True),
+        rt.MemberEndAtJoint("Lp", (1.0, 0.0), 24.0, 60.0, through=True),
+        rt.MemberEndAtJoint("V", (0.0, 1.0), 20.0, 4.0),      # short, crowded
+        rt.MemberEndAtJoint("D", (d, d), 24.0, 55.0),
+    ]
+    poly = rt.gusset_outline_from_members(ends, work_point=(0.0, 0.0))
+    # convex: every turn the same way
+    n = len(poly)
+    for i in range(n):
+        (x0, y0), (x1, y1), (x2, y2) = poly[i], poly[(i + 1) % n], poly[(i + 2) % n]
+        cross = (x1 - x0) * (y2 - y0) - (y1 - y0) * (x2 - x0)
+        assert cross >= -1e-6, "re-entrant vertex at %d" % i
+    # the short vertical is inside the plate, not a corner of it
+    assert (0.0, 6.0) not in poly
+
+
+def test_the_plate_is_sized_to_hold_its_fastener_field():
+    """The reach only sees rivets inside a member's own depth, and a real
+    field spreads wider.  Given the field, the plate must hold all of it --
+    a gusset with rivets off the plate is not a gusset."""
+    ends = _ends_at_a_four_member_joint()
+    wp = (45.0, 15.0)
+    # a field that reaches wider than any member's depth
+    field = [(20.0, 2.0), (70.0, 2.0), (70.0, 40.0), (20.0, 40.0),
+             (45.0, 55.0)]
+    bare = rt.gusset_outline_from_members(ends, work_point=wp)
+    held = rt.gusset_outline_from_members(ends, work_point=wp, fasteners=field)
+
+    def inside(poly, q):
+        n, w = len(poly), False
+        for i in range(n):
+            x0, y0 = poly[i]
+            x1, y1 = poly[(i + 1) % n]
+            if (y0 > q[1]) != (y1 > q[1]) and \
+               q[0] < (x1 - x0) * (q[1] - y0) / (y1 - y0) + x0:
+                w = not w
+        return w
+
+    assert not all(inside(bare, f) for f in field)      # the point of the fix
+    assert all(inside(held, f) for f in field)
+
+
+def test_offset_convex_outward_pushes_every_edge_out():
+    sq = [(0.0, 0.0), (10.0, 0.0), (10.0, 10.0), (0.0, 10.0)]
+    out = rt.offset_convex_outward(sq, 2.0)
+    assert min(q[0] for q in out) == pytest.approx(-2.0)
+    assert min(q[1] for q in out) == pytest.approx(-2.0)
+    assert max(q[0] for q in out) == pytest.approx(12.0)
+    assert max(q[1] for q in out) == pytest.approx(12.0)
