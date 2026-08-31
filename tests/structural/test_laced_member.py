@@ -204,3 +204,46 @@ def test_the_section_matches_the_1930_designers_own_net_section_check():
     net = builtup.properties(spec)["A"] - 4 * hole * 0.375 - 6 * hole * 0.5
     assert net == pytest.approx(30.46, abs=0.03)
     assert net > 30.4                  # and it passes his own requirement
+
+
+# --------------------------------------------------------------------------- #
+# the fabrication has to reach the attributes, not only the geometry
+# --------------------------------------------------------------------------- #
+def test_the_fabrication_reaches_the_tags():
+    """LOD 400 is a statement about the attributes as much as the geometry.
+    A member drawn as one enveloping box -- which is what lets a whole bridge
+    open in a browser -- must still record what the shop actually built."""
+    from civilpy.structural import bim
+
+    t = bim.fabrication_tags(chord())
+    assert "web plate" in t["fab.pieces"] and "lacing bar" in t["fab.pieces"]
+    assert "double" in t["fab.lacing"] and "2-1/2" in t["fab.lacing"]
+    assert "L2" in t["fab.lacing_source"]
+    assert t["fab.tie_plates"] == "1 off 21 x 3/8 x 46"
+    assert t["fab.rivet_dia_in"] == "1" and t["fab.rivet_hole_in"] == "1.125"
+    assert float(t["fab.fabricated_lb"]) > float(t["fab.bare_lb"])
+    assert 1.15 < float(t["fab.buildup_ratio"]) < 1.60
+    assert t["fab.source"]
+
+
+def test_a_member_with_no_fabrication_gets_no_fab_block():
+    from civilpy.structural import bim
+
+    plain = bim.truss_member_tags("X", role="truss_chord_top", spec=SPEC)
+    assert not any(k.startswith("fab.") for k in plain)
+    withfab = bim.truss_member_tags("X", role="truss_chord_top", spec=SPEC,
+                                    fabrication=chord())
+    assert withfab["fab.lacing"] == chord().lacing.label
+
+
+def test_shop_bill_fractions():
+    from civilpy.structural.bim import _frac_in
+
+    assert _frac_in(21.0) == "21"
+    assert _frac_in(0.5) == "1/2"
+    assert _frac_in(0.375) == "3/8"
+    # 1/64 in of slack: 23.9583 ft is a rounded decimal of 23'-11 1/2", and
+    # the bill wrote the fraction
+    assert _frac_in(23.9583 * 12) == "287-1/2"
+    assert _frac_in(3.8333 * 12) == "46"
+    assert _frac_in(2.6) == "2.6"                 # not a shop fraction

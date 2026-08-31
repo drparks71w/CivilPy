@@ -349,10 +349,14 @@ def member_objects(model: TrussModel, m: TrussMember, *, lod: int = 400,
     layer = TYPE_LAYER[m.role]
 
     if lod < 400:
+        # One enveloping box, so the whole bridge opens in a browser -- but
+        # the box still records what the shop built.  LOD 400 is a statement
+        # about the attributes as much as the geometry.
         b, h = builtup.envelope(m.spec)
         tags = bim.truss_member_tags(
             m.id, role=m.role, spec=m.spec, length_ft=length,
-            weight_lb=weight_lb, line=m.line, span=m.span, steel=m.steel)
+            weight_lb=weight_lb, line=m.line, span=m.span, steel=m.steel,
+            fabrication=m.fabrication)
         return [EmitObject("prism", layer, _rect_loop(p_i, v, w, 0.0, 0.0, b, h),
                            tags, vector)]
 

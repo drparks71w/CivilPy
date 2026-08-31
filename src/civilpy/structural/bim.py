@@ -529,7 +529,8 @@ def truss_member_tags(bid: str, *, role: str, spec: str,
                       weight_lb: float | None = None,
                       line: str | None = None, span: str | None = None,
                       steel: str = "silicon 1917-1936",
-                      piece: str | None = None) -> dict:
+                      piece: str | None = None,
+                      fabrication: object = None) -> dict:
     """A truss chord / vertical / diagonal / strut.
 
     ``role`` is one of :data:`TRUSS_MEMBER_TYPES`; ``spec`` the plan-sheet
@@ -538,7 +539,16 @@ def truss_member_tags(bid: str, *, role: str, spec: str,
     plate or angle leg this solid represents when the member is drawn at
     LOD 400 -- the whole member is then several objects sharing one
     ``bim.id``, and only the first carries the pay quantity so the takeoff
-    does not double-count."""
+    does not double-count.
+
+    ``fabrication`` is the member's :class:`~civilpy.structural.laced_member.
+    LacedMember` -- what the shop actually built, as against the section the
+    designer sized.  It is emitted as a ``fab.*`` block so that a member
+    drawn at LOD 300, as one enveloping box for a browser, still *records*
+    its real makeup: LOD 400 is a statement about the attributes, not only
+    about the geometry, and a box labelled with its lacing, tie plates, piece
+    counts and fabricated weight carries the information even where drawing
+    every bar would not open."""
     if role not in TRUSS_MEMBER_TYPES:
         raise ValueError("unknown truss member role %r; expected one of %s"
                          % (role, ", ".join(TRUSS_MEMBER_TYPES)))
@@ -552,8 +562,63 @@ def truss_member_tags(bid: str, *, role: str, spec: str,
         tags["truss.length_ft"] = f"{length_ft:.4g}"
     if piece is not None:
         tags["truss.piece"] = piece
+    if fabrication is not None:
+        tags.update(fabrication_tags(fabrication))
     tags.update(_pay_tags("513E10220", weight_lb))
     return tags
+
+
+def fabrication_tags(lm) -> dict:
+    """The ``fab.*`` block: what the shop built, from a ``LacedMember``.
+
+    Kept compact on purpose -- one line per thing a reviewer would ask about
+    (what is the lacing, what ties it, how many pieces, what does it really
+    weigh) rather than a dump of every bar."""
+    try:
+        summary = lm.summary()
+    except Exception:
+        return {}
+    tags = {"fab.pieces": ", ".join(
+        "%d %s" % (v["count"], k) for k, v in sorted(summary["pieces"].items()))}
+    if getattr(lm, "lacing", None) is not None:
+        tags["fab.lacing"] = lm.lacing.label
+        if getattr(lm.lacing, "source", ""):
+            tags["fab.lacing_source"] = lm.lacing.source
+    ties = getattr(lm, "tie_plates", ()) or ()
+    if ties:
+        t = ties[0]
+        tags["fab.tie_plates"] = "%d off %s x %s x %s" % (
+            len(ties), _frac_in(t.width_in), _frac_in(t.thickness_in),
+            _frac_in(t.length_ft * 12.0))
+        if getattr(t, "source", ""):
+            tags["fab.tie_plate_source"] = t.source
+    tags["fab.rivet_dia_in"] = f"{lm.rivet_dia_in:.4g}"
+    tags["fab.rivet_hole_in"] = f"{lm.rivet_hole_in:.4g}"
+    tags["fab.bare_lb"] = f"{summary['bare_lb']:.6g}"
+    tags["fab.fabricated_lb"] = f"{summary['fabricated_lb']:.6g}"
+    tags["fab.buildup_ratio"] = f"{summary['fabricated_lb'] / summary['bare_lb']:.4g}"         if summary["bare_lb"] else "0"
+    if getattr(lm, "source", ""):
+        tags["fab.source"] = lm.source
+    return tags
+
+
+def _frac_in(v: float) -> str:
+    """``21``, ``1/2``, ``46`` -- inches the way a shop bill writes them."""
+    whole = int(v)
+    rem = v - whole
+    # 1/64 in of slack: a length carried as 23.9583 ft is a rounded decimal
+    # of 23'-11 1/2", and the bill wrote the fraction, not the decimal.
+    for den in (2, 4, 8, 16):
+        num = round(rem * den)
+        if abs(rem - num / den) < 1.0 / 64.0:
+            if num == den:                       # rounded up a whole inch
+                return str(whole + 1)
+            if num == 0:
+                return str(whole)
+            if whole == 0:
+                return "%d/%d" % (num, den)
+            return "%d-%d/%d" % (whole, num, den)
+    return f"{v:.4g}"
 
 
 def gusset_plate_tags(bid: str, *, joint: str, thickness_in: float,
