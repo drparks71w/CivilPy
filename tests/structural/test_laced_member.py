@@ -170,3 +170,37 @@ def test_lacing_label_says_single_or_double():
     assert "double" in LacingSpec(2.5, 0.25, double=True).label
     assert "single" in LacingSpec(2.5, 0.25, double=False).label
     assert "2-1/2" in LacingSpec(2.5, 0.25).label
+
+
+# --------------------------------------------------------------------------- #
+# against the 1930 designer's own arithmetic
+# --------------------------------------------------------------------------- #
+def test_the_section_matches_the_1930_designers_own_net_section_check():
+    """Sheet L2 of the Mt. Vernon Bridge Co. shop set (CUY-10-1613,
+    `Full Plan Set.pdf` p604) carries the designer's net-section check in his
+    own hand::
+
+        Area Req'd 760/25 = 30.4 sq in net
+                              Gross            Net
+        2 P 22 x 3/8          16.5   -4h=1.68  14.82
+        4 L 6x4x1/2 x 19             -6h=3.36  15.64
+                              35.5 gr.         30.46
+
+    That is an independent check on two things this module asserts: that a
+    built-up spec decomposes into plate area plus *catalogue* angle area, and
+    that the rivet hole is the 1-1/8 in the E-sheet title block gives.  It
+    reproduces to the rounding he did on the deductions.
+    """
+    spec = "2P22x3/8 4L6x4x1/2"
+    plate_gross = 2 * 22 * 0.375
+    _des, angle_area, _ed = angle_designation(6, 4, 0.5)
+    assert plate_gross == pytest.approx(16.5)
+    assert 4 * angle_area == pytest.approx(19.0)
+    assert builtup.properties(spec)["A"] == pytest.approx(35.5)
+
+    hole = 1.125                       # punched, per the E-sheet title block
+    assert 4 * hole * 0.375 == pytest.approx(1.68, abs=0.01)
+    assert 6 * hole * 0.5 == pytest.approx(3.36, abs=0.02)
+    net = builtup.properties(spec)["A"] - 4 * hole * 0.375 - 6 * hole * 0.5
+    assert net == pytest.approx(30.46, abs=0.03)
+    assert net > 30.4                  # and it passes his own requirement
