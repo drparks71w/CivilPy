@@ -21,7 +21,7 @@ selenium==3.141.0
 folium==0.20.0
 
 # Databases / ORM
-SQLAlchemy==2.0.43
+SQLAlchemy==2.0.52
 psycopg==3.2.9
 psycopg-binary==3.2.9
 oracledb==3.4.0
