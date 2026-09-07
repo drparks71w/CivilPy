@@ -118,14 +118,17 @@ sec:sast:
   stage: security
   image: semgrep/semgrep:latest
   allow_failure: true # red = findings; fix or annotate with justified nosemgrep
-  before_script:
-    # semgrep's official image refuses to run in Docker unless the code sits at
-    # /src; GitLab checks out to /builds/..., so link it (harmless elsewhere)
-    - ln -sfn "$CI_PROJECT_DIR" /src 2>/dev/null || true
+  variables:
+    SEMGREP_CONFIGS: "--config p/default --config p/python"
   script:
     - mkdir -p evidence
-    - semgrep scan --config p/default --config p/python --metrics=off --sarif --output evidence/semgrep.sarif
-    - semgrep scan --config p/default --config p/python --metrics=off --error
+    # Under GitLab's CI variables semgrep enumerates ZERO targets when no path is
+    # given ("Scanning 0 files tracked by git" — reproduced 2026-09-06 in docker
+    # with CI=true/GITLAB_CI=true); every run before that date scanned nothing.
+    # Always pass the project dir explicitly, then refuse a zero-target scan.
+    - semgrep scan $SEMGREP_CONFIGS --metrics=off --sarif --output evidence/semgrep.sarif "$CI_PROJECT_DIR" 2>&1 | tee evidence/semgrep.log
+    - grep -E "Targets scanned:[[:space:]]*[1-9]" evidence/semgrep.log || { echo "SAST scanned zero files — job misconfigured, not clean"; exit 1; }
+    - semgrep scan $SEMGREP_CONFIGS --metrics=off --error "$CI_PROJECT_DIR"
   artifacts:
     when: always
     paths: [evidence/]
