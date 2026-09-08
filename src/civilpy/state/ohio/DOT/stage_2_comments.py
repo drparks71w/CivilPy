@@ -62,7 +62,12 @@ general_notes_criteria = [
               "describe any 'non-standard' bid items or situations. Have these been included?"},
     {"label": "For rehabilitation projects, is the scope work itemized and clearly described under a PROPOSED WORK "     # OK - Ref
               "note?"},
-    {"label": "Construction procedure for unusual conditions"}                                                           # OK - Ref
+    {"label": "Construction procedure for unusual conditions"},                                                          # OK - Ref
+    {"label": "Airway/Highway Clearance: if the project is within 20,000 ft of an airport or heliport, is the analysis "
+              "on file, is the correct note present (G118A when construction equipment penetrates the notification "
+              "surface, G118B when it does not, G118C for a private facility) with its height blank filled, and is "
+              "the FAA Form 7460-1 filing / Determination tracked (18-month validity)?",
+     "reference": "L&D Vol. 3 1407.1; 14 CFR 77.9"}
 ],
 
 detail_notes_criteria = [

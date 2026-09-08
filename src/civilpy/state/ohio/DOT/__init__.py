@@ -9,8 +9,9 @@
 Clients and utilities for ODOT data systems — TIMS (:mod:`.TIMS`), Bentley
 AssetWise (:mod:`.AssetWise`, :mod:`.assetwise_client`) — plus standard
 bridge design-data tables (:mod:`.bridge`), plan-review checklists
-(:mod:`.OSE`, :mod:`.stage_2_comments`), and plan-sheet ML/OCR helpers
-(:mod:`.title_sheet`, :mod:`.gemini`).
+(:mod:`.OSE`, :mod:`.stage_2_comments`), the Airway/Highway Clearance
+(FAA Part 77) screen (:mod:`.airway_clearance`), and plan-sheet ML/OCR
+helpers (:mod:`.title_sheet`, :mod:`.gemini`).
 
 The Midas bridge workflow (:mod:`.midas_bridge`) is re-exported here, so
 either spelling of the package name reaches it::
