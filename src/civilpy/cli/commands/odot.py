@@ -269,7 +269,73 @@ def run_tiff_split(inp: TiffSplitInput, ctx) -> CommandResult:  # noqa: ANN001
     return CommandResult(tables=[table], input_files=[str(path)])
 
 
+
+@dataclass(frozen=True)
+class PhotosInput:
+    """Inputs for ``odot photos``."""
+
+    sfn: str = field(metadata={
+        "positional": True,
+        "doc": "Structure File Number (e.g. 1801503) — or a numeric AssetWise asset id",
+    })
+    folder: Optional[str] = field(default=None, metadata={
+        "kind": "path", "exts": (),
+        "doc": "destination folder (default C:/TEMP/<SFN> on Windows, ~/TEMP/<SFN> elsewhere)",
+    })
+    all_files: bool = field(default=False, metadata={
+        "doc": "also download the report-attached PDFs (UW reports, FCM plans, the report itself)",
+    })
+    flat: bool = field(default=False, metadata={
+        "doc": "no per-inspection subfolders",
+    })
+
+
+def run_photos(inp: PhotosInput, ctx) -> CommandResult:  # noqa: ANN001
+    import os
+    from pathlib import Path
+
+    from civilpy.state.ohio.DOT.assetwise_files import dump_inspection_files
+
+    sfn = inp.sfn.strip()
+    folder = Path(inp.folder).expanduser() if inp.folder else (
+        Path("C:/TEMP") / sfn if os.name == "nt" else Path.home() / "TEMP" / sfn)
+    try:
+        from civilpy.state.ohio.DOT.assetwise_client import AssetWiseClient
+        client = AssetWiseClient()
+    except (FileNotFoundError, KeyError):
+        raise CliError(
+            "AssetWise credentials not found: put BENTLEY_ASSETWISE_KEY_NAME and "
+            "BENTLEY_ASSETWISE_API in ~/secrets.json (your own key — the "
+            "statewide system key is not for sharing)")
+    try:
+        with ui.progress("Downloading", total=None) as advance:
+            summary = dump_inspection_files(
+                sfn, folder, photos_only=not inp.all_files, flat=inp.flat,
+                client=client, progress=lambda _name: advance(1))
+    except LookupError as exc:
+        raise CliError(str(exc))
+    rows = [(k, summary[k]) for k in ("as_id", "listed", "written", "skipped", "failed")]
+    rows.append(("folder", str(folder)))
+    table = ResultTable(title=f"AssetWise files for {sfn}",
+                        columns=[Column("Item"), Column("Value")], rows=rows)
+    return CommandResult(tables=[table], inputs={"sfn": sfn, "folder": str(folder)})
+
+
 SPECS = [
+    CommandSpec(
+        name="odot photos",
+        summary="Download a bridge's AssetWise inspection photos to a folder",
+        description=(
+            "Pulls every file attached to the asset's approved inspection "
+            "reports (and the asset-level files reachable through no "
+            "report) via the AssetWise API, organized as "
+            "'Inspection - YYYY/YYYY-MM-DD <name>.<ext>'. Photos only by "
+            "default; --all-files adds the PDFs. Needs your AssetWise API "
+            "key in ~/secrets.json."
+        ),
+        input_model=PhotosInput,
+        runner="civilpy.cli.commands.odot:run_photos",
+    ),
     CommandSpec(
         name="odot slab",
         summary="Concrete slab bridge deck parameters from ODOT standards",
