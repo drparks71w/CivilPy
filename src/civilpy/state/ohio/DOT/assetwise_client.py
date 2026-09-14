@@ -340,6 +340,52 @@ class AssetWiseClient:
                          ast_id, e)
         return []
 
+    def get_report_inspectors(self, ast_id):
+        """The users who PERFORMED one report's inspection
+        (``InspectionReport/GetInspectors/{ast_id}``) — the direct answer
+        to "who inspected", as opposed to the form's B.IE.04 code field
+        (which ODOT leaves at 'TBD'/0 on most reports).
+
+        Returns a list of UsersInspector dicts (``in_id``, ``in_username``,
+        ``in_fname``, ``in_lname``, ``in_email``, ``in_organization``,
+        ``in_position``, ``displayName`` …); [] when the report has none
+        or the call fails.
+        """
+        url = f"{self.base_url}/api/InspectionReport/GetInspectors/{ast_id}"
+        try:
+            resp = self._get_with_retry(url)
+            if resp:
+                data = resp.json()
+                if data.get('success'):
+                    return data.get('data', []) or []
+        except Exception as e:
+            logger.error("Failed to fetch inspectors for report=%s: %s",
+                         ast_id, e)
+        return []
+
+    def get_user_full_name(self, in_id):
+        """Display name for an AssetWise user id (``User/GetFullName``).
+        Returns '' when unknown. Report rows carry only ids for the
+        creator/owner/assignee (``in_id``, ``ast_owner_in_id``,
+        ``ast_assigned_in_id``); this resolves them."""
+        if not in_id:
+            return ''
+        url = f"{self.base_url}/api/User/GetFullName/{in_id}"
+        try:
+            resp = self._get_with_retry(url)
+            if resp:
+                data = resp.json()
+                payload = data.get('data', data) if isinstance(data, dict) else data
+                if isinstance(payload, dict):
+                    payload = (payload.get('displayName')
+                               or payload.get('fullName')
+                               or f"{payload.get('in_fname', '')} "
+                                  f"{payload.get('in_lname', '')}")
+                return str(payload or '').strip()
+        except Exception as e:
+            logger.error("Failed to resolve user in_id=%s: %s", in_id, e)
+        return ''
+
     def get_full_inspection_report(self, ast_id):
         """Fetch the full inspection report values via ast_id."""
         url = f"{self.base_url}/api/Value/GetValuesForReport/{ast_id}"
