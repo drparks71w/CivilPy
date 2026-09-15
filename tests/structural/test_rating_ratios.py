@@ -184,9 +184,10 @@ class TestCriticalSectionAlignment:
             set(OHIO_KNOWN_VEHICLES)
 
     def test_short_span_excludes_misaligned_known(self):
-        # At 40 ft the HL-93 M+ peak sits >5% of the span from Type 3-3's,
-        # so HL-93 must not contaminate that prediction
-        basis = simple_span_demands(40.0, ALL)
+        # At 30 ft the HL-93 M+ peak sits >5% of the span from Type 3-3's,
+        # so HL-93 must not contaminate that prediction (at 40 ft every
+        # pairing already aligns once mirror-image peaks are folded)
+        basis = simple_span_demands(30.0, ALL)
         rfs = synthetic_rfs(basis, "positive_moment", 800.0)
         rfs["HL-93"] *= 2.0                     # corrupt an excluded known
         preds = predict_rating_factors(rfs, basis, "positive_moment")
@@ -240,3 +241,34 @@ class TestPredictionHelper:
             truth = 2000.0 / basis.effects("positive_moment", (name,))[0]
             assert p.rf == pytest.approx(truth)
             assert set(p.per_known) == set(OHIO_KNOWN_VEHICLES)
+
+
+class TestThreeSpanLayoutAndStationFold:
+    def test_adjacent_spans_are_the_shorter_ones(self):
+        """ratio = maximum span / adjacent span, so at r = 1.25 the adjacent
+        spans are L/1.25: shorter adjacent spans carry less load onto the
+        interior supports, so both the maximum-span M+ and |M-| fall
+        relative to three equal spans (the report's tables show the same
+        trend)."""
+        equal = three_span_demands(40.0, 1.0, ("2F1", "SU7"), step=0.5)
+        short = three_span_demands(40.0, 1.25, ("2F1", "SU7"), step=0.5)
+        assert np.all(short.positive_moment < equal.positive_moment)
+        assert np.all(short.negative_moment < equal.negative_moment)
+        # and the layout really is L/r | L | L/r: a direct beam check
+        from civilpy.structural.continuous_beam import ContinuousBeam, UnitResponses
+        from civilpy.structural.rating_ratios import _vehicle_demands
+        from civilpy.structural.aashto.vehicles import RATING_VEHICLES
+        unit = UnitResponses.from_beam(ContinuousBeam([0.0, 32.0, 72.0, 104.0]), step=0.5)
+        m_pos, m_neg, shear, _ = _vehicle_demands(unit, RATING_VEHICLES["SU7"], 0.0)
+        assert short.positive_moment[1] == pytest.approx(m_pos, rel=1e-9)
+        assert short.negative_moment[1] == pytest.approx(m_neg, rel=1e-9)
+
+    def test_peak_station_folded_into_first_half(self):
+        basis = three_span_demands(40.0, 1.0, ("2F1", "3F1", "SU7", "Type 3-3"), step=0.5)
+        assert np.all(basis.positive_moment_station <= 60.0 + 1e-9)     # half of 120 ft
+        # every vehicle's M+ peak sits in the first end span, so the known
+        # vehicles align with each other instead of mirror images 90 ft apart
+        st = basis.peak_stations(("2F1", "3F1", "SU7"))
+        assert st.max() - st.min() < 0.05 * 40.0
+        simple = simple_span_demands(60.0, ("HS20", "Type 3"), step=0.5)
+        assert np.all(simple.positive_moment_station <= 30.0 + 1e-9)

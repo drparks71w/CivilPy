@@ -7,6 +7,23 @@ Versions follow [Semantic Versioning](https://semver.org/) (major.minor.patch).
 
 ## [Unreleased]
 
+## [0.4.5] - 2026-09-15
+
+- **Fix: continuous-bridge span ratio was inverted (`structural.rating_ratios`).**
+  The three-span sub-model built the adjacent spans as *ratio x maximum
+  span*; the ratio is defined as *maximum span / adjacent span*, so the
+  adjacent spans are the shorter ones (``L/r | L | L/r``).  At ratio 1.2 on
+  a 40 ft span the two layouts differ by ~50 % in positive moment, which
+  moved the governing-case search onto the wrong ratio.  Simple spans were
+  unaffected.  Re-run any continuous-bridge predictions.
+
+- **Fix: mirror-image M+ peak stations broke the alignment check.** The
+  envelope sometimes reports a vehicle's positive-moment peak in the far
+  end span of the symmetric model; the critical-section check then compared
+  a 16 ft station against a 104 ft one and dropped knowns that align.
+  Peak stations are now folded into the first half of the beam.
+
+
 ## [0.4.4] - 2026-09-15
 
 Everything since 0.4.1 — 0.4.2 and 0.4.3 were tagged without changelog
