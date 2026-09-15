@@ -7,6 +7,55 @@ Versions follow [Semantic Versioning](https://semver.org/) (major.minor.patch).
 
 ## [Unreleased]
 
+## [0.4.4] - 2026-09-15
+
+Everything since 0.4.1 — 0.4.2 and 0.4.3 were tagged without changelog
+entries, so this section carries their items too.
+
+- **AssetWise client — retries that succeed are INFO, and counted.**
+  `_get_with_retry` logs only the final failed attempt at WARNING; earlier
+  attempts log at INFO and bump the process-wide
+  `AssetWiseClient.transient_retries` counter, so a caller reports "N
+  transient retries" once instead of filling an error log with them.
+
+- **AssetWise client — who performed a report.**
+  `get_report_inspectors(ast_id)` (InspectionReport/GetInspectors, team
+  leader first) and `get_user_full_name(in_id)`; `get_report_inspection_types`
+  (rt_id is always 1 in ODOT data; InspectionReportInspTypeMap is the real
+  type source); fail-fast 4xx with explanatory 404 messages (asset gone vs.
+  no report container).
+
+- **AssetWise client — files.** `get_report_files` / `get_asset_files`
+  (report-map and asset-level scopes are independent), `download_file` /
+  `download_file_named` (names from Content-Disposition), plus the
+  `civilpy odot photos` dump.
+
+- **MIDAS Steel Composite Girder Bridge wizard, reproduced
+  (`structural.midas_composite_wizard`).** `build(WizardInputs)` emits the
+  `/db` payload the Civil NX wizard would; its geometry rules were verified
+  against a wizard-generated model and are now exact: every reference line
+  is a skewed straight line with the skew interpolated between supports,
+  strips are one element per bay and three per overhang, the deck-edge
+  "Dummy Beam2" chains, downward V cross frames, seat-plus-link bearings,
+  cap tips on the deck edges, bank about the reference line, a
+  `vertical_curve` input. Property tests over three bridges.
+
+- **Airway/Highway Clearance Analysis screen (`state.ohio.DOT`)** — L&D
+  1407.1 / 14 CFR 77.9 imaginary surfaces from NASR runway geometry.
+
+- **Gusset-plate geometry model and checks (`structural`)** — Whitmore
+  section, unbraced lengths, block-shear paths, cut sections, section-loss
+  thickness field; LRFD 6.14.2.8 and 2012 ODOT LFR gusset checks, validated
+  against the a 2012 ODOT LFR gusset rating sheet; `rhino_gusset` interchange.
+
+- **Riveted-truss BrIM** — `rhino_truss`, built-up members modelled as real
+  I-sections, LOD 500 riveted gusset joints, the Truss layer group; **IFC
+  backend** with the review overlay that makes a model a review model.
+
+- **Security CI** — re-vendored template (SAST was scanning zero files),
+  High-severity dependency findings from the 2026-08-31 scan cleared.
+
+
 - **Cost estimate straight from a BrIM `.3dm`
   (`structural.bim.cost_estimate`, `structural.rhino_bim.read_bim_estimate`).**
   The pay-item quantity read-back now runs through a swappable unit-price
