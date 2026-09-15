@@ -46,7 +46,7 @@ entries, so this section carries their items too.
 - **Gusset-plate geometry model and checks (`structural`)** — Whitmore
   section, unbraced lengths, block-shear paths, cut sections, section-loss
   thickness field; LRFD 6.14.2.8 and 2012 ODOT LFR gusset checks, validated
-  against the a 2012 ODOT LFR gusset rating sheet; `rhino_gusset` interchange.
+  against a 2012 ODOT LFR gusset rating sheet; `rhino_gusset` interchange.
 
 - **Riveted-truss BrIM** — `rhino_truss`, built-up members modelled as real
   I-sections, LOD 500 riveted gusset joints, the Truss layer group; **IFC
