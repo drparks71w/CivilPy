@@ -1775,3 +1775,385 @@ class BoxBeamBridgeRecord(ElementRecord):
         return BoxBridgeInput(box=self.box, span_ft=self.span_ft,
                               n_beams=self.n_beams,
                               skew_deg=self.skew_deg, fc_psi=self.fc_psi)
+
+
+# ══ As-rated prestressed concrete beams: strands, mild steel, stirrups ═══════
+#
+# The Tier A records above regenerate reinforcement from a *standard* design
+# table.  These records store the reinforcement a rating engineer actually
+# entered for one beam — the per-strand layout with debonding and harping,
+# the mild-steel rows, the stirrup ranges, the composite deck ranges — so a
+# rated bridge round-trips to a full-detail model and, later, to a QA pass
+# that compares what was entered with what the standard for that beam says.
+# Shape follows the source it will most often be filled from (a load-rating
+# model: a strand *grid* on the section, then the *positions used* per span),
+# but nothing here names that source.
+#
+# Units: section-scale in inches, along-member in feet, strengths in ksi.
+
+STRAND_CONFIGURATIONS = ("straight", "debonded", "harped", "harped_debonded",
+                         "p_and_e")
+STRAND_TYPES = ("low_relaxation", "stress_relieved")
+CONDITION_FACTORS = ("good", "fair", "poor")
+VOID_TYPES = ("none", "circular", "rectangular")
+
+
+@dataclass(frozen=True)
+class StrandRowRecord(SpecRecord):
+    """One row of the strand grid on the section: ``positions`` equally
+    spaced slots at ``height_in`` above the soffit, centred on the beam.
+    Which slots carry a strand is the per-span :class:`StrandRecord` list."""
+
+    height_in: float = spec_field(unit="in", ge=0.0)
+    positions: int = spec_field(ge=1)
+    spacing_in: float | None = spec_field(None, unit="in", gt=0.0)
+
+    def x_in(self, column: int) -> float | None:
+        """Transverse offset of grid ``column`` (1-based) from the beam
+        centreline, +right; ``None`` when the row has no spacing."""
+        if self.spacing_in is None:
+            return None
+        return (column - (self.positions + 1) / 2.0) * self.spacing_in
+
+
+@dataclass(frozen=True)
+class StrandRecord(SpecRecord):
+    """One strand in one span: its grid slot plus any debonding (length
+    from each beam end over which the strand is sleeved) and harping (the
+    hold-down points and the slot the strand rises to at each end)."""
+
+    row: int = spec_field(ge=1, desc="1-based index into the pattern rows")
+    column: int = spec_field(ge=1)
+    debond_left_ft: float | None = spec_field(None, unit="ft", ge=0.0)
+    debond_right_ft: float | None = spec_field(None, unit="ft", ge=0.0)
+    harp_left_ft: float | None = spec_field(
+        None, unit="ft", ge=0.0, desc="hold-down point from the left end")
+    harp_right_ft: float | None = spec_field(
+        None, unit="ft", ge=0.0, desc="hold-down point from the right end")
+    harp_end_left_row: int | None = spec_field(
+        None, ge=1, desc="grid row the strand occupies at the left end")
+    harp_end_right_row: int | None = spec_field(None, ge=1)
+    extends_left: bool = spec_field(False, desc="continuity strand into "
+                                    "the adjacent span / diaphragm")
+    extends_right: bool = spec_field(False)
+
+    @property
+    def debonded(self) -> bool:
+        return bool(self.debond_left_ft or self.debond_right_ft)
+
+    @property
+    def harped(self) -> bool:
+        return self.harp_left_ft is not None or self.harp_right_ft is not None
+
+
+@dataclass(frozen=True)
+class StrandPatternRecord(SpecRecord):
+    """The prestressing of one span: material, grid rows, and the strands
+    placed in them.  ``configuration == "p_and_e"`` means the author gave a
+    force and eccentricities instead of a layout — ``strands`` is then
+    empty and ``p_kips`` / ``cg_*`` carry what is known.  A full-detail
+    model needs a layout; the P-and-e case is stored so it can be found."""
+
+    configuration: str = spec_field("straight", enum=STRAND_CONFIGURATIONS)
+    strand_diameter_in: float = spec_field(0.5, unit="in", gt=0.0)
+    strand_area_in2: float = spec_field(0.153, unit="in^2", gt=0.0)
+    fpu_ksi: float = spec_field(270.0, unit="ksi", gt=0.0)
+    fpy_ksi: float | None = spec_field(None, unit="ksi", gt=0.0)
+    strand_type: str = spec_field("low_relaxation", enum=STRAND_TYPES)
+    jacking_ratio: float | None = spec_field(
+        None, gt=0.0, desc="jacking stress / fpu")
+    rows: tuple[StrandRowRecord, ...] = spec_field(())
+    strands: tuple[StrandRecord, ...] = spec_field(())
+    p_kips: float | None = spec_field(None, unit="kip", ge=0.0,
+                                      desc="P-and-e only: effective force")
+    cg_mid_in: float | None = spec_field(
+        None, unit="in", ge=0.0, desc="P-and-e only: strand cg above "
+                                      "soffit at midspan")
+    cg_end_in: float | None = spec_field(None, unit="in", ge=0.0)
+
+    # ── derived ────────────────────────────────────────────────────────
+    @property
+    def n_strands(self) -> int:
+        return len(self.strands)
+
+    @property
+    def n_debonded(self) -> int:
+        return sum(1 for s in self.strands if s.debonded)
+
+    @property
+    def n_harped(self) -> int:
+        return sum(1 for s in self.strands if s.harped)
+
+    @property
+    def total_area_in2(self) -> float:
+        return self.n_strands * self.strand_area_in2
+
+    def cg_height_in(self) -> float | None:
+        """Strand-group centroid above the soffit at midspan (harped
+        strands at their midspan row), ``None`` without a layout."""
+        if not self.strands:
+            return self.cg_mid_in
+        return sum(self.rows[s.row - 1].height_in for s in self.strands) \
+            / len(self.strands)
+
+    def row_counts(self) -> tuple[int, ...]:
+        """Strands per grid row, in row order."""
+        counts = [0] * len(self.rows)
+        for s in self.strands:
+            counts[s.row - 1] += 1
+        return tuple(counts)
+
+    def _cross_validate(self):
+        problems = []
+        for i, r in enumerate(self.rows):
+            problems += [f"rows[{i}].{p}" for p in r.validate()]
+        seen = set()
+        for i, s in enumerate(self.strands):
+            problems += [f"strands[{i}].{p}" for p in s.validate()]
+            if s.row > len(self.rows):
+                problems.append(f"strands[{i}].row {s.row} beyond "
+                                f"{len(self.rows)} rows")
+            elif s.column > self.rows[s.row - 1].positions:
+                problems.append(f"strands[{i}].column {s.column} beyond "
+                                f"row {s.row}'s {self.rows[s.row-1].positions}"
+                                f" positions")
+            for end in ("left", "right"):
+                r_end = getattr(s, f"harp_end_{end}_row")
+                if r_end is not None and r_end > len(self.rows):
+                    problems.append(f"strands[{i}].harp_end_{end}_row "
+                                    f"{r_end} beyond {len(self.rows)} rows")
+            if (s.row, s.column) in seen:
+                problems.append(f"strands[{i}]: slot ({s.row}, {s.column}) "
+                                f"used twice")
+            seen.add((s.row, s.column))
+        if self.configuration == "p_and_e":
+            if self.strands:
+                problems.append("configuration p_and_e cannot carry a "
+                                "strand layout")
+            if self.p_kips is None:
+                problems.append("configuration p_and_e needs p_kips")
+        elif not self.strands:
+            problems.append(f"configuration {self.configuration} needs at "
+                            f"least one strand")
+        return problems
+
+
+@dataclass(frozen=True)
+class MildBarRowRecord(SpecRecord):
+    """A row of longitudinal mild bars in a prestressed beam: ``count``
+    bars of ``bar`` at ``height_in`` above the soffit, running
+    ``length_ft`` from ``start_ft`` (measured along the member from its
+    start, so a bar in span 2 starts past span 1).  ``role`` separates the
+    beam's own bars from continuity bars over a support."""
+
+    bar: str = spec_field(desc="US bar size as '#5', or legacy '0.5 sq'")
+    count: int = spec_field(ge=1)
+    height_in: float = spec_field(unit="in", ge=0.0)
+    start_ft: float = spec_field(unit="ft")
+    length_ft: float = spec_field(unit="ft", gt=0.0)
+    spacing_in: float | None = spec_field(None, unit="in", gt=0.0)
+    side_cover_in: float | None = spec_field(None, unit="in", ge=0.0)
+    fy_ksi: float = spec_field(60.0, unit="ksi", gt=0.0)
+    role: str = spec_field("longitudinal",
+                           enum=("longitudinal", "continuity"))
+    developed_start: bool = spec_field(False)
+    developed_end: bool = spec_field(False)
+
+
+@dataclass(frozen=True)
+class StirrupRangeRecord(SpecRecord):
+    """A run of vertical shear reinforcement: ``n_spaces`` spaces of
+    ``spacing_in`` starting ``start_ft`` along the member."""
+
+    start_ft: float = spec_field(unit="ft")
+    spacing_in: float = spec_field(unit="in", gt=0.0)
+    n_spaces: int = spec_field(ge=1)
+    bar: str = spec_field("#4")
+    legs: int = spec_field(2, ge=1)
+    angle_deg: float = spec_field(90.0, unit="deg", gt=0.0)
+    fy_ksi: float = spec_field(60.0, unit="ksi", gt=0.0)
+    extends_into_deck: bool = spec_field(
+        False, desc="stirrups project into the deck (horizontal shear)")
+
+    @property
+    def length_ft(self) -> float:
+        return self.n_spaces * self.spacing_in / 12.0
+
+    @property
+    def end_ft(self) -> float:
+        return self.start_ft + self.length_ft
+
+
+@dataclass(frozen=True)
+class CompositeRangeRecord(SpecRecord):
+    """Whether the deck acts compositely with the beam over
+    ``[start_ft, start_ft + length_ft]``."""
+
+    start_ft: float = spec_field(unit="ft")
+    length_ft: float = spec_field(unit="ft", gt=0.0)
+    composite: bool = spec_field(True)
+
+
+@dataclass(frozen=True)
+class DeckRangeRecord(SpecRecord):
+    """The deck slab over a beam along ``[start_ft, start_ft + length_ft]``:
+    thickness (actual, and the effective/structural value used in
+    analysis) and the tributary width."""
+
+    start_ft: float = spec_field(unit="ft")
+    length_ft: float = spec_field(unit="ft", gt=0.0)
+    thickness_in: float = spec_field(unit="in", gt=0.0)
+    effective_thickness_in: float | None = spec_field(None, unit="in", gt=0.0)
+    tributary_width_in: float | None = spec_field(None, unit="in", gt=0.0)
+    fc_ksi: float | None = spec_field(None, unit="ksi", gt=0.0)
+
+
+@dataclass(frozen=True)
+class DiaphragmRangeRecord(SpecRecord):
+    """Interior diaphragms: ``n_spaces`` at ``spacing_ft`` from ``start_ft``,
+    each ``thickness_in`` thick."""
+
+    start_ft: float = spec_field(unit="ft")
+    spacing_ft: float = spec_field(unit="ft", gt=0.0)
+    n_spaces: int = spec_field(ge=1)
+    thickness_in: float | None = spec_field(None, unit="in", gt=0.0)
+
+
+@dataclass(frozen=True)
+class PsBoxSectionRecord(SpecRecord):
+    """A prestressed box section as dimensioned: outer envelope, walls and
+    slabs, corner haunches, shear key, voids.  ``name`` is the shape label
+    as authored (``OH-CB21-48``); the standard-design lookup keys on it."""
+
+    name: str = spec_field()
+    depth_in: float = spec_field(unit="in", gt=0.0)
+    top_width_in: float = spec_field(unit="in", gt=0.0)
+    bot_width_in: float = spec_field(unit="in", gt=0.0)
+    wall_in: float | None = spec_field(None, unit="in", gt=0.0)
+    top_slab_in: float | None = spec_field(None, unit="in", gt=0.0)
+    bot_slab_in: float | None = spec_field(None, unit="in", gt=0.0)
+    top_haunch_in: float | None = spec_field(None, unit="in", ge=0.0)
+    bot_haunch_in: float | None = spec_field(None, unit="in", ge=0.0)
+    shear_key_height_in: float | None = spec_field(None, unit="in", ge=0.0)
+    shear_key_depth_in: float | None = spec_field(None, unit="in", ge=0.0)
+    void_type: str = spec_field("rectangular", enum=VOID_TYPES)
+    n_voids: int | None = spec_field(None, ge=0)
+    void_diameter_in: float | None = spec_field(None, unit="in", gt=0.0)
+    area_in2: float | None = spec_field(None, unit="in^2", gt=0.0)
+    y_cg_in: float | None = spec_field(None, unit="in", gt=0.0,
+                                       desc="centroid above the soffit")
+    ixx_in4: float | None = spec_field(None, unit="in^4", gt=0.0)
+
+    def _cross_validate(self):
+        problems = []
+        if self.wall_in is not None and 2 * self.wall_in >= self.bot_width_in:
+            problems.append("wall_in: two walls exceed the beam width")
+        if self.top_slab_in is not None and self.bot_slab_in is not None \
+                and self.top_slab_in + self.bot_slab_in >= self.depth_in:
+            problems.append("top_slab_in + bot_slab_in exceed depth_in")
+        if self.y_cg_in is not None and self.y_cg_in >= self.depth_in:
+            problems.append("y_cg_in must be inside the section depth")
+        return problems
+
+
+@dataclass(frozen=True)
+class PsBeamSpanRecord(SpecRecord):
+    """One span of a prestressed beam line: its length, the section it
+    uses (index into the beam's ``sections``), the strand pattern, mild
+    steel and materials.  ``overhang_*_ft`` is the beam projection past the
+    bearing at each end."""
+
+    length_ft: float = spec_field(unit="ft", gt=0.0)
+    strands: StrandPatternRecord = spec_field()
+    section: int = spec_field(0, ge=0, desc="index into sections")
+    mild_steel: tuple[MildBarRowRecord, ...] = spec_field(())
+    fc_ksi: float | None = spec_field(None, unit="ksi", gt=0.0)
+    fci_ksi: float | None = spec_field(None, unit="ksi", gt=0.0)
+    overhang_left_ft: float | None = spec_field(None, unit="ft", ge=0.0)
+    overhang_right_ft: float | None = spec_field(None, unit="ft", ge=0.0)
+
+    def _cross_validate(self):
+        problems = [f"mild_steel[{i}].{p}"
+                    for i, m in enumerate(self.mild_steel)
+                    for p in m.validate()]
+        half = self.length_ft / 2.0
+        for i, s in enumerate(self.strands.strands):
+            for side in ("left", "right"):
+                d = getattr(s, f"debond_{side}_ft")
+                if d is not None and d > half:
+                    problems.append(f"strands.strands[{i}].debond_{side}_ft "
+                                    f"{d} exceeds half the span")
+                h = getattr(s, f"harp_{side}_ft")
+                if h is not None and h > self.length_ft:
+                    problems.append(f"strands.strands[{i}].harp_{side}_ft "
+                                    f"{h} is past the span end")
+        return problems
+
+
+@dataclass(frozen=True)
+class PrestressedBoxBeamRecord(ElementRecord):
+    """One prestressed box-beam line, as rated: sections, spans with their
+    strands and mild steel, stirrup ranges, composite and deck ranges,
+    interior diaphragms, and the condition the rater assigned.  Stations
+    (``start_ft``) run along the member from its start through every span,
+    the way the source model lays them out."""
+
+    name: str = spec_field(desc="member name as authored")
+    sections: tuple[PsBoxSectionRecord, ...] = spec_field()
+    spans: tuple[PsBeamSpanRecord, ...] = spec_field()
+    stirrups: tuple[StirrupRangeRecord, ...] = spec_field(())
+    composite_ranges: tuple[CompositeRangeRecord, ...] = spec_field(())
+    deck: tuple[DeckRangeRecord, ...] = spec_field(())
+    diaphragms: tuple[DiaphragmRangeRecord, ...] = spec_field(())
+    continuity_bars: tuple[MildBarRowRecord, ...] = spec_field(())
+    condition_factor: str | None = spec_field(None, enum=CONDITION_FACTORS)
+    rebar_fy_ksi: float | None = spec_field(None, unit="ksi", gt=0.0)
+    standard: str | None = spec_field(None, desc="ODOT standard drawing id")
+    standard_year: int | None = spec_field(None, ge=1900)
+    provenance: Provenance | None = spec_field(None)
+
+    BIM_TYPE = "girder"
+    SUBTYPE = "ps_box"
+
+    def __post_init__(self):
+        if self.provenance is None:
+            object.__setattr__(self, "provenance", Provenance())
+
+    @property
+    def length_ft(self) -> float:
+        return sum(s.length_ft for s in self.spans)
+
+    @property
+    def composite(self) -> bool | None:
+        """``True`` when any range is composite, ``False`` when ranges exist
+        and none is, ``None`` when the model says nothing."""
+        if not self.composite_ranges:
+            return None
+        return any(r.composite for r in self.composite_ranges)
+
+    def _cross_validate(self):
+        problems = []
+        if not self.sections:
+            problems.append("sections: at least one required")
+        if not self.spans:
+            problems.append("spans: at least one required")
+        for i, sec in enumerate(self.sections):
+            problems += [f"sections[{i}].{p}" for p in sec.validate()]
+        for i, sp in enumerate(self.spans):
+            problems += [f"spans[{i}].{p}" for p in sp.validate()]
+            if sp.section >= len(self.sections):
+                problems.append(f"spans[{i}].section {sp.section} beyond "
+                                f"{len(self.sections)} sections")
+            else:
+                depth = self.sections[sp.section].depth_in
+                for j, row in enumerate(sp.strands.rows):
+                    if row.height_in >= depth:
+                        problems.append(
+                            f"spans[{i}].strands.rows[{j}].height_in "
+                            f"{row.height_in} is above the {depth} in "
+                            f"section")
+        for attr in ("stirrups", "composite_ranges", "deck", "diaphragms",
+                     "continuity_bars"):
+            for i, r in enumerate(getattr(self, attr)):
+                problems += [f"{attr}[{i}].{p}" for p in r.validate()]
+        return problems
