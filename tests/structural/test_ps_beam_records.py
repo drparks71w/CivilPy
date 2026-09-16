@@ -201,10 +201,14 @@ def test_span_section_index_is_checked():
 
 def test_section_geometry_rules():
     assert "two walls exceed" in _problems(PsBoxSectionRecord(
-        name="x", depth_in=21, top_width_in=48, bot_width_in=48, wall_in=24))
+        name="x", depth_in=21, top_width_in=48, bot_width_in=48, wall_in=25))
     assert "exceed depth_in" in _problems(PsBoxSectionRecord(
         name="x", depth_in=21, top_width_in=48, bot_width_in=48,
-        top_slab_in=11, bot_slab_in=10))
+        top_slab_in=11, bot_slab_in=10.5))
+    solid = PsBoxSectionRecord(name="B12-48", depth_in=12, top_width_in=48,
+                               bot_width_in=48, wall_in=24, top_slab_in=6,
+                               bot_slab_in=6)
+    assert solid.validate() == []
     assert "inside the section depth" in _problems(PsBoxSectionRecord(
         name="x", depth_in=21, top_width_in=48, bot_width_in=48, y_cg_in=21))
 

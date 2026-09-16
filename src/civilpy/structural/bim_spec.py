@@ -2059,10 +2059,11 @@ class PsBoxSectionRecord(SpecRecord):
 
     def _cross_validate(self):
         problems = []
-        if self.wall_in is not None and 2 * self.wall_in >= self.bot_width_in:
+        # equality is a solid section (the 12 in "boxes" are solid slabs)
+        if self.wall_in is not None and 2 * self.wall_in > self.bot_width_in + 1e-6:
             problems.append("wall_in: two walls exceed the beam width")
         if self.top_slab_in is not None and self.bot_slab_in is not None \
-                and self.top_slab_in + self.bot_slab_in >= self.depth_in:
+                and self.top_slab_in + self.bot_slab_in > self.depth_in + 1e-6:
             problems.append("top_slab_in + bot_slab_in exceed depth_in")
         if self.y_cg_in is not None and self.y_cg_in >= self.depth_in:
             problems.append("y_cg_in must be inside the section depth")
