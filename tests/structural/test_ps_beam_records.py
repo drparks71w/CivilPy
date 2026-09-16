@@ -14,8 +14,9 @@ import json
 import pytest
 
 from civilpy.structural.bim_spec import (
-    CompositeRangeRecord, DeckRangeRecord, DiaphragmRangeRecord,
-    MildBarRowRecord, PrestressedBoxBeamRecord, PsBeamSpanRecord,
+    CompositeRangeRecord, ContinuityBarRecord, DeckRangeRecord,
+    DiaphragmRangeRecord, MildBarRowRecord, PrestressedBoxBeamRecord,
+    PsBeamSpanRecord,
     PsBoxSectionRecord, StirrupRangeRecord, StrandPatternRecord,
     StrandRecord, StrandRowRecord, record_from_dict, record_to_dict)
 
@@ -211,9 +212,8 @@ def test_section_geometry_rules():
 def test_nested_record_problems_are_prefixed():
     rec = beam(stirrups=(StirrupRangeRecord(start_ft=0.0, spacing_in=6.0,
                                             n_spaces=0),),
-               continuity_bars=(MildBarRowRecord(bar="#5", count=0,
-                                                 height_in=2.0, start_ft=0.0,
-                                                 length_ft=10.0),))
+               continuity_bars=(ContinuityBarRecord(support_ft=60.0, bar="#5",
+                                                    count=0, height_in=2.0),))
     p = _problems(rec)
     assert "stirrups[0].n_spaces" in p
     assert "continuity_bars[0].count" in p

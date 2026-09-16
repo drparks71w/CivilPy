@@ -1961,6 +1961,19 @@ class MildBarRowRecord(SpecRecord):
 
 
 @dataclass(frozen=True)
+class ContinuityBarRecord(SpecRecord):
+    """Continuity reinforcement over a support of a beam made continuous
+    for live load: ``count`` bars of ``bar`` at ``height_in`` above the
+    soffit, anchored at the support ``support_ft`` along the member."""
+
+    support_ft: float = spec_field(unit="ft")
+    bar: str = spec_field()
+    count: int = spec_field(ge=1)
+    height_in: float = spec_field(unit="in", ge=0.0)
+    fy_ksi: float = spec_field(60.0, unit="ksi", gt=0.0)
+
+
+@dataclass(frozen=True)
 class StirrupRangeRecord(SpecRecord):
     """A run of vertical shear reinforcement: ``n_spaces`` spaces of
     ``spacing_in`` starting ``start_ft`` along the member."""
@@ -2105,7 +2118,7 @@ class PrestressedBoxBeamRecord(ElementRecord):
     composite_ranges: tuple[CompositeRangeRecord, ...] = spec_field(())
     deck: tuple[DeckRangeRecord, ...] = spec_field(())
     diaphragms: tuple[DiaphragmRangeRecord, ...] = spec_field(())
-    continuity_bars: tuple[MildBarRowRecord, ...] = spec_field(())
+    continuity_bars: tuple[ContinuityBarRecord, ...] = spec_field(())
     condition_factor: str | None = spec_field(None, enum=CONDITION_FACTORS)
     rebar_fy_ksi: float | None = spec_field(None, unit="ksi", gt=0.0)
     standard: str | None = spec_field(None, desc="ODOT standard drawing id")
