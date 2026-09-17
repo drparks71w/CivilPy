@@ -134,7 +134,7 @@ LAYER_SUB_STM_STRUTS = "Substructure::STM::Struts"
 #: rollup -- and unlike every other group here it is drawn in the plate's
 #: own 2-D coordinate system (inches, x right / y up, z the plate normal),
 #: not bridge coordinates, so a reviewer can toggle one failure mechanism
-#: at a time against the plate outline the way the 2012 B&N failure-plane
+#: at a time against the plate outline the way the 2012 rating sheet's failure-plane
 #: sheets are drawn.
 LAYER_GUSSET = "Gusset"
 LAYER_GUSSET_OUTLINE = "Gusset::Outline"

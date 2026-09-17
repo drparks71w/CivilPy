@@ -21,7 +21,7 @@ from civilpy.structural.rhino_layers import (                 # noqa: E402
 
 
 def sample_joint():
-    """A three-member upper-chord joint sized like CUY-10-1613's U0: a 55 x 76
+    """A three-member upper-chord joint sized like a riveted truss's U0 joint: a 55 x 76
     plate, a chord running out to the right, a vertical dropping away, and a
     diagonal at -57.5 degrees, all on 3 in rivet grids."""
     wp = (12.0, 64.0)

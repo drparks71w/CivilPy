@@ -13,7 +13,7 @@ and a folder. Files are organized per inspection so a folder reads like
 a record::
 
     <folder>/Inspection - 2023/2023-01-18 DJI_0160.jpg
-    <folder>/Inspection - 2023/2023-11-13 CUY-10-1613 2023 Inspection Report.pdf
+    <folder>/Inspection - 2023/2023-11-13 ABC-123-4567 2023 Inspection Report.pdf
     <folder>/Inspection - 2021/2021-01-06 North elevation.jpg
 
 AssetWise keeps files in two attachment scopes and neither is a superset

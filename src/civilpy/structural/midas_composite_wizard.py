@@ -16,70 +16,85 @@ pure function of :class:`WizardInputs` and returns ``{id: {...}}`` *assign*
 dictionaries keyed by table, ready for
 ``MidasCivil.put_db(table, assign)`` in :data:`TABLE_ORDER`.
 
-What the wizard generates (observed on Civil NX 2025 v2.1, 2026-09-02, for
-the three-span curved tutorial; counts are for 5 girders, 60+96+60 ft, 4/6/4
-bracing divisions, 3 ft deck strips) and how this module maps to it:
+What the wizard generates (Civil NX 2025 v2.1, three-span curved tutorial:
+5 girders, 60+96+60 ft, R = 450 ft, skews 12/19/29.3/34.3 deg, 4/6/4
+bracing divisions, 3 ft deck strips) -- **verified 2026-09-15 by exporting
+the wizard's model through the API and diffing it against :func:`build`**
+(``tests/structural/data/midas_wizard_three_span_curved.json.gz`` is that
+export; the test suite reproduces it node for node and element for
+element):
 
 ===========================  ======================================================
 Wizard object                Here
 ===========================  ======================================================
-Girder elements              :func:`girder_lines` -- nodes at every 3 ft deck
-(group "Girder", 440,        line, bracing line, splice and 10th point plus the
-sections *Steel girder-1_1*  skewed support crossings; **the wizard copies the
-/ *-2_1*)                    user's composite sections into "_1" working copies
-                             and assigns those**, leaving 3/4 unused.
-Transverse deck strips       :func:`deck_strips` -- one radial line per deck
-(group "Dummy Beam", 730,    spacing, **each girder bay split at mid-bay** (two
-section GirderWizRect-       elements per bay) plus one overhang stub each side
-angle_12, material           = 10 elements per line; zero-weight copy of the deck
-"Dummy Material")            material; rectangle deck-thickness x strip spacing.
-"Dummy Beam2" (168,          NOT reproduced yet -- placement unknown; export the
-GirderWizRectangle_9)        wizard model to JSON and diff (see checklist).
-Cross frames (group          :func:`cross_frames` -- V-brace: top chord split at
-"Bracing", 268; 112 truss)   the apex, bottom chord, two diagonals; chords BEAM,
-                             diagonals TRUSS; chord end nodes are slaves of the
-                             girder node (RIGD, 75 masters = 15 lines x 5 girders).
-Support diaphragms           :func:`cross_frames` single-beam branch (W/C shape
-                             at the gap below the top flange).
-Substructure (groups         :func:`substructure` -- bearing seats 1 ft (link
-"Substructure" 2 columns,    length) below the girder node line, pier cap laid
-"Coping" 14 = 7 per cap)     along the skew line through the seats (**the cap
-                             follows the superelevated bearing line, so a
-                             single 48->75 tapered section reads as a wedge**),
-                             one zero-length element at the column node (wizard
-                             artifact), column to a fixed base.
+Reference lines              **Every** line the wizard draws is a straight line
+                             in plan through the reference point at its station,
+                             skewed by :func:`skew_at` -- the support skews
+                             interpolated linearly along each span.  Deck strips
+                             at every ``deck_strip_spacing`` from 0 to the end,
+                             bracing lines, splices, 10th points and supports
+                             all follow this rule, so lines at the same station
+                             coincide (strips at 0/60/156/216 *are* the
+                             supports) and nothing else merges.
+Girder elements              :func:`girder_lines` -- 89 nodes per girder = 73
+(group "Girder", 440,        strips + 11 bracing lines + 4 splices + 8 non-strip
+sections *Steel girder-1_1*  10th points + 4 supports - 4 coincidences.  The
+/ *-2_1*)                    wizard copies the user's composite sections into
+                             "_1" working copies and assigns those; the copies
+                             are byte-identical apart from float noise, so this
+                             builder assigns the originals.
+Transverse deck strips       :func:`deck_strips` -- one element per girder bay,
+(group "Dummy Beam", 730,    **three per overhang** (deck edge, half the barrier,
+section GirderWizRect-       the barrier, then the fascia girder) = 10 per line;
+angle_<id>, "Dummy           "Dummy Beam-D1"/"-D2" split on whether the line's
+Material")                   station falls in a negative-moment zone (430/300).
+"Dummy Beam2" (168,          :func:`edge_beams` -- a 1 mm-square dummy chain
+1 mm square section)         along each deck edge with a node wherever a strip,
+                             splice, 10th-point or support line meets the edge
+                             (85 nodes / 84 elements per edge).
+Cross frames (group          :func:`cross_frames` -- **V pointing down**: one top
+"Bracing", 268; 112 truss)   chord per bay, bottom chord split at a mid-bay apex,
+                             two truss diagonals from the top-chord ends to the
+                             apex.  Chord ends are rigid slaves of the girder
+                             node ("GirderRigid Link", 1.25 / 3.375 ft below the
+                             deck for the positive section).  The abutment
+                             diaphragms (W12x40 / C15x33.9) are TRUSS elements.
+                             The group's node list also carries the 20 bearing
+                             seats.
+Bearings                     :func:`substructure` -- a seat node at the bottom
+(20 elastic links)           flange, rigid-slaved to the girder node, then the
+                             elastic link ("GirderElastic Link", shear on, local
+                             axis at the support line's global angle) down
+                             ``link_length`` to the support node.
+Substructure (groups         Pier cap along the skewed support line through the
+"Substructure" 2 columns,    five support nodes with its tips **on the deck-edge
+"Coping" 14 = 7 per cap)     lines**, one zero-length element at the column
+                             node (two coincident nodes), column to a fixed base
+                             ``pier_height`` below the support node; abutment
+                             support nodes fixed 1111110.
+Elevation                    :func:`deck_elevation` -- profile on the reference
+                             line (the tutorial is a -5 % / -8 % crest over 50 ft
+                             from station 0, ``vertical_curve``) plus the bank
+                             rotation **about the reference line**.  The few
+                             nodes ahead of station 0 on the skewed first
+                             abutment sit ~0.2 ft above the g1 tangent -- a
+                             wizard quirk left alone.
 Tapered Group                NOT created by the wizard (tutorial p.44 step) --
                              :func:`post_wizard_tapered_groups`.
 Composite Section for C.S.   Created by the wizard with h = v/s = 0 and ages 0 --
                              analysis refuses until :func:`post_wizard_cscs`
-                             sets h = v/s > 0 (slab 2A/u) and ages 1 / 28 d.
-Span Information             NOT created by the wizard (tutorial p.47) --
-                             :func:`span_information`.
-10th-point groups            ten groups "10th Point Girder-n-i/j" (30 each) --
-                             :func:`tenth_point_groups`.
-Stages                       Stage1 10 d, Stage2 10, Stage3-1 10, Stage3-2 0,
-                             Stage3-3 10, Stage3-4 0, Stage4 10, Stage5 10000 --
-                             :func:`construction_stages`.
+                             rewrites it with the real values.
 ===========================  ======================================================
 
-Unit sequence the tutorial follows (the stored model is unit-free, but the
-file should *open* the way the guide leaves it): lbf/in for materials and
-sections, kips/ft from the wizard Layout tab on, lbf/in again for the
-stiffener/design pages.  :func:`build` returns tables in one unit system
-(kips/ft) and a leading ``UNIT`` block; switch units around the property
-tables only if the reviewer will open the section dialogs.
+Verification checklist status (2026-09-15, live session):
 
-Verification checklist (run only when a live session is offered):
-
-1. ``doc/EXPORT`` the wizard-generated model to JSON and diff NODE/ELEM/
-   GRUP/SECT/STAG/CSCS/ELNK/RIGD against :func:`build` -- resolve the
-   "Dummy Beam2" family and the exact node counts (wizard: 1,147 nodes,
-   1,622 elements incl. 112 truss).
-2. Confirm the cross-frame apex/chord node arrangement and rigid-link DOF.
-3. Confirm the composite working-copy sections ("_1") are byte-identical to
-   the user sections and whether anything references 3/4.
-4. Re-check that ``SAVEAS`` still discards results and that the moving-load
-   tracer capture still terminates the client (both true on 2025 v2.1).
+1. Exported and diffed -- done; every difference above was resolved in the
+   builder, not the test.  Remaining: the sub-0.25 ft elevation quirk ahead
+   of the first abutment.
+2. Cross-frame arrangement and rigid-link DOF (111111) -- confirmed.
+3. "_1" section copies byte-identical, nothing references the originals --
+   confirmed.
+4. ``SAVEAS``/tracer behaviour -- not re-checked this session.
 
 Live-verified schema notes are kept with :mod:`civilpy.structural.midas`;
 the ones specific to this wizard are in the function docstrings below.
@@ -125,7 +140,14 @@ class WizardInputs:
     deck_width: float = 30.0
     layout_offset: float = -7.0                 # reference line -> deck centre (negative = left)
     superelevation: float = -0.052              # bank rotation, constant here
-    profile: Sequence[tuple[float, float]] = ((0.0, 0.0), (216.0, 0.0))   # (station, elevation)
+    profile: Sequence[tuple[float, float]] = ((0.0, 0.0), (216.0, 0.0))   # (station, elevation) polyline
+    # Parabolic vertical curve (g1, g2, length, PVC station, PVC elevation)
+    # on the reference line; when set it replaces ``profile``.  The tutorial
+    # runs a -5 % to -8 % crest over 50 ft from station 0 (recovered
+    # 2026-09-15 from the exported wizard model to <0.03 ft everywhere past
+    # the PVC; the few nodes ahead of station 0 on the skewed abutment sit
+    # ~0.2 ft higher than the g1 tangent, a wizard quirk not reproduced).
+    vertical_curve: tuple[float, float, float, float, float] | None = (-0.05, -0.08, 50.0, 0.0, 0.0)
     # Section
     girder_offsets: Sequence[float] = (-19.0, -13.0, -7.0, -1.0, 5.0)
     deck_thickness_in: float = 8.0
@@ -164,6 +186,7 @@ class WizardInputs:
     sect_column: int = 6
     sect_diaphragm: Sequence[int] = (7, 8)
     sect_strip: int = 9
+    sect_edge: int = 10                         # 1 mm square for the deck-edge dummy beams
 
     @property
     def support_stations(self) -> list[float]:
@@ -181,6 +204,14 @@ class WizardInputs:
 
 # --------------------------------------------------------------- geometry
 def _z_ref(w: WizardInputs, s: float) -> float:
+    if w.vertical_curve:
+        g1, g2, L, s0, z0 = w.vertical_curve
+        x = s - s0
+        if x <= 0:
+            return z0 + g1 * x
+        if x < L:
+            return z0 + g1 * x + (g2 - g1) / (2 * L) * x * x
+        return z0 + g1 * L + (g2 - g1) / 2 * L + g2 * (x - L)
     pts = list(w.profile)
     if s <= pts[0][0]:
         (s0, z0), (s1, z1) = pts[0], pts[1]
@@ -195,8 +226,11 @@ def _z_ref(w: WizardInputs, s: float) -> float:
 
 def deck_elevation(w: WizardInputs, s: float, offset: float) -> float:
     """Deck-top elevation at reference station ``s`` and lateral ``offset``:
-    profile grade at the deck centre plus the bank rotation."""
-    return _z_ref(w, s) + w.superelevation * (offset - w.layout_offset)
+    profile grade on the reference line plus the bank rotation **about the
+    reference line** (verified 2026-09-15: the wizard puts z = 0.052 x 22 at
+    the outer edge of the flat tutorial, i.e. the pivot is offset 0, not the
+    deck centre)."""
+    return _z_ref(w, s) + w.superelevation * offset
 
 
 def plan_xy(w: WizardInputs, theta: float, offset: float) -> tuple[float, float]:
@@ -207,16 +241,45 @@ def plan_xy(w: WizardInputs, theta: float, offset: float) -> tuple[float, float]
     return r * math.sin(theta), -w.radius + r * math.cos(theta)
 
 
-def support_theta(w: WizardInputs, k: int, offset: float) -> float:
-    """Central angle where skewed support line ``k`` crosses the line at
-    ``offset`` (skew rotates the radial line about the reference point)."""
+def skew_at(w: WizardInputs, s: float) -> float:
+    """Skew (degrees) of the wizard's reference line through station ``s``:
+    the support skews, interpolated linearly along each span.  **Every**
+    line the wizard draws -- deck strips, bracing lines, splices, 10th
+    points, supports -- is a straight line in plan through the reference
+    point at ``s`` with this angle (verified 2026-09-15 against the
+    exported tutorial model: strip skews run 11.65 deg at station 0 to
+    33.3 deg at 216, and the bracing/splice/10th-point lines coincide with
+    strips wherever the stations coincide, which only skewed lines do)."""
+    S, A = w.support_stations, list(w.skews_deg)
+    if s <= S[0]:
+        return A[0]
+    if s >= S[-1]:
+        return A[-1]
+    for (s0, a0), (s1, a1) in zip(zip(S, A), zip(S[1:], A[1:])):
+        if s0 <= s <= s1:
+            return a0 + (a1 - a0) * (s - s0) / (s1 - s0)
+    return A[-1]
+
+
+def line_theta(w: WizardInputs, s: float, offset: float, skew_deg: float | None = None) -> float:
+    """Central angle where the skewed straight line through reference
+    station ``s`` (angle ``skew_deg``, default :func:`skew_at`) crosses the
+    curve at lateral ``offset``.  Positive offset (toward the centre) lands
+    *ahead* of ``s`` for positive skew."""
     R = w.radius
-    th0, a = w.support_stations[k] / R, math.radians(w.skews_deg[k])
+    th0 = s / R
+    a = math.radians(skew_at(w, s) if skew_deg is None else skew_deg)
     r = R - offset
     t = R * math.cos(a) - math.sqrt(max(R * R * math.cos(a) ** 2 - R * R + r * r, 0.0))
     px, py = plan_xy(w, th0, 0.0)
     qx, qy = px - t * math.sin(th0 - a), py - t * math.cos(th0 - a)
     return math.atan2(qx, qy + R)
+
+
+def support_theta(w: WizardInputs, k: int, offset: float) -> float:
+    """Central angle where skewed support line ``k`` crosses the line at
+    ``offset`` (skew rotates the radial line about the reference point)."""
+    return line_theta(w, w.support_stations[k], offset, w.skews_deg[k])
 
 
 def girder_section_at(w: WizardInputs, s: float) -> int:
@@ -275,11 +338,15 @@ def reference_stations(w: WizardInputs) -> tuple[list[float], list[float], list[
     return strips, braces, tenth
 
 
-def girder_lines(w: WizardInputs, m: _Mesh, merge_tol_ft: float = 0.5) -> dict:
+def girder_lines(w: WizardInputs, m: _Mesh, merge_tol_ft: float = 0.01) -> dict:
     """Girder nodes/elements.  Node keys are ``("S", k)`` for the support
-    crossings and ``("R", station)`` for radial lines; radial points closer
-    than ``merge_tol_ft`` to another point are dropped (the wizard's
-    "generate 10th point elements" behaves the same way)."""
+    crossings and ``("L", station)`` for every other reference line (deck
+    strips, bracing, splices, 10th points -- all skewed per
+    :func:`skew_at`).  A line that lands within ``merge_tol_ft`` of another
+    point on a girder is merged into it: the strips at the abutment and pier
+    stations *are* the support lines (same pivot, same skew), which is how
+    the wizard gets 89 nodes per girder from 73 strips + 11 bracing lines +
+    4 splices + 8 non-strip 10th points + 4 supports."""
     strips, braces, tenth = reference_stations(w)
     stations = sorted(set(strips) | set(braces) | set(w.splices) | set(tenth))
     R = w.radius
@@ -288,16 +355,22 @@ def girder_lines(w: WizardInputs, m: _Mesh, merge_tol_ft: float = 0.5) -> dict:
         pts = {("S", k): support_theta(w, k, o) for k in range(len(w.support_stations))}
         lo, hi = pts[("S", 0)], pts[("S", len(w.support_stations) - 1)]
         tol = merge_tol_ft / (R - o)
+        alias = {}
         for st in stations:
-            th = st / R
-            if lo + tol < th < hi - tol and all(abs(th - t) > tol for t in pts.values()):
-                pts[("R", st)] = th
+            th = line_theta(w, st, o)
+            near = [key for key, t in pts.items() if abs(th - t) <= tol]
+            if near:
+                alias[("L", st)] = near[0]
+            elif lo < th < hi:
+                pts[("L", st)] = th
         chain = []
         for key, th in sorted(pts.items(), key=lambda kv: kv[1]):
             x, y = plan_xy(w, th, o)
             n = m.node(x, y, deck_elevation(w, th * R, o), ("G", i, key))
             gnodes[(i, key)] = n
             chain.append((th, n))
+        for key, target in alias.items():
+            gnodes[(i, key)] = gnodes[(i, target)]
         chains[i] = chain
         elems[i] = []
         for (t1, n1), (t2, n2) in zip(chain, chain[1:]):
@@ -306,40 +379,82 @@ def girder_lines(w: WizardInputs, m: _Mesh, merge_tol_ft: float = 0.5) -> dict:
     return {"nodes": gnodes, "chains": chains, "elems": elems}
 
 
-def deck_strips(w: WizardInputs, m: _Mesh, g: dict) -> None:
-    """Transverse dummy deck beams, wizard style: on every deck-spacing
-    radial line, each girder bay is split at mid-bay (two elements) and one
-    overhang stub runs to each deck edge -- 10 elements per line for five
-    girders.  Group "Dummy Beam"; the pour-stage groups "Dummy Beam-D1"
-    (positive zones) / "Dummy Beam-D2" (negative zones) are derived from the
-    line's station."""
+def deck_strips(w: WizardInputs, m: _Mesh, g: dict) -> dict:
+    """Transverse dummy deck beams, wizard style (verified 2026-09-15): on
+    every deck-spacing line (skewed, :func:`skew_at`), one element per
+    girder bay and **three per overhang** -- deck edge, half the barrier
+    width, the barrier width, then the fascia girder -- so five girders
+    give 10 elements per line and 73 lines give 730.  Group "Dummy Beam";
+    the pour-stage groups "Dummy Beam-D1" / "Dummy Beam-D2" split on
+    whether the line's reference station falls in a negative-moment zone.
+    Returns ``{(side, station): edge node}`` for :func:`edge_beams`."""
     strips, _, _ = reference_stations(w)
     left, right = w.deck_edges
+    b_left, b_right = w.barrier_widths[0], w.barrier_widths[-1]
+    edges = {}
     for st in strips:
-        th = st / w.radius
-        line = [(i, g["nodes"][(i, ("R", st))]) for i in range(len(w.girder_offsets)) if (i, ("R", st)) in g["nodes"]]
+        line = [(i, g["nodes"][(i, ("L", st))]) for i in range(len(w.girder_offsets)) if (i, ("L", st)) in g["nodes"]]
         if len(line) < 2:
             continue
-        seg = deck_segment(w, st)
-        pour = "Dummy Beam-D1" if seg % 2 == 1 else "Dummy Beam-D2"
+        pour = "Dummy Beam-D2" if any(a <= st < b for a, b in w.negative_zones) else "Dummy Beam-D1"
 
         def strip(n1, n2):
             e = m.elem(n1, n2, w.sect_strip, w.matl_dummy, group="Dummy Beam", tag=("STRIP", st))
             m.groups[pour]["E"].add(e)
             m.groups[pour]["N"].update((n1, n2))
 
+        def at(offset):
+            th = line_theta(w, st, offset)
+            x, y = plan_xy(w, th, offset)
+            return m.node(x, y, deck_elevation(w, th * w.radius, offset), ("DECK", st, offset))
+
+        def overhang(edge, barrier, girder_node, side):
+            sign = 1 if side == "left" else -1
+            stops = [edge]
+            if barrier > 0:
+                stops += [edge + sign * barrier / 2, edge + sign * barrier]
+            nodes = [at(o) for o in stops]
+            edges[(side, st)] = nodes[0]
+            chain = nodes + [girder_node] if side == "left" else [girder_node] + nodes[::-1]
+            for n1, n2 in zip(chain, chain[1:]):
+                strip(n1, n2)
+
         if line[0][0] == 0:
-            x, y = plan_xy(w, th, left)
-            strip(m.node(x, y, deck_elevation(w, st, left)), line[0][1])
+            overhang(left, b_left, line[0][1], "left")
         for (_, n1), (_, n2) in zip(line, line[1:]):
-            x1, y1, z1 = m.xyz(n1)
-            x2, y2, z2 = m.xyz(n2)
-            mid = m.node((x1 + x2) / 2, (y1 + y2) / 2, (z1 + z2) / 2)
-            strip(n1, mid)
-            strip(mid, n2)
+            strip(n1, n2)
         if line[-1][0] == len(w.girder_offsets) - 1:
-            x, y = plan_xy(w, th, right)
-            strip(line[-1][1], m.node(x, y, deck_elevation(w, st, right)))
+            overhang(right, b_right, line[-1][1], "right")
+    return edges
+
+
+def edge_beams(w: WizardInputs, m: _Mesh, edges: dict) -> None:
+    """The wizard's "Dummy Beam2" family (verified 2026-09-15): one chain of
+    1 mm-square dummy beams along each deck edge, with a node wherever a
+    deck strip, splice, 10th-point or support line meets the edge (bracing
+    lines stop at the fascia girder and add nothing).  Strip nodes are
+    shared with the transverse strips; the other crossings are new nodes.
+    For the tutorial that is 85 nodes and 84 elements per edge."""
+    strips, _, tenth = reference_stations(w)
+    left, right = w.deck_edges
+    extra = sorted(set(w.splices) | set(tenth) | set(w.support_stations))
+    for side, offset in (("left", left), ("right", right)):
+        pts = {}
+        for st in strips:
+            if (side, st) in edges:
+                pts[line_theta(w, st, offset)] = edges[(side, st)]
+        thetas = sorted(pts)
+        tol = 0.25 / (w.radius - offset)
+        for st in extra:
+            th = line_theta(w, st, offset)
+            if any(abs(th - t) <= tol for t in thetas):
+                continue
+            x, y = plan_xy(w, th, offset)
+            pts[th] = m.node(x, y, deck_elevation(w, th * w.radius, offset), ("EDGE", st, offset))
+            thetas.append(th)
+        chain = [pts[t] for t in sorted(pts)]
+        for n1, n2 in zip(chain, chain[1:]):
+            m.elem(n1, n2, w.sect_edge, w.matl_dummy, group="Dummy Beam2", tag=("EDGE", side))
 
 
 def cross_frames(w: WizardInputs, m: _Mesh, g: dict) -> dict[int, list[int]]:
@@ -366,14 +481,17 @@ def cross_frames(w: WizardInputs, m: _Mesh, g: dict) -> dict[int, list[int]]:
             rigid[n] += [t, b]
             top.append(t)
             bot.append(b)
+        # verified 2026-09-15: the wizard's V points DOWN -- one top chord
+        # per bay, the bottom chord split at a mid-bay apex, and the two
+        # truss diagonals run from the top-chord ends down to that apex
         for i in range(ng - 1):
-            (x1, y1, z1), (x2, y2, z2) = m.xyz(top[i]), m.xyz(top[i + 1])
-            apex = m.node((x1 + x2) / 2, (y1 + y2) / 2, (z1 + z2) / 2)
-            m.elem(top[i], apex, w.sect_chord, w.matl_steel, group="Bracing", tag=("XF", s_ref))
-            m.elem(apex, top[i + 1], w.sect_chord, w.matl_steel, group="Bracing", tag=("XF", s_ref))
-            m.elem(bot[i], bot[i + 1], w.sect_chord, w.matl_steel, group="Bracing", tag=("XF", s_ref))
-            m.elem(bot[i], apex, w.sect_brace, w.matl_steel, "TRUSS", group="Bracing", tag=("XF", s_ref))
-            m.elem(bot[i + 1], apex, w.sect_brace, w.matl_steel, "TRUSS", group="Bracing", tag=("XF", s_ref))
+            (x1, y1, z1), (x2, y2, z2) = m.xyz(bot[i]), m.xyz(bot[i + 1])
+            apex = m.node((x1 + x2) / 2, (y1 + y2) / 2, (z1 + z2) / 2, ("APEX", s_ref, i))
+            m.elem(top[i], top[i + 1], w.sect_chord, w.matl_steel, group="Bracing", tag=("XF", s_ref))
+            m.elem(bot[i], apex, w.sect_chord, w.matl_steel, group="Bracing", tag=("XF", s_ref))
+            m.elem(apex, bot[i + 1], w.sect_chord, w.matl_steel, group="Bracing", tag=("XF", s_ref))
+            m.elem(top[i], apex, w.sect_brace, w.matl_steel, "TRUSS", group="Bracing", tag=("XF", s_ref))
+            m.elem(top[i + 1], apex, w.sect_brace, w.matl_steel, "TRUSS", group="Bracing", tag=("XF", s_ref))
 
     def diaphragm(keys, sect, gap):
         ns = []
@@ -384,17 +502,15 @@ def cross_frames(w: WizardInputs, m: _Mesh, g: dict) -> dict[int, list[int]]:
             rigid[n].append(dn)
             ns.append(dn)
         for i in range(ng - 1):
-            m.elem(ns[i], ns[i + 1], sect, w.matl_steel, group="Bracing", tag=("DIA", sect))
+            m.elem(ns[i], ns[i + 1], sect, w.matl_steel, "TRUSS", group="Bracing", tag=("DIA", sect))
 
     for st in braces:
-        vbrace([("R", st)] * ng, st)
+        vbrace([("L", st)] * ng, st)
     last = len(w.support_stations) - 1
     diaphragm([("S", 0)] * ng, w.sect_diaphragm[0], w.diaphragm_gap[0])
     for k in range(1, last):
         vbrace([("S", k)] * ng, w.support_stations[k])
     diaphragm([("S", last)] * ng, w.sect_diaphragm[1], w.diaphragm_gap[1])
-    for n, slaves in rigid.items():
-        m.groups["Bracing"]["N"].update([n, *slaves])
     return dict(rigid)
 
 
@@ -410,44 +526,63 @@ def substructure(w: WizardInputs, m: _Mesh, g: dict) -> dict:
     base ``pier_height`` below.  Returns links, supports and the cap element
     lists for the tapered groups."""
     slab = (w.deck_thickness_in + w.haunch_in) / 12
-    elinks, cons, caps, col_base, seats = {}, {}, {}, {}, {}
+    elinks, cons, caps, col_base, seats, rigid_seats = {}, {}, {}, {}, {}, {}
     ng, last = len(w.girder_offsets), len(w.support_stations) - 1
     centre_i = min(range(ng), key=lambda i: abs(w.girder_offsets[i] - w.layout_offset))
     for k in range(last + 1):
         p = w.negative_plates if girder_section_at(w, w.support_stations[k]) == w.sect_girder_neg else w.positive_plates
         d = p.depth_in / 12
         bb = []
+        # the wizard's bearing (verified 2026-09-15): a seat node at the
+        # bottom flange, rigid-linked to the girder node, and the elastic
+        # link from that seat down ``link_length`` to the support node; the
+        # link's local axis follows the skewed support line in plan
+        angle = math.degrees(w.support_stations[k] / w.radius) - w.skews_deg[k]
         for i in range(ng):
             n = g["nodes"][(i, ("S", k))]
             x, y, z = m.xyz(n)
+            seat = m.node(x, y, z - slab - d, ("SEAT", k, i))
+            rigid_seats.setdefault(n, []).append(seat)
             b = m.node(x, y, z - slab - d - w.link_length, ("BRG", k, i))
             bb.append(b)
             K = w.link_stiffness
-            elinks[str(len(elinks) + 1)] = {"NODE": [n, b], "LINK": "GEN", "ANGLE": 0, "R_S": [False] * 6,
-                                            "SDR": [K, K, K, 0, 0, 0], "bSHEAR": False, "DR": [0.5, 0.5],
-                                            "BNGR_NAME": "Bearing"}
+            elinks[str(len(elinks) + 1)] = {"NODE": [seat, b], "LINK": "GEN", "ANGLE": angle, "R_S": [False] * 6,
+                                            "SDR": [K, K, K, 0, 0, 0], "bSHEAR": True, "DR": [0.5, 0.5],
+                                            "BNGR_NAME": "GirderElastic Link"}
         seats[k] = bb
         if k in (0, last):
             for b in bb:
-                cons[str(b)] = {"ITEMS": [{"ID": 1, "GROUP_NAME": "Support", "CONSTRAINT": "1111110"}]}
+                cons[str(b)] = {"ITEMS": [{"ID": 1, "GROUP_NAME": "SubstructureSupport", "CONSTRAINT": "1111110"}]}
             continue
+        # the tips sit on the deck-edge lines (verified 2026-09-15: the
+        # wizard's cap reaches offsets -22 / +8, the deck edges, not
+        # (cap_length - seat spread) / 2 past the fascia seats); z follows
+        # the seat line extrapolated
         (x1, y1, z1), (x5, y5, z5) = m.xyz(bb[0]), m.xyz(bb[-1])
-        L = math.hypot(x5 - x1, y5 - y1)
-        ext = (w.pier_cap_length - L) / 2
-        ux, uy, uz = (x5 - x1) / L, (y5 - y1) / L, (z5 - z1) / L
-        tip_l = m.node(x1 - ux * ext, y1 - uy * ext, z1 - uz * ext)
-        tip_r = m.node(x5 + ux * ext, y5 + uy * ext, z5 + uz * ext)
+        o1, o5 = w.girder_offsets[0], w.girder_offsets[-1]
+        left, right = w.deck_edges
+
+        def tip(offset):
+            th = support_theta(w, k, offset)
+            x, y = plan_xy(w, th, offset)
+            z = z1 + (z5 - z1) * (offset - o1) / (o5 - o1)
+            return m.node(x, y, z, ("CAPTIP", k, offset))
+        tip_l, tip_r = tip(left), tip(right)
         xc, yc, zc = m.xyz(bb[centre_i])
         col_top = m.node(xc, yc, zc)                          # coincident with the seat (wizard artifact)
         chain = [tip_l, *bb[:centre_i + 1], col_top, *bb[centre_i + 1:], tip_r]
         caps[k] = [m.elem(a, b, w.sect_cap, w.matl_pier, group="Coping", tag=("CAP", k)) for a, b in zip(chain, chain[1:])]
         base = m.node(xc, yc, zc - w.pier_heights[k - 1], ("COLBASE", k))
         m.elem(base, col_top, w.sect_column, w.matl_pier, group="Substructure", tag=("COL", k))
-        cons[str(base)] = {"ITEMS": [{"ID": 1, "GROUP_NAME": "Support", "CONSTRAINT": "1111110"}]}
+        cons[str(base)] = {"ITEMS": [{"ID": 1, "GROUP_NAME": "SubstructureSupport", "CONSTRAINT": "1111110"}]}
         col_base[k] = base
     for k, bb in seats.items():
         m.groups["Substructure" if k in (0, last) else "Coping"]["N"].update(bb)
-    return {"ELNK": elinks, "CONS": cons, "caps": caps, "col_base": col_base, "seats": seats}
+    for k in (0, last):
+        for i in range(ng):
+            m.groups["Substructure"]["N"].update(rigid_seats[g["nodes"][(i, ("S", k))]])
+    return {"ELNK": elinks, "CONS": cons, "caps": caps, "col_base": col_base, "seats": seats,
+            "rigid_seats": rigid_seats}
 
 
 def tenth_point_groups(w: WizardInputs, m: _Mesh, g: dict) -> dict[str, dict]:
@@ -455,16 +590,16 @@ def tenth_point_groups(w: WizardInputs, m: _Mesh, g: dict) -> dict[str, dict]:
     girder, the elements whose i-end (or j-end) sits on a 10th-point line.
     Returns ``{name: {"N": set, "E": set}}``."""
     _, _, tenth = reference_stations(w)
-    keys = {("R", st) for st in tenth}
+    keys = {("L", st) for st in tenth} | {("S", k) for k in range(len(w.support_stations))}
     out = {}
     for i, chain in g["chains"].items():
-        node_key = {n: key for (gi, key), n in g["nodes"].items() if gi == i}
+        marks = {n for (gi, key), n in g["nodes"].items() if gi == i and key in keys}
         ei, ej = set(), set()
         for e in g["elems"][i]:
             n1, n2 = m.elems[str(e)]["NODE"]
-            if node_key.get(n1) in keys:
+            if n1 in marks:
                 ei.add(e)
-            if node_key.get(n2) in keys:
+            if n2 in marks:
                 ej.add(e)
         out[f"10th Point Girder-{i + 1}-i"] = {"E": ei, "N": {n for e in ei for n in m.elems[str(e)]["NODE"]}}
         out[f"10th Point Girder-{i + 1}-j"] = {"E": ej, "N": {n for e in ej for n in m.elems[str(e)]["NODE"]}}
@@ -543,10 +678,15 @@ def property_tables(w: WizardInputs, *, fc_deck_psi=4000.0, fc_pier_psi=3500.0, 
                              "SECT_BEFORE": before("SB", DATATYPE=2, SECT_I={"vSIZE": [48 * L, 78 * L, 0, 0, 0, 0, 0, 0, 0, 0]})},
         str(w.sect_diaphragm[0]): db("W12x40", "H", "AISC10(US)", "W12X40"),
         str(w.sect_diaphragm[1]): db("C15x33.9", "C", "AISC10(US)", "C15X33.9"),
-        str(w.sect_strip): {"SECTTYPE": "DBUSER", "SECT_NAME": "GirderWizRectangle",
+        str(w.sect_strip): {"SECTTYPE": "DBUSER", "SECT_NAME": f"GirderWizRectangle_{w.sect_strip}",
                             "SECT_BEFORE": before("SB", OFFSET_PT="CT", DATATYPE=2,
                                                   SECT_I={"vSIZE": [w.deck_thickness_in * L, w.deck_strip_spacing * 12 * L,
                                                                     0, 0, 0, 0, 0, 0, 0, 0]})},
+        # deck-edge dummy beams: a 1 mm square (the wizard's exact value)
+        str(w.sect_edge): {"SECTTYPE": "DBUSER", "SECT_NAME": f"GirderWizRectangle_{w.sect_edge}",
+                           "SECT_BEFORE": before("SB", OFFSET_PT="CT", DATATYPE=2,
+                                                 SECT_I={"vSIZE": [0.0032808398950131224 * (12 * L),
+                                                                   0.0032808398950131224 * (12 * L), 0, 0, 0, 0, 0, 0, 0, 0]})},
     }
     return {"MATL": matl, "TDMT": tdmt, "TDME": tdme, "TMAT": tmat, "SECT": sect}
 
@@ -645,7 +785,7 @@ def construction_stages() -> dict:
               "ACT_BNGR": [{"BNGR_NAME": "Support", "POS": "ORIGINAL"}], "ACT_LOAD": [{"LOAD_NAME": "SW", "DAY": "FIRST"}]},
         "2": {"NAME": "Stage2", "DURATION": 10, "bSV_RSLT": True, "bSV_STEP": False, "ADD_STEP": [],
               "ACT_ELEM": [{"GRUP_NAME": "Girder", "AGE": 0}, {"GRUP_NAME": "Bracing", "AGE": 0}],
-              "ACT_BNGR": [{"BNGR_NAME": "Bearing", "POS": "DEFORMED"}, {"BNGR_NAME": "Bracing Link", "POS": "DEFORMED"}]},
+              "ACT_BNGR": [{"BNGR_NAME": "GirderElastic Link", "POS": "DEFORMED"}, {"BNGR_NAME": "GirderRigid Link", "POS": "DEFORMED"}]},
         "3": {"NAME": "Stage3-1", "DURATION": 10, "bSV_RSLT": True, "bSV_STEP": False, "ADD_STEP": [],
               "ACT_LOAD": [{"LOAD_NAME": "WetConc D1", "DAY": "FIRST"}]},
         "4": {"NAME": "Stage3-2", "DURATION": 0, "bSV_RSLT": True, "bSV_STEP": False, "ADD_STEP": [],
@@ -668,8 +808,8 @@ def construction_stages() -> dict:
                   "bCHANGE_CABLE": False, "bAPPLY_IMF": False, "bITD": False, "ITD": "ALL", "bLFFC": False,
                   "bCAMBER": False, "bSD": False, "iSDOPT": 0, "SDCONST": 0, "iBSC": 0,
                   "bCALC_CFF": False, "bCALC_CSP": True, "bSELFCONS": False, "bSAVE_OCS": False}}
-    return {"BNGR": {"1": {"NAME": "Support", "AUTOTYPE": 0}, "2": {"NAME": "Bearing", "AUTOTYPE": 0},
-                     "3": {"NAME": "Bracing Link", "AUTOTYPE": 0}},
+    return {"BNGR": {"1": {"NAME": "SubstructureSupport", "AUTOTYPE": 0}, "2": {"NAME": "GirderElastic Link", "AUTOTYPE": 0},
+                     "3": {"NAME": "GirderRigid Link", "AUTOTYPE": 0}},
             "STAG": stag, "STCT": stct}
 
 
@@ -749,17 +889,22 @@ def build(w: WizardInputs | None = None) -> tuple[dict, dict]:
     w = w or WizardInputs()
     m = _Mesh()
     g = girder_lines(w, m)
-    deck_strips(w, m, g)
+    edges = deck_strips(w, m, g)
+    edge_beams(w, m, edges)
     rigid = cross_frames(w, m, g)
     sub = substructure(w, m, g)
+    for n, seats in sub["rigid_seats"].items():
+        rigid.setdefault(n, []).extend(seats)
+        m.groups["Bracing"]["N"].update(seats)          # the wizard lists the seats here too
     tenth = tenth_point_groups(w, m, g)
     groups = {}
-    for name in ["Substructure", "Coping", "Bracing", "Girder", "Dummy Beam", "Dummy Beam-D1", "Dummy Beam-D2"]:
+    for name in ["Substructure", "Coping", "Bracing", "Girder", "Dummy Beam", "Dummy Beam2",
+                 "Dummy Beam-D1", "Dummy Beam-D2"]:
         groups[name] = m.groups[name]
     groups.update(tenth)
     grup = {str(i + 1): {"NAME": n, "P_TYPE": 0, "N_LIST": sorted(v["N"]), "E_LIST": sorted(v["E"])}
             for i, (n, v) in enumerate(groups.items())}
-    rigd = {str(n): {"ITEMS": [{"ID": 1, "GROUP_NAME": "Bracing Link", "DOF": 111111, "S_NODE": s}]} for n, s in rigid.items()}
+    rigd = {str(n): {"ITEMS": [{"ID": 1, "GROUP_NAME": "GirderRigid Link", "DOF": 111111, "S_NODE": s}]} for n, s in rigid.items()}
     payload = {"UNIT": {"1": {"FORCE": "KIPS", "DIST": "FT", "HEAT": "BTU", "TEMPER": "F"}}}
     payload.update(property_tables(w))
     payload.update({"NODE": m.nodes, "ELEM": m.elems, "TSGR": post_wizard_tapered_groups(sub["caps"]), "GRUP": grup,

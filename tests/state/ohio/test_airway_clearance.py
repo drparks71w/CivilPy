@@ -1,7 +1,7 @@
 """Airway/Highway Clearance Analysis (L&D §1407.1 / Part 77.9).
 
-Ground truth: E.L. Robinson's 2026-08-28 analysis letter for CUY-291-0299
-(PID 117817) — CLE 1.4 NM away, nearest runway point 0.91 mi, runway
+Ground truth: a consultant's 2026-08-28 analysis letter for a Cleveland-area
+deck replacement — CLE 1.4 NM away, nearest runway point 0.91 mi, runway
 elevation 799.5 ft, project high point 819 ft, L = 4,787 ft, 100:1 surface
 at 847.4 ft; 30-ft light poles (849.0) and a 60-ft crane (879.0) both
 penetrate; SW General Hospital heliport (2.0 NM) and Columbia (7.9 NM)
@@ -140,8 +140,8 @@ class TestCUY291Screen:
         assert d["plan_note"]["note"] == "G118A"
 
     def test_letter_and_7460(self, result):
-        txt = analysis_letter(result, project_label="CUY-SR291-02.99 DECK",
-                              pid="117817", district="12")
+        txt = analysis_letter(result, project_label="ABC-SR123-04.56 DECK",
+                              pid="100000", district="12")
         assert "1.4 nautical miles" in txt and "100:1" in txt
         assert "799.5 ft" in txt and "819.0 ft" in txt and "850.4 ft" in txt
         assert "marginally" in txt and "encroaches" in txt

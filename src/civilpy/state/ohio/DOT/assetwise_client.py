@@ -21,6 +21,7 @@ import logging
 import random
 import re
 from urllib.parse import unquote
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -76,6 +77,17 @@ class AssetWiseClient:
     override :meth:`_load_auth` to source credentials differently.
     """
 
+    # Transient failures that a retry then fixed, process-wide. A retry that
+    # succeeds is INFO-level bookkeeping, not an error: callers report the
+    # total once per run instead of filling an "errors" log with them.
+    transient_retries = 0
+    _retry_lock = threading.Lock()
+
+    @classmethod
+    def _note_transient_retry(cls):
+        with cls._retry_lock:
+            cls.transient_retries += 1
+
     def __init__(self, base_url=BASE_URL):
         self.session = requests.Session()
         self.session.auth = self._load_auth()
@@ -113,22 +125,24 @@ class AssetWiseClient:
                     logger.debug("HTTP %s for %s — permanent client error, "
                                  "not retrying", status, url)
                     raise
-                logger.warning("Request failed (attempt %d/%d) for %s: %s",
-                               attempt + 1, max_retries, url, e)
-                if attempt == max_retries - 1:
-                    logger.error("Max retries exceeded for %s.", url)
-                    raise
-                jitter = random.uniform(0, backoff_factor)
-                time.sleep(backoff_factor * (2 ** attempt) + jitter)
+                self._retry_or_raise(attempt, max_retries, backoff_factor, url, e)
             except requests.exceptions.RequestException as e:
-                logger.warning("Request failed (attempt %d/%d) for %s: %s",
-                               attempt + 1, max_retries, url, e)
-                if attempt == max_retries - 1:
-                    logger.error("Max retries exceeded for %s.", url)
-                    raise
-                jitter = random.uniform(0, backoff_factor)
-                time.sleep(backoff_factor * (2 ** attempt) + jitter)
+                self._retry_or_raise(attempt, max_retries, backoff_factor, url, e)
         return None  # pragma: no cover
+
+    def _retry_or_raise(self, attempt, max_retries, backoff_factor, url, exc):
+        """Last attempt: WARNING + raise. Otherwise INFO, count it as a
+        transient retry, back off. Only the final failure is a problem the
+        error log should carry."""
+        if attempt == max_retries - 1:
+            logger.warning("Request failed %d/%d times for %s: %s — giving up",
+                           max_retries, max_retries, url, exc)
+            raise exc
+        logger.info("Request failed (attempt %d/%d) for %s: %s — retrying",
+                    attempt + 1, max_retries, url, exc)
+        self._note_transient_retry()
+        jitter = random.uniform(0, backoff_factor)
+        time.sleep(backoff_factor * (2 ** attempt) + jitter)
 
     @staticmethod
     def _http_status(exc):

@@ -760,7 +760,7 @@ def member_ends_at(model: TrussModel, node: TrussNode, connections=None,
 
     Directions come from the model, depths from the members' own built-up
     sections, and connection lengths from ``connections`` -- a mapping of
-    member name to inches, which for CUY-10-1613 is the 2012 rating's own
+    member name to inches, which for a rated truss is the rating sheet's own
     tabulated connection length."""
     connections = connections or {}
     out = []

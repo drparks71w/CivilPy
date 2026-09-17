@@ -11,7 +11,7 @@ That is the section a designer sized, and it is what a stress sheet records.
 It is not the member.  The member is that section **plus the lacing that
 holds the two webs together, the tie plates that close its ends, and the
 rivets through all of it**, and on a truss of this era that additional steel
-is not a rounding error: the 2012 rating of CUY-10-1613 carries a per-member
+is not a rounding error: a 2012 rating of a 1930s riveted truss carries a per-member
 multiplier on the bare section of 1.06-2.87, median 1.87, covering "lacing,
 batten/tie plates, gussets, rivets".
 
@@ -24,8 +24,8 @@ has one, and a weight.
 Where the values come from
 --------------------------
 Everything here is meant to be read off the fabrication drawings, and each
-value carries a ``source`` saying which.  For CUY-10-1613 (Mt. Vernon Bridge
-Co. contract 5643, Wilbur Watson & F. R. Walker, Sept 1930) the shop
+value carries a ``source`` saying which.  For the 1930 riveted truss the
+module was written against, the shop
 ``L``-series sheets give a bill per member, e.g. for U11-U12 of span 3::
 
     2P - 24 x 3/8 x 23-11 1/2        web plates

@@ -1,4 +1,4 @@
-"""Gusset checks: reproduce the 2012 ODOT/B&N CUY-10-1613 gusset workbook
+"""Gusset checks: reproduce the 2012 ODOT OSE LFR gusset rating sheet
 numbers (LFR path) and sanity-check the LRFD 6.14.2.8 path."""
 import pytest
 

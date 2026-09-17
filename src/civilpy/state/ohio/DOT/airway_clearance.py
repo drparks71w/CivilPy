@@ -40,7 +40,7 @@ handful of columns needed so callers can build them from any source.
                     facilities=[cle, ...],
                     heights=[HeightClass("light poles", 30, "appurtenance"),
                              HeightClass("crane", 60, "equipment")])
-    result.notification_required        # True for CUY-291-0299
+    result.notification_required        # True for the worked example
     result.controlling.surface_elev_ft  # 850.4 (CLE 10/28 end 28, 100:1)
 """
 from __future__ import annotations

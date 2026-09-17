@@ -25,8 +25,10 @@ Frobenius norm of the residual ``R - T`` is the governing case.
 
 Demands come from :class:`~civilpy.structural.continuous_beam.UnitResponses`
 envelopes: a simply supported bridge is its longest span; a continuous
-bridge is the three-span sub-model ``r*L | L | r*L`` on pinned-roller
-supports.  Everything is a pure live-load ratio, so distribution factors,
+bridge is the three-span sub-model ``L/r | L | L/r`` on pinned-roller
+supports, ``L`` the maximum span from the inventory and ``r`` the
+dimensionless span ratio *maximum span / adjacent span* (>= 1, so the
+adjacent spans are the shorter ones).  Everything is a pure live-load ratio, so distribution factors,
 condition/system factors, and any live-load factor applied uniformly
 across vehicles cancel; ``im`` exists for the one loading whose parts it
 does not scale uniformly (HL-93's unfactored lane).
@@ -75,7 +77,8 @@ class DemandBasis:
     """Envelope peak demands for a set of vehicles on one beam
     configuration (``span_ratio`` is ``None`` for a simple span).  All
     demands are magnitudes; ``positive_moment_station`` locates each
-    vehicle's M+ peak for the critical-section alignment check."""
+    vehicle's M+ peak for the critical-section alignment check, folded
+    into the first half of the (symmetric) beam."""
 
     span: float
     span_ratio: float | None
@@ -128,14 +131,22 @@ def _demand_basis(span: float, span_ratio, vehicles: tuple, step: float,
                   im: float) -> DemandBasis:
     if span_ratio is None:
         beam = ContinuousBeam([0.0, span])
+        total = span
     else:
-        r = float(span_ratio)
-        beam = ContinuousBeam([0.0, r * span, (1.0 + r) * span,
-                               (1.0 + 2.0 * r) * span])
+        # ratio = maximum span / adjacent span, so the adjacent spans are
+        # the SHORTER ones (L/r | L | L/r); ratio 1 is three equal spans
+        adj = span / float(span_ratio)
+        beam = ContinuousBeam([0.0, adj, adj + span, 2.0 * adj + span])
+        total = 2.0 * adj + span
     unit = UnitResponses.from_beam(beam, step=step)
     rows = [_vehicle_demands(unit, RATING_VEHICLES[name], im)
             for name in vehicles]
     m_pos, m_neg, shear, station = (np.array(col) for col in zip(*rows))
+    # both layouts are symmetric about mid-length, so a peak the envelope
+    # happens to report in the far end span is the same critical section
+    # as its mirror image; fold it so alignment offsets compare like with
+    # like instead of a 16 ft peak against a 104 ft one
+    station = np.minimum(station, total - station)
     return DemandBasis(span, span_ratio, vehicles, m_pos, m_neg, shear,
                        station)
 
@@ -153,8 +164,8 @@ def three_span_demands(max_span: float, span_ratio: float,
                        vehicles=OHIO_KNOWN_VEHICLES + NEW_LEGAL_TRUCKS, *,
                        step: float = 1.0, im: float = 0.0) -> DemandBasis:
     """Demand basis for the continuous three-span sub-model
-    ``r*L | L | r*L`` with ``L = max_span`` and ``r = span_ratio``
-    (results are cached per configuration)."""
+    ``L/r | L | L/r`` with ``L = max_span`` and ``r = span_ratio`` =
+    maximum span / adjacent span (results are cached per configuration)."""
     return _demand_basis(round(float(max_span), 3),
                          round(float(span_ratio), 4), tuple(vehicles),
                          float(step), float(im))

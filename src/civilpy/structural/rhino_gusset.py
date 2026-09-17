@@ -16,7 +16,7 @@ layer per failure mechanism, and reads a reviewer's edits back out.
 The round trip is the point.  A reviewer opens the joint, toggles
 ``Gusset::Whitmore`` against ``Gusset::BlockShear``, moves a rivet the
 drawing parser put in the wrong place, adds the field-drilled LC-1 holes
-(CUY-10-1613 Stage 2 sheets 97-99), or sketches a corrosion patch over the
+(a Stage 2 gusset detail sheet set), or sketches a corrosion patch over the
 pack rust at the bottom of the plate -- and :func:`gusset_from_3dm` returns
 a ``GussetJoint`` whose ``summary()`` reflects exactly that, ready to
 re-rate.  Nothing on the derived layers (Whitmore / Unbraced / BlockShear /

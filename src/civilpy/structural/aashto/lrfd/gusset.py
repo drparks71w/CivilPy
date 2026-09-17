@@ -20,7 +20,7 @@ current provisions are applied to the same geometry:
   Whitmore compression as an AASHTO 10.54 column (K = 1.2, Cc), block shear
   1 = phi(0.58 Fy Avg + Fu Atn) and 2 = phi(0.58 Fu Avn + Fy Atg), global
   shear yield with Omega = 0.74 and fracture on the net section.  The 2012
-  CUY-10-1613 workbook (Burgess & Niple / ODOT OSE) is the reference: its
+  ODOT OSE LFR gusset rating sheet (2012) is the reference: its
   joint-42133 and joint-11000 numbers are reproduced in the tests.
 
 All inputs are geometric quantities from

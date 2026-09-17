@@ -42,7 +42,7 @@ class FakeClient:
             {"af_id": 1, "af_filename": "old.jpg", "af_date": "2021-01-06T14:35:00"},
             {"af_id": 2, "af_filename": "new.jpg", "af_description": "Deck edge spall",
              "af_date": "2023-01-31T10:00:00"},
-            {"af_id": 3, "af_filename": "CUY-10-1613 Fracture Critical Member Plan.pdf",
+            {"af_id": 3, "af_filename": "ABC-123-4567 Fracture Critical Member Plan.pdf",
              "af_date": "2023-02-01T00:00:00", "af_print": True},
             {"af_id": 9, "af_filename": "gone.jpg", "af_date": "2023-02-01T00:00:00"},
         ]
@@ -57,7 +57,7 @@ class FakeClient:
              "af_date_inserted": "2023-01-31T10:00:00", "af_deleted": False},
         ]
 
-    SERVED = {8: "CUY-0010-1613_1801503_2021 Routine Report.pdf"}
+    SERVED = {8: "ABC-0123-4567_1801503_2021 Routine Report.pdf"}
 
     def download_file_named(self, af_id, timeout=120):
         self.downloads.append(af_id)
@@ -113,8 +113,8 @@ def test_dump_all_files_flat_and_served_names(tmp_path):
                                     client=FakeClient())
     assert summary["written"] == 5
     names = _files(tmp_path)
-    assert "2022-02-02 CUY-0010-1613_1801503_2021 Routine Report.pdf" in names
-    assert "2023-02-01 CUY-10-1613 Fracture Critical Member Plan.pdf" in names
+    assert "2022-02-02 ABC-0123-4567_1801503_2021 Routine Report.pdf" in names
+    assert "2023-02-01 ABC-123-4567 Fracture Critical Member Plan.pdf" in names
 
 
 def test_unknown_sfn_raises():

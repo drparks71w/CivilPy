@@ -45,7 +45,7 @@ weak-axis numbers: the web out-to-out width (:func:`WIDTH`, 18 in, or 20 in
 when the angles have 6 in or larger legs both ways) and which angle leg is
 outstanding.  The numbered shop sheets settle both.
 
-Originally written for CUY-10-1613 (Lorain-Carnegie / Hope Memorial, 1932)
+Originally written for a 1932 riveted through-truss
 against its D-series member sheets.
 """
 from __future__ import annotations

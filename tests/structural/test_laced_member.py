@@ -126,7 +126,7 @@ def test_tie_plates_sit_on_a_face_at_their_station():
 # --------------------------------------------------------------------------- #
 def test_the_fabricated_member_weighs_more_than_its_bare_section():
     """The point of the module.  Drawing only the bare section understates a
-    riveted member; the 2012 CUY-10-1613 rating carries a per-member
+    riveted member; a 2012 rating of a 1930s riveted truss carries a per-member
     multiplier of 1.06-2.87 covering lacing, tie plates, gussets and rivets,
     and what is *inside* the member is a real part of that."""
     m = chord()
@@ -176,8 +176,8 @@ def test_lacing_label_says_single_or_double():
 # against the 1930 designer's own arithmetic
 # --------------------------------------------------------------------------- #
 def test_the_section_matches_the_1930_designers_own_net_section_check():
-    """Sheet L2 of the Mt. Vernon Bridge Co. shop set (CUY-10-1613,
-    `Full Plan Set.pdf` p604) carries the designer's net-section check in his
+    """Sheet L2 of the 1930 shop set (a riveted through-truss,
+    plan set p604) carries the designer's net-section check in his
     own hand::
 
         Area Req'd 760/25 = 30.4 sq in net
