@@ -29,7 +29,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-import matplotlib.pyplot as plt
 import numpy as np
 
 
@@ -349,6 +348,8 @@ class InfluenceLine:
         """Plot the influence line (positive area shaded), optionally with
         an axle train drawn at its governing position."""
         if ax is None:
+            import matplotlib.pyplot as plt  # only the plot path needs it — this module is
+            # imported by server-side rating screens where pyplot must not load
             ax = plt.figure(figsize=(8, 3.2)).add_subplot(1, 1, 1)
         x, y = self.ordinates(n)
         ax.plot(x, y, "b", lw=1.6)
