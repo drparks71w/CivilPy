@@ -178,6 +178,24 @@ def test_bridge_name_fills_a_missing_carried_feature():
     assert next(c for c in r["checks"] if c["kind"] == "load")["ratio"] == 1.4
 
 
+def test_disclaimer_printed_and_returned(capsys):
+    on, over, far = corridor()
+    with patch.object(pr, "roads_near", return_value=[]):
+        out = pr.screen_route((40.0, -83.0), (40.0, -82.98), "SU6", 13.5, 8.5,
+                              source=FakeSource([on]), router=lambda s, e: ROUTE)
+    err = capsys.readouterr().err
+    assert "not endorsed" in err and pr.OHPS_URL in err and "AS IS" in err
+    assert out["disclaimer"] == pr.DISCLAIMER and out["permit_links"]["ohps"] == pr.OHPS_URL
+    pr.configure(print_disclaimer=False)
+    try:
+        with patch.object(pr, "roads_near", return_value=[]):
+            pr.screen_route((40.0, -83.0), (40.0, -82.98), "SU6", 13.5, 8.5,
+                            source=FakeSource([on]), router=lambda s, e: ROUTE)
+        assert capsys.readouterr().err == ""
+    finally:
+        pr.configure(print_disclaimer=True)
+
+
 def test_unknown_vehicle_rejected():
     with pytest.raises(ValueError):
         pr.screen_route((40, -83), (40, -82), "Bigfoot", source=FakeSource([]), router=lambda s, e: ROUTE)

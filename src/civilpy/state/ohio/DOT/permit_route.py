@@ -51,6 +51,7 @@ import logging
 import math
 import re
 import statistics
+import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
@@ -65,6 +66,26 @@ TIMS_BRIDGES_URL = ("https://tims.dot.state.oh.us/ags/rest/services/Assets/"
                     "Bridge_Inventory/MapServer/0/query")
 TIMS_ROADS_URL = ("https://tims.dot.state.oh.us/ags/rest/services/Roadway_Information/"
                   "Road_Inventory/MapServer/0/query")
+
+ODOT_PERMITS_URL = "https://www.transportation.ohio.gov/working/permits/special-hauling-permits"
+OHPS_URL = "https://haulingpermits.transportation.ohio.gov/"
+DISCLAIMER = (
+    "DISCLAIMER — Permit route screen. This tool is not endorsed by, affiliated with, or "
+    "approved by the State of Ohio or the Ohio Department of Transportation. It does not "
+    "replace the need to apply for and receive an actual Special Hauling Permit through "
+    f"ODOT's Ohio Hauling Permit System ({OHPS_URL}; program information at {ODOT_PERMITS_URL}), "
+    "nor the permits of any county, township, municipality or the Ohio Turnpike whose roads the "
+    "load will use. Results are computed from public inventory data and a passenger-car road "
+    "route; the data may be incomplete, out of date or wrong, rating factors marked 'estimated' "
+    "are approximations, and permit routing restrictions are not applied. The tool is provided "
+    "AS IS, without warranty of any kind, for informational purposes only; use it at your own "
+    "risk and verify every clearance, rating and posting with the responsible agency before "
+    "moving a load."
+)
+#: Set False (or call ``configure(print_disclaimer=False)``) to stop the
+#: disclaimer being written to stderr on every screen — for a host that
+#: shows it in its own UI. It is always included in the result.
+PRINT_DISCLAIMER = True
 
 BUFFER_M = 30.0            # how far off the road centreline a bridge point may sit
 ROAD_LOOKUP_M = 60.0       # envelope half-width for the road-inventory conflation
@@ -121,14 +142,17 @@ class _MemoryCache:
 cache = _MemoryCache()
 
 
-def configure(*, cache_backend=None, osrm_base_url: str | None = None) -> None:
-    """Point the module at a shared cache (anything with ``get``/``set``)
-    and/or a self-hosted OSRM."""
-    global cache, OSRM_BASE_URL
+def configure(*, cache_backend=None, osrm_base_url: str | None = None,
+              print_disclaimer: bool | None = None) -> None:
+    """Point the module at a shared cache (anything with ``get``/``set``),
+    a self-hosted OSRM, and/or silence the stderr disclaimer."""
+    global cache, OSRM_BASE_URL, PRINT_DISCLAIMER
     if cache_backend is not None:
         cache = cache_backend
     if osrm_base_url:
         OSRM_BASE_URL = osrm_base_url.rstrip("/")
+    if print_disclaimer is not None:
+        PRINT_DISCLAIMER = bool(print_disclaimer)
 
 
 # ── records a source hands back ─────────────────────────────────────────────
@@ -748,6 +772,8 @@ def screen_route(start: tuple[float, float], end: tuple[float, float], vehicle: 
     from civilpy.structural.aashto.vehicles import RATING_VEHICLES
     if vehicle not in VEHICLES or vehicle not in RATING_VEHICLES:
         raise ValueError(f"unknown vehicle {vehicle!r}; one of {VEHICLES}")
+    if PRINT_DISCLAIMER:
+        print(DISCLAIMER, file=sys.stderr, flush=True)
     route = (router or osrm_route)(start, end)
     coords = route["coords"]
     frame = LocalFrame(sum(c[0] for c in coords) / len(coords), sum(c[1] for c in coords) / len(coords))
@@ -806,6 +832,8 @@ def screen_route(start: tuple[float, float], end: tuple[float, float], vehicle: 
         "counts": counts, "bridge_count": len(results),
         "worst": worst.as_dict() if worst else None,
         "bridges": [r.as_dict() for r in results],
+        "disclaimer": DISCLAIMER,
+        "permit_links": {"odot_special_hauling_permits": ODOT_PERMITS_URL, "ohps": OHPS_URL},
     }
 
 
