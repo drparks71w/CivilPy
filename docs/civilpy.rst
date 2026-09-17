@@ -12,6 +12,7 @@ Subpackages
    civilpy.general
    civilpy.geotech
    civilpy.mcp
+   civilpy.scan
    civilpy.state
    civilpy.structural
    civilpy.transportation

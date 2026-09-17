@@ -7,6 +7,32 @@ Versions follow [Semantic Versioning](https://semver.org/) (major.minor.patch).
 
 ## [Unreleased]
 
+- **Scan-to-CAD: `civilpy.scan` — point-cloud segmentation, meshing and
+  feature extraction for bridge sites.** `cloud` streams `.las`/`.laz`
+  (laspy), `.xyz` and `.ply` through bbox / class / decimation / voxel-grid
+  reductions so a 9 GB static scan reads into a few million points;
+  `preprocess` (voxel, SOR/radius outliers, PCA normals, crops, axis
+  frames), `segment` (vectorised RANSAC planes with SVD refinement,
+  two-point-with-normals RANSAC cylinders with normal-based axis
+  refinement, progressive-morphological ground filter, Euclidean
+  clustering, region growing, slices), `features` (typed plane / cylinder /
+  line / polyline records, alpha-shape boundaries, plane–plane crease
+  edges, a surface-supported under-clearance grid, cross sections, bridge
+  role labels, coplanar-fragment merging, and substructure units + span
+  layout from the lowest-structure-point profile under the deck),
+  `mesh` (Delaunay / grid meshing, primitive meshes, PLY/OBJ/STL writers,
+  optional Open3D Poisson / ball-pivot), `cad` (DXF via ezdxf and Rhino
+  `.3dm` via rhino3dm on the shared `rhino_layers` taxonomy, plus a
+  `Terrain` bridge), `pipeline.extract_features` (one call, `ScanFeatures`
+  report with JSON / DXF / 3dm / mesh export) and `plots` (plan +
+  elevation overview). New `civilpy scan info` / `civilpy scan extract`
+  CLI commands. Validated on synthetic bridges (tests) and on three real
+  static scans (a 600 ft railroad viaduct on seven tower piers, a
+  three-span through truss, and a whole-valley site scan) — deck extents,
+  pier heights and span lengths come out to within the 2 ft profile bin.
+  Scans are never committed: `.gitignore` now blocks `.las/.laz/.pod/
+  .e57/.pcd/.rcp/.rcs`.
+
 ## [0.4.5] - 2026-09-15
 
 - **Fix: continuous-bridge span ratio was inverted (`structural.rating_ratios`).**
