@@ -31,6 +31,7 @@ Optional dependency groups for heavier tools:
 | `civilpy[web]` | Selenium, Plotly |
 | `civilpy[jupyter]` | Notebook utilities, ipywidgets |
 | `civilpy[validation]` | Pydantic models for SNBI data validation |
+| `civilpy[lidar]` | LAS/LAZ reading (laspy) and Open3D reconstruction for `civilpy.scan` |
 | `civilpy[full]` | All of the above |
 
 ---
@@ -450,6 +451,29 @@ df = get_tims_data("Bridge")
 district_5 = df[df["district"] == 5]
 poor_condition = df[df["deck_summary"] <= 4]
 ```
+
+---
+
+## Scan-to-CAD (LiDAR point clouds)
+
+`civilpy.scan` turns a terrestrial / mobile LiDAR scan of a bridge site into
+engineering features: ground, deck and wall planes, columns, substructure
+units with span lengths, per-span under-clearance, crease edges, and a
+Rhino `.3dm` / DXF on civilpy's shared layer taxonomy. The core is
+`numpy`/`scipy`; `laspy` streams multi-gigabyte `.las` files through a voxel
+grid so they never have to fit in memory.
+
+```python
+from civilpy.scan import read_las, extract_features
+
+cloud = read_las("bridge.las", voxel=0.25)          # 330M points -> ~2M voxels
+res = extract_features(cloud, voxel=0.25)
+print(res.summary()["span_lengths"], res.deck.extent_v)
+res.export_3dm("bridge_as_scanned.3dm")             # deck, piers, edges on Deck::/Substructure:: layers
+```
+
+Or from the shell: `civilpy scan info site.las`, then
+`civilpy scan extract site.las --voxel 0.25 --dxf features.dxf`.
 
 ---
 

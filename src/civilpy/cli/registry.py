@@ -184,7 +184,7 @@ class CommandSpec:
 
 #: Command modules under civilpy.cli.commands, each exporting ``SPECS``.
 COMMAND_MODULES = ("boring", "odot", "hydro", "road", "snbi", "photos",
-                   "pdf", "report", "spanwire")
+                   "pdf", "report", "spanwire", "scan")
 
 _specs_cache: Optional[List[CommandSpec]] = None
 

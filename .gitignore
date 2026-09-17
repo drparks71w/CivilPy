@@ -265,3 +265,15 @@ django/
 /res/odot_scds/*
 /Notebooks/temp_las/
 /Notebooks/api_cache/
+
+# Point-cloud scans are never committed (multi-GB, often licensed) — the
+# civilpy.scan tests build synthetic clouds; keep real ones outside the repo
+# or under scan_output/.
+*.las
+*.laz
+*.pod
+*.e57
+*.pcd
+*.rcp
+*.rcs
+/scan_output/

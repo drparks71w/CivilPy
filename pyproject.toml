@@ -64,8 +64,10 @@ geo = [
     "tifftools>=1.3",
 ]
 lidar = [
-    # lazily imported by civilpy.transportation.terrain
-    "laspy>=2.5",
+    # lazily imported by civilpy.transportation.terrain and civilpy.scan
+    # (the scan-to-CAD core is numpy/scipy only; laspy reads .las/.laz,
+    # open3d is used for Poisson / ball-pivot reconstruction)
+    "laspy[lazrs]>=2.5",
     "pyproj>=3.6",
     "open3d>=0.18",
     "ipyleaflet>=0.18",
