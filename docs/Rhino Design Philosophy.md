@@ -986,20 +986,15 @@ then size plates and bolts (`size_flange_splice_plates`,
 `size_web_splice_plate`, `design_splice` — all shipped in
 `civilpy.structural.aashto.lrfd`).
 
-**Reference design (validation target):** a rolled-beam beam-splice design
-set (held privately; not distributed with CivilPy) — a real
-rolled-beam bridge with **six** field splices, each a 26-page AASHTO LRFD
-9th + ODOT BDM 308.2.2.1.j check set. Splice #1 joins a W24x131 (larger
-stringer: bf 12.9", tf 0.96", tw 0.605") to a W24x104 (bf 12.8", tf 0.75",
-tw 0.50"), Gr. 50 (Fy=50/Fu=65 ksi), 7.5" structural slab, 84" effective
-width. Bolts: 7/8" A325, **oversize holes, Class C** faying surface (Kh=0.85,
-Ks=0.33, Pt=39 k, Ns=2). MDX splice-point demands: DC1=10.9 / DC2=3.0 /
-DW=4.7 / LL+I⁺=337.1 / LL+I⁻=−212.8 k-ft. Result: flange plates 12.75×3/8
-outer + 2× 5.5×3/8 inner, **10 bolts per flange per side** (2 rows @ 3"
-pitch, 1.5" edge/end distance, 0.21" fillers for the depth mismatch); web
-plates with **4 columns × 7 bolts per side**; all checks OK. **The pipeline
-is done when it regenerates this design** (bolt counts, plate sizes,
-governing checks) from a Rhino drawing of that bridge.
+**Synthetic demonstration:** the rolled-beam example uses public AISC
+W24x131/W24x104 shapes with invented demands (DC1=20, DC2=5, DW=8,
+LL+=280, LL-=-160 kip-ft), an 8 in deck, 96 in effective width, and
+6 square inches of reinforcement. Flange plates are 1/2 in thick, with a 12.5 in
+outer plate and two 5 in inner plates; web plates are 1/2 in thick.
+These are demonstration selections, not an as-built detail or a transcription
+of a private calculation package. See `Notebooks/nsba_splice_check.ipynb`.
+The pipeline goal is to reproduce the same calculated checks and quantities
+from a Rhino-authored synthetic model.
 
 > **Division of labor (mandatory).** The C# plugin is a loose UI over
 > civilpy — it captures input (draw, pick, tag) and displays output (read,
@@ -1089,7 +1084,7 @@ this repo:
      list changes.
   2. **Reserve `gdr.deck_rebar` (in², document-level).** The NSBA composite path
      (B4/G7) drops the *top-flange* splice demand using the negative-moment deck
-     steel (7.46 in² in the reference design). That area is carried today by neither the
+     steel (6 square inches in the synthetic example). That area is carried today by neither the
      `gdr.*` doc tags nor civilpy's `SpliceInput`. Add the doc-level tag now
      (C#: one `Doc*` key, default-absent) and a matching `deck_rebar_area` field
      on `SpliceInput` (Python, G7). Everything else B4 needs is already in the
@@ -1172,19 +1167,12 @@ this repo:
 - [~] **G7 (Python) — splice design for rolled shapes. Front end + fixture
   done; composite `fcf` (B4) remains.** Added `girder_side_from_w(label, grade)`
   (builds `GirderSide` from the AISC db via `steel.W`), and a selectable
-  `SpliceInput.method="odot_bdm"` that follows the reference workbook:
-  design stress `Fcf` (`splices.flange_design_stress_fcf`, fed via
-  `fcf_top`/`fcf_bot`) instead of full `Fyf`; the 6.8.3 net-area hole +
-  oversize handling; and the per-plate single-shear bolt count. Filler 0.21" <
-  1/4" → no penalty. **Reproduces Splice #1's flange exactly** — design force
-  332.53 k, 10 bolts/flange/side, all flange checks OK — from both hand-entered
-  and `W`-label inputs (`TestSpliceSum210107`, `TestGirderSideFromW`; the legacy
-  `nsba` method keeps the two plate-girder validation designs green). The web is
-  civilpy's lighter 4×4=16 (min bolts for max spacing) vs the workbook's
-  traditional 4×7=28 — kept as a documented **B5 optimization** win, not forced.
-  *Remaining:* **B4** — compute `fcf` from the composite n/3n section properties
-  + negative-moment rebar so the end-to-end run needs no MDX-supplied stress
-  (also needs the `deck_rebar_area` field + `gdr.deck_rebar` tag from G1 #2).
+  `SpliceInput.method="odot_bdm"` applies design stress `Fcf`, net-area hole
+  allowances, and per-plate bolt checks. Synthetic regression cases cover
+  both hand-entered section dimensions and catalog-label inputs
+  (`TestSyntheticRolledSplice`, `TestGirderSideFromW`). The public NSBA
+  plate-girder examples remain separate validation cases. Composite stresses
+  can be computed through `design_rolled_splice`.
 - [~] **G8 (Python) — write the designed splice back to the `.3dm`. Tags +
   round-trip done; detail geometry remains.** `rhino_gdr.splice_writeback_tags`
   builds `gdr.status`/`gdr.summary`/`gdr.checks`
@@ -1210,26 +1198,18 @@ this repo:
   NG rows red) with select + zoom-to-station. **Still open:** exercising it
   against a real G8 file — blocked until the Python write-back exists (the
   moment-envelope overlay geometry also arrives from G8; C# just imports it).
-- [ ] **End-to-end conformance:** author the reference bridge with
-  G2/G3, run G4–G8, and confirm the six splice locations and Splice #1's
-  design match the PDF — the girder-pipeline analog of the STM contract
-  conformance test.
+- [ ] **End-to-end conformance:** author a synthetic bridge with G2/G3,
+  run G4-G8, and compare splice stations, details, and checks with the same
+  inputs run directly in Python.
 
 **Benchmark + optimization goals (added 2026-07-03 — the point of the
 pipeline is a *better* design, not just a reproduced one):**
 
-- [ ] **B1 — MDX benchmark (Python):** the reference workbook records its
-  MDX/Descus inputs and outputs (composite section properties for n=8 and
-  3n=24, splice-point demands DC1/DC2/DW/LL+I±, service stresses). Run the
-  same bridge through Rhino → civilpy → MIDAS and tabulate MIDAS vs. MDX
-  side by side (moments, shears, deflections, section properties). Quantify
-  every delta; explain or fix anything beyond a few percent.
-  > **Assumed span arrangement (placeholder — refine with the real MDX input
-  > echo).** Pending the exact geometry (available ~Mon 2026-07-06): **5
-  > girders @ 8 ft spacing** (32 ft out-to-out), **3-span continuous
-  > 60–80–60 = 200 ft**, W24x131/W24x104 stringers, 7.5″ slab / 84″ effective
-  > width. **TODO(dane): replace with the surveyed span lengths, girder count,
-  > spacing, and skew from the reference design before trusting B1/B5 numbers.**
+- [ ] **B1 - independent analysis benchmark:** create a synthetic bridge
+  with documented geometry, materials, construction stages, and loads.
+  Run identical inputs through civilpy and an independent solver; compare
+  moments, shears, deflections, and section properties. Record the inputs
+  and explain discrepancies without distributing private deliverables.
 - [ ] **B2 — deflection truth:** prior research found LEAP Steel
   overestimates deflections ~10%; MDX is believed closer. Use B1 to
   calibrate confidence in the MIDAS deflections (and the L/800-type service
@@ -1245,17 +1225,10 @@ pipeline is a *better* design, not just a reproduced one):**
 - [~] **B4 — NSBA composite splice method (extends G7). Section engine done;
   auto-`fcf` wiring remains.** `aashto.lrfd.composite.CompositeGirder`
   computes the transformed non-composite / `n` / `3n` / cracked-`negative`
-  section properties and the per-case flange stress (`test_composite_section`,
-  11 tests). **Validated against the reference MDX tables**: bare-steel
-  I = 3099 vs 3100, composite `n` I = 10434 vs 10375 (0.6%), `3n` 7692 vs 7768
-  (1%); bottom-flange service stresses DC1 0.4928 vs 0.4926, LL+I 9.46 vs 9.58.
-  This is B1's "verify the section math independent of MIDAS." *Remaining:*
-  (a) feed the computed `fcf` into `design_splice` automatically (a
-  `design_rolled_splice` wrapper) so the end-to-end run needs no MDX-supplied
-  stress; (b) the cracked negative section is ~11% stiff (I 5274 vs 4754) —
-  **TODO: calibrate the deck-rebar effective depth** (`rebar_cover`) against the
-  workbook's M− table. Positive/service govern this splice, so it is exact
-  where it matters.
+  section properties and per-case flange stress. `test_composite_section`
+  checks a synthetic rectangular girder against independent hand-calculated
+  area, centroid, inertia, and service stresses, including the cracked section.
+  `design_rolled_splice` supplies computed stresses to the splice designer.
 - [~] **B5 — optimization loop (the deliverable). Splice-region optimizer +
   cost model done; full limit-state set is the extension.**
   `girder_optimizer.optimize_splice_shape` sweeps candidate rolled shapes,
@@ -1263,7 +1236,8 @@ pipeline is a *better* design, not just a reproduced one):**
   flange/web splice plates (NSBA sizers) and searches web thickness / columns /
   plate thickness for the fewest-bolt splice that passes **every** splice check,
   then ranks feasible shapes by steel weight + splice cost (~$20/bolt fab + ~10
-  field-min/bolt). Demo: at the Splice #1 demand it beats the W24x131 as-built
+  field-min/bolt). The synthetic-load demonstration compares candidates against
+  a heavier W24x131 baseline
   (`test_girder_optimizer`, 8 tests). Also `continuous_beam.ContinuousBeam` +
   `girder_pipeline.girder_line_envelope` give the **offline** DC + HL-93 moment
   envelope (no live MIDAS), wired end-to-end
@@ -1276,8 +1250,7 @@ pipeline is a *better* design, not just a reproduced one):**
   passing (strength, Service II, fatigue, 6.10.2 proportions, deflection)
   and constructability (shipping length, filler-plate limits), minimize
   total steel weight + splice cost (~$20/bolt fab, ~10 field-min/bolt), and
-  report the savings against the as-built W24x131/W24x104 six-splice
-  design. MDX is the benchmark to beat, not the answer key.
+  report cost differences against a documented synthetic baseline.
 
 ### Quick status board
 
@@ -1298,7 +1271,7 @@ pipeline is a *better* design, not just a reproduced one):**
 | Packaging | pip extra ✅ | Yak ☐ |
 | Girder-line authoring (`gdr.*` contract) | **signed off** ✅ (G1); grade-name map ✅; **reader ✅ (G4, `rhino_gdr`)**; open: reserve `gdr.deck_rebar`, move bridge params to a `gdr.kind=bridge` marker | `Core/Gdr.cs` ✅ (G1); `GirderLines`+`GirderShape` ✅ (G2–G3); **TODO: `GirderParams` → object user text, not `RhinoDoc.Strings`** |
 | MIDAS moving-load run + envelope | splice designer ✅ (`design_splice`); sections/MVLD/envelope ☐ (G5) | n/a |
-| Splice placement + rolled-shape design | ☐ (G6–G7; fixture = reference design) | n/a |
+| Splice placement + rolled-shape design | ☐ (G6–G7; fixture = synthetic design) | n/a |
 | Splice write-back + review | write-back ☐ (G8) | `GirderSplice` importer + check dialog ✅, live test vs. G8 ☐ (G9) |
 | MDX benchmark + steel optimization | ☐ (B1–B5; beat the as-built design) | n/a (displays results) |
 

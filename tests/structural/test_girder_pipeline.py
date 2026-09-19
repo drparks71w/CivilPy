@@ -108,15 +108,15 @@ class TestOfflineEndToEnd:
         p = picks[0]
         # placed in a low-moment window near the pier-60 contraflexure
         assert 60.0 < p.station < 90.0
-        plates = PlatePair("Grade 50", 0.375, 5.5, 0.375, 12.75, 2)
+        plates = PlatePair("Grade 50", 0.5, 5.0, 0.5, 12.5, 2)
         d = design_rolled_splice(
-            "W24X131", "W24X104", p.loads, deck_thickness=7.5,
-            deck_eff_width=84.0, rebar_area=7.46,
+            "W24X131", "W24X104", p.loads, deck_thickness=8.0,
+            deck_eff_width=96.0, rebar_area=6.0,
             bolts=BoltSpec("A325", 0.875, flange_threads_excluded=False,
                            web_threads_excluded=False, surface_class="C",
                            hole_type="oversize"),
             top_plates=plates, bottom_plates=plates,
-            web_plate=WebPlate("Grade 50", 0.4375, 2),
+            web_plate=WebPlate("Grade 50", 0.5, 2),
             top_flange_rows=2, bottom_flange_rows=2, web_rows=4,
             bolt_spacing=3.0, flange_edge=1.5, flange_end=1.5,
             web_edge=1.5, web_end=1.5, design_year=2016)

@@ -36,12 +36,12 @@ def test_auto_splice_plates_track_the_flange():
 
 class TestOptimizer:
     def setup_method(self):
-        loads = SpliceLoads(dc1_m=10.9, dc2_m=3.0, dw_m=4.7, ll_pos_m=337.1,
-                            ll_neg_m=-212.8, ll_neg_v=-36.6)
+        loads = SpliceLoads(dc1_m=20.0, dc2_m=5.0, dw_m=8.0, ll_pos_m=280.0,
+                            ll_neg_m=-160.0, ll_neg_v=-30.0)
         self.opts = optimize_splice_shape(
             loads, ["W24X76", "W24X104", "W24X131", "W27X102"],
             length_ft=90.0, max_factored_moment=900.0,
-            deck_thickness=7.5, deck_eff_width=84.0, rebar_area=7.46)
+            deck_thickness=8.0, deck_eff_width=96.0, rebar_area=6.0)
 
     def test_girder_gate_rejects_undersized_shape(self):
         w76 = next(o for o in self.opts if o.shape == "W24X76")
@@ -59,12 +59,12 @@ class TestOptimizer:
         costs = [o.total_cost for o in self.opts if o.ok]
         assert costs == sorted(costs)
 
-    def test_beats_the_as_built(self):
+    def test_no_costlier_than_heavy_candidate(self):
         best = cheapest_feasible(self.opts)
-        as_built = next(o for o in self.opts if o.shape == "W24X131")
+        heavy_candidate = next(o for o in self.opts if o.shape == "W24X131")
         assert best is not None
-        # the optimizer finds a design no more expensive than the heavy as-built
-        assert best.total_cost <= as_built.total_cost
+        # the optimizer finds a design no more expensive than the heavy candidate
+        assert best.total_cost <= heavy_candidate.total_cost
 
     def test_cost_is_steel_plus_splice(self):
         for o in self.opts:

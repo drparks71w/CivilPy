@@ -447,8 +447,8 @@ def _design_flange(inp: SpliceInput, position: str) -> ComponentDesign:
 
     # strength bolt count.  nsba: the whole flange force Pfy across the plates'
     # shear planes.  odot_bdm: the larger *apportioned* plate force
-    # (C6.13.6.1.3b) across a single shear plane -- the reference workbook
-    # convention, more conservative for inner+outer plate splices.
+    # (C6.13.6.1.3b) across a single shear plane for the ODOT BDM method;
+    # this is more conservative for inner+outer plate splices.
     if odot:
         bolt1 = steel.bolt_shear_resistance(
             d_bolt=b.diameter, f_ub=BOLT_FU[b.bolt_type], n_planes=1,

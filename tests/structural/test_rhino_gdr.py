@@ -125,17 +125,17 @@ class TestSpliceWriteBack:
         from civilpy.structural.aashto.lrfd import (
             design_rolled_splice, SpliceLoads, BoltSpec, PlatePair, WebPlate,
         )
-        loads = SpliceLoads(dc1_m=10.90, dc2_m=3.00, dw_m=4.70,
-                            ll_pos_m=337.10, ll_neg_m=-212.80, ll_neg_v=-36.60)
-        plates = PlatePair("Grade 50", 0.375, 5.5, 0.375, 12.75, 2)
+        loads = SpliceLoads(dc1_m=20.0, dc2_m=5.0, dw_m=8.0,
+                            ll_pos_m=280.0, ll_neg_m=-160.0, ll_neg_v=-30.0)
+        plates = PlatePair("Grade 50", 0.5, 5.0, 0.5, 12.5, 2)
         return design_rolled_splice(
-            "W24X131", "W24X104", loads, deck_thickness=7.5,
-            deck_eff_width=84.0, rebar_area=7.46,
+            "W24X131", "W24X104", loads, deck_thickness=8.0,
+            deck_eff_width=96.0, rebar_area=6.0,
             bolts=BoltSpec("A325", 0.875, flange_threads_excluded=False,
                            web_threads_excluded=False, surface_class="C",
                            hole_type="oversize"),
             top_plates=plates, bottom_plates=plates,
-            web_plate=WebPlate("Grade 50", 0.4375, 2),
+            web_plate=WebPlate("Grade 50", 0.5, 2),
             top_flange_rows=2, bottom_flange_rows=2, web_rows=4,
             bolt_spacing=3.0, flange_edge=1.5, flange_end=1.5,
             web_edge=1.5, web_end=1.5, design_year=2016)
@@ -147,7 +147,7 @@ class TestSpliceWriteBack:
         )
         design = self._design()
         tags = splice_writeback_tags(design)
-        assert tags[GTAG + "status"] == "OK"           # Splice #1 passes
+        assert tags[GTAG + "status"] == "OK"           # synthetic splice passes
         assert "10 bolts/flange" in tags[GTAG + "summary"]
         # every checks row is a 5-field article|check|actual|allowable|verdict
         rows = tags[GTAG + "checks"].splitlines()

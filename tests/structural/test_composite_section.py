@@ -4,118 +4,107 @@
 #  SPDX-License-Identifier: MIT
 #  See the LICENSE file in the project root for full license text.
 
-"""B4 -- composite steel-girder transformed-section properties, validated
-against the reference workbook's MDX/Descus section-property and service-
-stress tables (smaller stringer W24x104, section without bolt holes, pp. 1 & 3).
-This is the "verify the composite section math independent of MIDAS" leg of B1.
-Only plain numeric results are checked; no copyrighted content is reproduced."""
+"""Composite-section checks against a synthetic rectangular hand calculation.
 
+Two 12 x 1 flanges and a 22 x 0.5 web give A=35, y=12,
+I=10859/3. An 8 x 96 deck centered at y=30 adds A=96, I=512
+at n=8 (one third of each at 3n). The parallel-axis theorem gives
+the fixed expected values below. No private project results are used.
+"""
 import pytest
-
-from civilpy.structural.aashto.lrfd import girder_side_from_w
-from civilpy.structural.aashto.lrfd.composite import (
-    CompositeGirder, modular_ratio,
-)
+from civilpy.structural.aashto.lrfd import Flange, GirderSide
+from civilpy.structural.aashto.lrfd.composite import CompositeGirder, modular_ratio
 
 
 def _girder():
-    # haunch 2.0 in places the composite NA to match the workbook's tables.
-    gs = girder_side_from_w("W24X104", "Grade 50", haunch=2.0)
-    return CompositeGirder(gs, deck_t=7.5, deck_weff=84.0, n=8.0,
-                           rebar_area=7.46, rebar_cover=2.5)
+    side = GirderSide(
+        top_flange=Flange("Grade 50", 1.0, 12.0),
+        bottom_flange=Flange("Grade 50", 1.0, 12.0),
+        web_material="Grade 50", web_thickness=0.5, web_depth=22.0,
+        haunch=2.0,
+    )
+    return CompositeGirder(side, deck_t=8.0, deck_weff=96.0, n=8.0,
+                           rebar_area=6.0, rebar_cover=2.0)
 
 
 def test_modular_ratio_is_about_eight():
     assert modular_ratio(4.0) == pytest.approx(8.0, abs=0.1)
 
 
-class TestSectionProperties:
-    def setup_method(self):
-        self.cg = _girder()
-
-    def test_noncomposite_matches_aisc(self):
-        # bare steel I = AISC Ix for W24x104 = 3100 in^4; NA at mid-depth.
-        p = self.cg.props("steel")
-        assert p.inertia == pytest.approx(3100.0, rel=0.01)
-        assert p.y_na == pytest.approx(12.05, abs=0.1)
-
-    def test_short_term_composite_n(self):
-        p = self.cg.props("n")           # deck / n, positive moment
-        assert p.inertia == pytest.approx(10375.0, rel=0.015)
-        assert p.y_na == pytest.approx(24.95, abs=0.15)
-
-    def test_long_term_composite_3n(self):
-        p = self.cg.props("3n")          # deck / 3n, sustained load
-        assert p.inertia == pytest.approx(7768.0, rel=0.015)
+@pytest.mark.parametrize("state,area,y,inertia", [
+    ("steel", 35.0, 12.0, 3619.666666666667),
+    ("n", 131.0, 25.19083969465649, 12441.895674300255),
+    ("3n", 67.0, 20.597014925373134, 9206.452736318408),
+    # Cracked deck: six square inches of reinforcement at y=32.
+    ("negative", 41.0, 612.0 / 41.0, 3619.666666666667 + 35 * 6 / 41 * 20**2),
+])
+def test_hand_calculated_section_properties(state, area, y, inertia):
+    p = _girder().props(state)
+    assert p.area == pytest.approx(area)
+    assert p.y_na == pytest.approx(y)
+    assert p.inertia == pytest.approx(inertia)
 
 
-class TestServiceStresses:
-    """Unfactored bottom-flange stresses per load case (workbook p. 3), each on
-    its own section: DC1 on bare steel, DC2/DW on 3n, LL+I on n."""
+@pytest.mark.parametrize("state,moment,expected", [
+    ("steel", 20.0, 0.7625011511188876),
+    ("3n", 5.0, 0.13097562438631352),
+    ("3n", 8.0, 0.20956099901810163),
+    ("n", 280.0, 6.667892381175398),
+])
+def test_hand_calculated_service_stress(state, moment, expected):
+    # sigma = 12 M (y_na - 0.5) / I, bottom flange centroid at y=0.5.
+    cg = _girder()
+    assert cg.props(state).stress(moment, cg.y_bottom_flange) == pytest.approx(expected)
 
-    def setup_method(self):
-        self.cg = _girder()
-        self.yb = self.cg.y_bottom_flange
-        self.steel = self.cg.props("steel")
-        self.n = self.cg.props("n")
-        self.tn = self.cg.props("3n")
 
-    def test_dc1_on_bare_steel(self):
-        assert self.steel.stress(10.90, self.yb) == pytest.approx(
-            0.4926, rel=0.02)
+def test_factored_stress_sums_construction_stages():
+    expected = 1.25 * (0.7625011511188876 + 0.13097562438631352)
+    expected += 1.5 * 0.20956099901810163 + 1.75 * 6.667892381175398
+    assert _girder().flange_stress("bottom", {
+        "dc1": 1.25 * 20, "dc2": 1.25 * 5, "dw": 1.5 * 8,
+        "ll_pos": 1.75 * 280,
+    }) == pytest.approx(expected)
 
-    def test_superimposed_dead_on_3n(self):
-        assert self.tn.stress(3.00, self.yb) == pytest.approx(0.0936, rel=0.03)
-        assert self.tn.stress(4.70, self.yb) == pytest.approx(0.1466, rel=0.03)
 
-    def test_live_load_on_n(self):
-        assert self.n.stress(337.10, self.yb) == pytest.approx(9.582, rel=0.02)
-
-    def test_factored_fcf_is_low_stress(self):
-        # Strength I bottom flange (Case A): gamma_p max on DC/DW, 1.75 on LL+.
-        fcf = self.cg.flange_stress("bottom", {
-            "dc1": 1.25 * 10.90, "dc2": 1.25 * 3.00, "dw": 1.50 * 4.70,
-            "ll_pos": 1.75 * 337.10})
-        # ~17.5 ksi (no-holes); the workbook's with-holes value is 18.65 ksi.
-        # Well below Fyf, which is why the splice design stress floors at 37.5.
-        assert fcf == pytest.approx(17.5, rel=0.05)
-
-    def test_flange_fcf_from_loads(self):
-        from civilpy.structural.aashto.lrfd import SpliceLoads
-        loads = SpliceLoads(dc1_m=10.90, dc2_m=3.00, dw_m=4.70,
-                            ll_pos_m=337.10, ll_neg_m=-212.80)
-        # bottom flange governed by the positive case (~17.5 ksi no-holes)
-        assert self.cg.flange_fcf("bottom", loads) == pytest.approx(
-            17.5, rel=0.05)
+def test_flange_fcf_selects_governing_direction():
+    from civilpy.structural.aashto.lrfd import SpliceLoads
+    # With no permanent loads, identical +/- live loads expose the difference
+    # between the uncracked positive and cracked negative section.
+    cg = _girder()
+    loads = SpliceLoads(ll_pos_m=100.0, ll_neg_m=-100.0)
+    positive = 1.75 * 100 * 0.023813901361340706
+    negative = 1.75 * 100 * 12 * (612 / 41 - 0.5) / (10859 / 3 + 35 * 6 / 41 * 400)
+    assert cg.flange_fcf("bottom", loads) == pytest.approx(max(positive, negative))
 
 
 class TestDesignRolledSplice:
-    """The end-to-end wrapper computes fcf from the composite deck section, so
-    it reproduces reference Splice #1 with NO MDX-supplied stress."""
+    """Synthetic end-to-end case, with computed composite flange stresses."""
 
-    def test_reproduces_splice_1_without_supplied_fcf(self):
+    def test_synthetic_splice_without_supplied_fcf(self):
         from civilpy.structural.aashto.lrfd import (
             design_rolled_splice, SpliceLoads, BoltSpec, PlatePair, WebPlate,
         )
         loads = SpliceLoads(
-            dc1_m=10.90, dc1_v=-10.00, dc2_m=3.00, dc2_v=-2.60,
-            dw_m=4.70, dw_v=-4.00, ll_pos_m=337.10, ll_neg_m=-212.80,
-            ll_neg_v=-36.60)
-        plates = PlatePair("Grade 50", 0.375, 5.5, 0.375, 12.75, 2)
+            dc1_m=20.0, dc1_v=-12.0, dc2_m=5.0, dc2_v=-3.0,
+            dw_m=8.0, dw_v=-5.0, ll_pos_m=280.0, ll_neg_m=-160.0,
+            ll_neg_v=-30.0)
+        plates = PlatePair("Grade 50", 0.5, 5.0, 0.5, 12.5, 2)
         d = design_rolled_splice(
             "W24X131", "W24X104", loads, grade="Grade 50",
-            deck_thickness=7.5, deck_eff_width=84.0, deck_fc=4.0,
-            rebar_area=7.46,
+            deck_thickness=8.0, deck_eff_width=96.0, deck_fc=4.0,
+            rebar_area=6.0,
             bolts=BoltSpec("A325", 0.875, flange_threads_excluded=False,
                            web_threads_excluded=False, surface_class="C",
                            hole_type="oversize"),
             top_plates=plates, bottom_plates=plates,
-            web_plate=WebPlate("Grade 50", 0.4375, 2),
+            web_plate=WebPlate("Grade 50", 0.5, 2),
             top_flange_rows=2, bottom_flange_rows=2, web_rows=4,
             bolt_spacing=3.0, flange_edge=1.5, flange_end=1.5,
             web_edge=1.5, web_end=1.5, design_year=2016)
-        # fcf floors at Fcf=37.5 -> same 332.53 k / 10 bolts / all OK design
-        assert d.top_flange.design_force == pytest.approx(332.53, rel=2e-3)
+        # Low-stress floor times effective net flange area.
+        net_area = (12.8 - 2 * 1.0) * 0.75
+        force = 37.5 * (0.8 / 0.95) * (65 / 50) * net_area
+        assert d.top_flange.design_force == pytest.approx(force)
         assert d.top_flange.total_bolts == 10
         assert d.bottom_flange.total_bolts == 10
         assert d.ok

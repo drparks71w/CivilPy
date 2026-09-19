@@ -211,5 +211,5 @@ MIDAS-ready tagging, six SCD catalogs, SCD feasibility review, ~1,200
 tests green. In progress: SCD component waves 1–10 (none started),
 C#-side `gdr.deck_*` authoring command (needs contract reconciliation),
 crown/cross-slope + overhang thickening + drainage details in the
-generator, MIDAS benchmark of the reference splice pipeline (MIDAS vs
-MDX vs as-built; LEAP known to overestimate deflections ~10%).
+generator, independent-solver benchmark of the synthetic splice pipeline
+with documented inputs and reproducible comparisons.
