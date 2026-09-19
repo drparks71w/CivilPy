@@ -149,8 +149,9 @@ class EmitObject:
     tags: dict[str, str] = field(default_factory=dict)
     vector: Point | None = None      # prism extrusion, ft
     radius_ft: float | None = None   # cylinder radius, ft
+    faces: tuple[tuple[int, ...], ...] = ()  # explicit closed-mesh topology
 
-    KINDS = ("prism", "polyline", "cylinder", "point")
+    KINDS = ("prism", "polyline", "cylinder", "point", "mesh")
 
 
 @dataclass(frozen=True)
@@ -1396,6 +1397,7 @@ def emit_to_json(emit: BridgeEmit) -> str:
         "objects": [{
             "kind": o.kind, "layer": o.layer, "points": o.points,
             "tags": o.tags, "vector": o.vector, "radius_ft": o.radius_ft,
+            **({"faces": o.faces} if o.kind == "mesh" else {}),
         } for o in emit.objects],
     })
 
@@ -1609,7 +1611,18 @@ def objects_to_3dm(objects, path, *, version: int = 7, mesh: bool = False,
             a.SetUserString(k, str(v))
 
         added = None
-        if o.kind == "prism":
+        if o.kind == "mesh":
+            geom = r3.Mesh()
+            for p in o.points:
+                geom.Vertices.Add(*p)
+            for face in o.faces:
+                geom.Faces.AddFace(*face)
+            geom.Normals.ComputeNormals()
+            geom.Compact()
+            if not geom.IsValid or not geom.IsClosed:
+                raise ValueError(f"Invalid/open emitted mesh: {o.tags.get('bim.id')}")
+            added = f.Objects.AddMesh(geom, a)
+        elif o.kind == "prism":
             geom = _prism_geometry(r3, o.points, o.vector, mesh=mesh)
             if isinstance(geom, r3.Brep):
                 added = f.Objects.AddBrep(geom, a)

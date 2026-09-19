@@ -159,7 +159,23 @@ def set_bridge_views(doc, bbox=None):
     doc.Views.Redraw()
 
 
-def draw_bim_emit(json_path=None, clear=_CLEAR_DEFAULT):
+def _native_slab(mesh):
+    try:
+        from civilpy.structural.rhino_box_slabs import slab_solid
+    except ModuleNotFoundError:
+        # Rhino's interpreter need not have civilpy installed. Load the
+        # dependency-free Rhino adapter from this repository checkout.
+        import importlib.util
+        from pathlib import Path
+        path = Path(__file__).resolve().parents[2]/'src'/'civilpy'/'structural'/'rhino_box_slabs.py'
+        spec = importlib.util.spec_from_file_location('civilpy_box_slabs', path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        slab_solid = module.slab_solid
+    return slab_solid(mesh)
+
+
+def draw_bim_emit(json_path=None, clear=_CLEAR_DEFAULT, native_slabs=True):
     """Draw (or redraw) the BrIM model from an emit JSON file.  Returns a
     per-layer object-count report string."""
     doc = _doc()
@@ -183,7 +199,22 @@ def draw_bim_emit(json_path=None, clear=_CLEAR_DEFAULT):
         pts = [tuple(c * s for c in p) for p in obj["points"]]
         kind = obj["kind"]
         added = None
-        if kind == "prism":
+        if kind == "mesh":
+            mesh = rg.Mesh()
+            for p in pts:
+                mesh.Vertices.Add(*p)
+            for face in obj["faces"]:
+                mesh.Faces.AddFace(*face)
+            mesh.Normals.ComputeNormals()
+            mesh.Compact()
+            if not mesh.IsValid or not mesh.IsClosed:
+                raise ValueError("Invalid/open mesh: " + obj["tags"].get("bim.id", ""))
+            if native_slabs and obj['tags'].get('geometry.native') == 'station_loft':
+                attrs.WireDensity = -1
+                added = doc.Objects.AddBrep(_native_slab(mesh), attrs)
+            else:
+                added = doc.Objects.AddMesh(mesh, attrs)
+        elif kind == "prism":
             vec = tuple(c * s for c in obj["vector"])
             added = _prism(doc, pts, vec, attrs, tol)
         elif kind == "polyline":

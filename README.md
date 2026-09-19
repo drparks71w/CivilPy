@@ -479,6 +479,14 @@ Or from the shell: `civilpy scan info site.las`, then
 
 ## Package Structure
 
+Box-beam bridge coordination examples are available through
+`civilpy-box-bridges --output ./bridge_examples` (install `civilpy[rhino]`).
+The gallery covers integral, semi-integral and conventional abutments,
+pile/spread/shaft foundations, retrofit deep-beam railing, approach slabs,
+end treatments and reinforcement clash reports. See the
+[generation and Rhino workflow](docs/Box_Bridge_Details.md), including the
+native solid-slab conversion and the examples' unresolved detailing limits.
+
 ```mermaid
 graph TD
     A[Does the function relate to a specific state<br>requirement/system, or a branch of civil engineering?]

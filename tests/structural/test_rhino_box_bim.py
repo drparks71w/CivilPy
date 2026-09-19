@@ -40,7 +40,7 @@ def test_component_inventory(emit):
     assert by_type["box_beam"] == 9 * 4          # 4 wall prisms per beam
     # CB27-48 @ 60 ft: strands in the 2 in and 4 in rows only
     assert by_type["tendon"] == 9 * 2
-    assert by_type["bearing"] == 18
+    assert by_type["bearing"] == 36
     assert by_type["diaphragm"] == n_dia
     assert by_type["tie_rod"] == n_dia
     assert by_type["deck"] == 1                  # composite topping
@@ -56,6 +56,15 @@ def test_gdr_contract(emit):
         assert o.tags["gdr.box"] == "CB27-48"
         assert o.points[0][2] == pytest.approx(27.0 / 12.0)  # top of box
     assert emit.doc_tags["gdr.family"] == "box"
+
+
+def test_paired_bearing_locations(emit):
+    pads = [o for o in emit.of_type("bearing") if o.tags["bim.id"].startswith("BB1-")]
+    centers = {(round(sum(p[0] for p in o.points)/4, 6),
+                round(sum(p[1] for p in o.points)/4, 6)) for o in pads}
+    assert centers == {(x, round(y, 6)) for x in (.5, 59.5)
+                       for y in (10/12, 38/12)}
+    assert all(0 <= p[0] <= 60 and 0 <= p[1] <= 4 for o in pads for p in o.points)
 
 
 def test_hollow_tube_geometry(emit):
@@ -93,7 +102,7 @@ def test_member_pay_item_counts_each_beam_once(emit):
     q = pay_item_quantities(emit)
     members = q["515E10000"]
     assert members["unit"] == "ea" and members["qty"] == 9
-    assert q["516E10000"]["qty"] == 18           # pads
+    assert q["516E10000"]["qty"] == 36           # two pads at each beam end
     section = box_section_properties(27)
     top = next(o for o in emit.of_type("box_beam")
                if o.tags["bim.id"] == "BB1-TOP_FLANGE")

@@ -203,12 +203,19 @@ def box_beam_bridge_emit(inp: BoxBridgeInput, *,
                                      strands=n_strands, row_in=h_in)))
 
         for x_end, sign, end in ((0.0, 1.0, "S"), (span, -1.0, "E")):
-            objects.append(_rect_prism(
-                LAYER_BEARINGS, x_end, x_end + sign * pad_l,
-                y_c - pad_w / 2.0, y_c + pad_w / 2.0, -pad_t, 0.0,
-                bim.bearing_tags(f"{bid}-BRG-{end}", fixity="expansion",
-                                 total_thickness_in=pad.total_thickness),
-                shear=shear))
+            # PSBD-1-25 sheet 6: two pads per support, their transverse
+            # centerlines 10 in from the beam edges, CL bearing 6 in
+            # from the beam end. Positive extents also keep far-end
+            # prism orientation consistent with near-end geometry.
+            xc = x_end + sign * 0.5
+            for side, yc in (("L", y_lo + 10.0 / 12.0),
+                             ("R", y_hi - 10.0 / 12.0)):
+                objects.append(_rect_prism(
+                    LAYER_BEARINGS, xc - pad_l / 2, xc + pad_l / 2,
+                    yc - pad_w / 2, yc + pad_w / 2, -pad_t, 0.0,
+                    bim.bearing_tags(f"{bid}-BRG-{end}-{side}", fixity="expansion",
+                                     total_thickness_in=pad.total_thickness),
+                    shear=shear))
 
     t_dia = DIAPHRAGM_THICKNESS_IN / 12.0
     tie_z = TIE_ROD.vertical_position(design.depth) / 12.0

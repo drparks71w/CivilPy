@@ -126,6 +126,7 @@ Repository = "https://daneparks.com/Dane/civilpy"
 [project.scripts]
 civilpy = "civilpy.cli:civilpy_cli"
 civilpy-pw-mcp = "civilpy.mcp.pw_server:main"
+civilpy-box-bridges = "civilpy.structural.box_bridge_gallery:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
